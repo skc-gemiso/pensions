@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { useSession } from "next-auth/react"
 import AppLayout from "@/components/AppLayout"
@@ -211,9 +211,13 @@ function HelpPopover({ title, desc, composition, pros, cons, href }: HelpPopover
     <span className="inline-block align-middle ml-1">
       <button
         onClick={toggle}
-        className="w-4 h-4 rounded-full bg-white/50 text-gray-600 text-[10px] font-bold hover:bg-white hover:text-blue-600 transition-colors leading-none inline-flex items-center justify-center border border-current"
+        className="w-4 h-4 inline-flex items-center justify-center opacity-60 hover:opacity-100 transition-opacity"
       >
-        ?
+        <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="#3B82F6" strokeWidth="2" fill="white"/>
+            <circle cx="12" cy="8" r="1.5" fill="#3B82F6"/>
+            <rect x="11" y="11" width="2" height="6" rx="1" fill="#3B82F6"/>
+          </svg>
       </button>
       {pos && createPortal(
         <>
@@ -295,9 +299,13 @@ function PageHelpModal() {
       <button
         onClick={() => setOpen(true)}
         title="도움말"
-        className="w-6 h-6 rounded-full border-2 border-gray-400 text-gray-500 text-xs font-bold hover:border-blue-500 hover:text-blue-500 transition-colors inline-flex items-center justify-center flex-shrink-0"
+        className="inline-flex items-center justify-center flex-shrink-0 opacity-60 hover:opacity-100 transition-opacity"
       >
-        ?
+        <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="#3B82F6" strokeWidth="2" fill="white"/>
+            <circle cx="12" cy="8" r="1.5" fill="#3B82F6"/>
+            <rect x="11" y="11" width="2" height="6" rx="1" fill="#3B82F6"/>
+          </svg>
       </button>
 
       {open && createPortal(
@@ -727,10 +735,10 @@ function SimTable({
             </tr>
             <tr className="bg-gray-100 border-b border-gray-200 text-gray-400">
               {Array.from({ length: 6 }).map((_, gi) => (
-                <>
-                  <th key={`a${gi}`} className="px-2 py-1 border-r border-gray-100">평가금액(만)</th>
-                  <th key={`b${gi}`} className={`px-2 py-1 ${gi % 2 === 1 ? "border-r border-gray-200" : "border-r border-gray-100"}`}>수익율</th>
-                </>
+                <Fragment key={gi}>
+                  <th className="px-2 py-1 border-r border-gray-100">평가금액(만)</th>
+                  <th className={`px-2 py-1 ${gi % 2 === 1 ? "border-r border-gray-200" : "border-r border-gray-100"}`}>수익율</th>
+                </Fragment>
               ))}
               <th className="px-2 py-1 border-r border-gray-100 whitespace-nowrap">1년(만)</th>
               <th className="px-2 py-1 whitespace-nowrap">1개월(만)</th>
@@ -763,21 +771,137 @@ function SimTable({
   )
 }
 
+// ─── 결과 요약 컴포넌트 ──────────────────────────────────────────────────────
+
+function SimSummary({
+  rows,
+  inp,
+  muted = false,
+}: {
+  rows: ComputedRow[]
+  inp: InputValues
+  muted?: boolean
+}) {
+  const totalW = Math.round((inp.initDeposit + inp.monthlyPmt * inp.accumMonths) / 10000)
+
+  const SCENARIOS = [
+    {
+      label: "보수",
+      sublabel: "KODEX200 0%",
+      idx: 2,
+      card: "bg-white border-gray-200",
+      badge: "bg-gray-100 text-gray-600",
+      label2: "text-gray-500",
+      val: "text-gray-800",
+      divBox: "bg-gray-100",
+      divText: "text-gray-800",
+    },
+    {
+      label: "중립",
+      sublabel: "KODEX200 5%",
+      idx: 3,
+      card: "bg-blue-50 border-blue-200",
+      badge: "bg-blue-100 text-blue-700",
+      label2: "text-blue-500",
+      val: "text-blue-800",
+      divBox: "bg-blue-100",
+      divText: "text-blue-900",
+    },
+    {
+      label: "기대",
+      sublabel: "KODEX200 10%",
+      idx: 4,
+      card: "bg-emerald-50 border-emerald-200",
+      badge: "bg-emerald-100 text-emerald-700",
+      label2: "text-emerald-600",
+      val: "text-emerald-800",
+      divBox: "bg-emerald-100",
+      divText: "text-emerald-900",
+    },
+  ]
+
+  const wrap = muted
+    ? "bg-purple-50 border-purple-200"
+    : "bg-amber-50 border-amber-200"
+  const headText = muted ? "text-purple-900" : "text-amber-900"
+  const subText  = muted ? "text-purple-600" : "text-amber-600"
+
+  return (
+    <div className={`rounded-xl border px-4 py-4 space-y-3 ${wrap}`}>
+      {/* 헤더 */}
+      <div className="flex items-center justify-between flex-wrap gap-1">
+        <span className={`text-sm font-bold ${headText}`}>
+          📊 시뮬레이션 결과 요약
+          <span className={`ml-2 text-xs font-normal ${subText}`}>커버드콜 ETF 기준</span>
+        </span>
+        <span className={`text-xs ${subText}`}>
+          총 납입원금 <span className="font-bold">{totalW.toLocaleString("ko-KR")}만원</span>
+        </span>
+      </div>
+
+      {/* 시나리오 카드 */}
+      <div className="grid grid-cols-3 gap-2">
+        {SCENARIOS.map(({ label, sublabel, idx, card, badge, label2, val, divBox, divText }) => {
+          const row = rows[idx]
+          if (!row) return null
+          return (
+            <div key={idx} className={`rounded-xl border p-3 space-y-2.5 ${card}`}>
+              {/* 시나리오 레이블 */}
+              <div className="flex items-center justify-between">
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badge}`}>{label}</span>
+                <span className={`text-xs ${label2}`}>{sublabel}</span>
+              </div>
+
+              {/* 적립 완료 */}
+              <div>
+                <p className={`text-[10px] font-medium ${label2} mb-0.5`}>적립 완료</p>
+                <p className={`text-sm font-bold ${val}`}>{row.covered[0]}만원</p>
+                <p className={`text-xs ${rateColor(row.covered[1])}`}>{row.covered[1]}</p>
+              </div>
+
+              {/* 퇴직 시점 */}
+              <div>
+                <p className={`text-[10px] font-medium ${label2} mb-0.5`}>퇴직 시점 (만 {inp.retirementAge ?? 55}세)</p>
+                <p className={`text-sm font-bold ${val}`}>{row.covered[2]}만원</p>
+                <p className={`text-xs ${rateColor(row.covered[3])}`}>{row.covered[3]}</p>
+              </div>
+
+              {/* 월 배당금 강조 */}
+              <div className={`rounded-lg px-3 py-2 ${divBox}`}>
+                <p className={`text-[10px] font-semibold ${divText} mb-0.5`}>퇴직 후 월 배당금</p>
+                <p className={`text-base font-extrabold ${divText}`}>{row.dividend[1]}만원<span className="text-xs font-semibold ml-0.5">/ 월</span></p>
+                <p className={`text-[10px] ${divText} opacity-70`}>연 {row.dividend[0]}만원</p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+    </div>
+  )
+}
+
 // ─── 메인 페이지 ──────────────────────────────────────────────────────────────
 
 export default function SavingsFundPage() {
-  const { data: session } = useSession()
-  const role = (session?.user as { role?: string })?.role
+  const { data: session, status } = useSession()
+  const role = status === "authenticated"
+    ? ((session?.user as { role?: string })?.role ?? "admin")
+    : null
 
-  const visibleTabs = !role || role === "admin"
+  const visibleTabs = (role === "admin" || role === "khj")
     ? TABS
-    : role === "normal"
-      ? TABS.filter((t) => t.id === "reference")
-      : TABS.filter((t) => t.id !== "reference") // khj
+    : TABS.filter((t) => t.id === "reference")
 
   const [activeId, setActiveId]     = useState(TABS[0].id)
   const [inputs, setInputs]         = useState<Record<string, InputValues>>(
-    Object.fromEntries(TABS.map((t) => [t.id, { ...t.defaultInputs }]))
+    Object.fromEntries(TABS.map((t) => {
+      const ageMonths = birthdateToAgeMonths(t.defaultInputs.birthdate)
+      const holdMonths = ageMonths != null
+        ? calcHoldMonths(t.defaultInputs.retirementAge ?? 55, t.defaultInputs.accumMonths, ageMonths)
+        : t.defaultInputs.holdMonths
+      return [t.id, { ...t.defaultInputs, holdMonths }]
+    }))
   )
   const [editDraft, setEditDraft]     = useState<InputValues | null>(null)
   const [savedList, setSavedList]     = useState<SavedSim[]>([])
@@ -835,7 +959,41 @@ export default function SavingsFundPage() {
   }
 
   function openSaveDialog() {
-    setSaveDraft({ title: "", memo: "" })
+    const inp = curInput
+
+    const fmtMan = (won: number) =>
+      won % 10000 === 0
+        ? `${won / 10000}만`
+        : `${(won / 10000).toFixed(1)}만`
+    const fmtY = (months: number) =>
+      months % 12 === 0
+        ? `${months / 12}년`
+        : `${(months / 12).toFixed(1)}년`
+    const fmtYNum = (months: number) =>
+      months % 12 === 0
+        ? `${months / 12}`
+        : `${(months / 12).toFixed(1)}`
+
+    const pmt   = inp.monthlyPmt > 0 ? fmtMan(inp.monthlyPmt) : fmtMan(inp.initDeposit)
+    const accum = fmtY(inp.accumMonths)
+    const hold  = fmtYNum(inp.holdMonths)
+    const age   = inp.retirementAge
+
+    const autoTitle = `${pmt}(${accum} 납), ${hold}년 보관, ${age}세 연금`
+    const ageMonths     = birthdateToAgeMonths(inp.birthdate)
+    const totalInvested = inp.initDeposit + inp.monthlyPmt * inp.accumMonths
+    const autoMemo = [
+      `생년월일: ${inp.birthdate ? `${fmtBirthdate(inp.birthdate)} (${fmtAge(ageMonths ?? 0)})` : "—"}`,
+      `초기 입금: ${fmtKRW(inp.initDeposit)}`,
+      `월 납입금: ${fmtKRW(inp.monthlyPmt)}`,
+      `적립 기간: ${fmtMonths(inp.accumMonths)}`,
+      `연금 수령 나이: 만 ${inp.retirementAge}세`,
+      `보관 기간(만 ${inp.retirementAge}세): ${fmtMonths(inp.holdMonths)}`,
+      `총 납입원금: ${fmtKRW(totalInvested)}`,
+      `커버드콜 배당률(연): ${(inp.ccAnnualRate * 100).toFixed(0)}%`,
+    ].join("\n")
+
+    setSaveDraft({ title: autoTitle, memo: autoMemo })
     setShowSaveDialog(true)
     setSaveMsg(null)
   }
@@ -1122,7 +1280,11 @@ export default function SavingsFundPage() {
               <button
                 onClick={() => {
                   setEditDraft(null)
-                  setInputs((prev) => ({ ...prev, [activeId]: { ...tab.defaultInputs } }))
+                  const ageMonths = birthdateToAgeMonths(tab.defaultInputs.birthdate)
+                  const holdMonths = ageMonths != null
+                    ? calcHoldMonths(tab.defaultInputs.retirementAge ?? 55, tab.defaultInputs.accumMonths, ageMonths)
+                    : tab.defaultInputs.holdMonths
+                  setInputs((prev) => ({ ...prev, [activeId]: { ...tab.defaultInputs, holdMonths } }))
                 }}
                 className="px-4 py-2 border border-gray-300 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition-colors"
               >
@@ -1153,6 +1315,7 @@ export default function SavingsFundPage() {
             </div>
           </div>
           <SimTable rows={rows} accumMonths={curInput.accumMonths} holdMonths={curInput.holdMonths} />
+          <SimSummary rows={rows} inp={curInput} />
         </div>
 
         {/* 저장된 시뮬레이션 목록 */}
@@ -1182,7 +1345,8 @@ export default function SavingsFundPage() {
                         : "text-gray-600"
                     }`}
                   >
-                    {fmtDatetime(sim.savedAt)}{sim.title ? ` · ${sim.title.slice(0, 10)}${sim.title.length > 10 ? "…" : ""}` : ""}
+                    {sim.savedBy && <span className="font-medium mr-1">{sim.savedBy}</span>}
+                    {fmtDatetime(sim.savedAt)}{sim.title ? ` · ${sim.title.slice(0, 30)}${sim.title.length > 30 ? "…" : ""}` : ""}
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleDelete(sim.id) }}
@@ -1206,7 +1370,7 @@ export default function SavingsFundPage() {
           <div className="space-y-3">
             <div className="flex items-center gap-3 flex-wrap">
               <h2 className="font-semibold text-gray-900 text-sm">
-                {selectedSim.title ? `${selectedSim.title} — ` : "저장된 시뮬레이션 — "}{fmtDatetime(selectedSim.savedAt)}
+                {selectedSim.savedBy && <span className="text-gray-500 font-normal mr-1">{selectedSim.savedBy}</span>}{selectedSim.title || "저장된 시뮬레이션"} — {fmtDatetime(selectedSim.savedAt)}
               </h2>
               <button
                 onClick={() => {
@@ -1260,6 +1424,7 @@ export default function SavingsFundPage() {
               holdMonths={selectedSim.inputs.holdMonths}
               muted
             />
+            <SimSummary rows={selectedSim.results} inp={selectedSim.inputs} muted />
           </div>
         )}
       </div>

@@ -1,7 +1,10 @@
 import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
+import { ensureAuthTables, sha256, findUser, getMenusForRole, type MenuRow } from "@/lib/auth-db"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  secret: process.env.AUTH_SECRET,
+  trustHost: true,
   providers: [
     Credentials({
       credentials: {
@@ -9,38 +12,48 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "비밀번호", type: "password" },
       },
       authorize: async (credentials) => {
-        if (
-          credentials?.username === process.env.ADMIN_USERNAME &&
-          credentials?.password === process.env.ADMIN_PASSWORD
-        ) {
-          return { id: "1", name: credentials.username as string, role: "admin" }
+        await ensureAuthTables()
+
+        const user = await findUser(String(credentials?.username ?? ""))
+        if (!user) return null
+        if (sha256(String(credentials?.password ?? "")) !== user.password_hash) return null
+
+        const menus = await getMenusForRole(user.role)
+        const loginAt = new Date().toISOString()
+
+        return {
+          id: user.id,
+          name: user.name,
+          role: user.role,
+          loginAt,
+          menus,
         }
-        if (
-          credentials?.username === process.env.NORMAL_USERNAME &&
-          credentials?.password === process.env.NORMAL_PASSWORD
-        ) {
-          return { id: "2", name: credentials.username as string, role: "normal" }
-        }
-        if (
-          credentials?.username === process.env.KHJ_USERNAME &&
-          credentials?.password === process.env.KHJ_PASSWORD
-        ) {
-          return { id: "3", name: credentials.username as string, role: "khj" }
-        }
-        return null
       },
     }),
   ],
   callbacks: {
     jwt({ token, user }) {
-      if (user) token.role = (user as { role?: string }).role
+      if (user) {
+        token.name    = user.name ?? token.name
+        token.role    = (user as { role?: string }).role
+        token.loginAt = (user as { loginAt?: string }).loginAt
+        token.menus   = (user as { menus?: MenuRow[] }).menus
+      }
       return token
     },
     session({ session, token }) {
-      if (session.user) (session.user as { role?: string }).role = token.role as string | undefined
-      return session
+      return {
+        ...session,
+        user: {
+          ...session.user,
+          name:    token.name    as string    | undefined,
+          role:    token.role    as string    | undefined,
+          loginAt: token.loginAt as string    | undefined,
+          menus:   token.menus   as MenuRow[] | undefined,
+        },
+      }
     },
   },
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
   pages: { signIn: "/login" },
 })

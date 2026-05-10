@@ -1,25 +1,9 @@
 "use server"
 
-import { Pool } from "pg"
+import { auth } from "../../../auth"
+import { getPensionPool } from "../../../lib/pension-db"
 
-let pool: Pool | null = null
-
-function getPool() {
-  if (!pool) {
-    pool = new Pool({
-      host: process.env.PENSION_SIM_DB_HOST,
-      port: Number(process.env.PENSION_SIM_DB_PORT || 5432),
-      database: process.env.PENSION_SIM_DB_NAME,
-      user: process.env.PENSION_SIM_DB_USER,
-      password: process.env.PENSION_SIM_DB_PASSWORD,
-      ssl: { rejectUnauthorized: false },
-      max: 3,
-    })
-  }
-  return pool
-}
-
-async function ensureTable(db: Pool) {
+async function ensureTable(db: ReturnType<typeof getPensionPool>) {
   await db.query(`
     CREATE TABLE IF NOT EXISTS pension_sim_savings_fund (
       id        SERIAL PRIMARY KEY,
@@ -30,9 +14,9 @@ async function ensureTable(db: Pool) {
       results   JSONB        NOT NULL
     )
   `)
-  // title / memo 컬럼이 없는 기존 테이블에 추가
-  await db.query(`ALTER TABLE pension_sim_savings_fund ADD COLUMN IF NOT EXISTS title VARCHAR(200)`)
-  await db.query(`ALTER TABLE pension_sim_savings_fund ADD COLUMN IF NOT EXISTS memo  TEXT`)
+  await db.query(`ALTER TABLE pension_sim_savings_fund ADD COLUMN IF NOT EXISTS title    VARCHAR(200)`)
+  await db.query(`ALTER TABLE pension_sim_savings_fund ADD COLUMN IF NOT EXISTS memo     TEXT`)
+  await db.query(`ALTER TABLE pension_sim_savings_fund ADD COLUMN IF NOT EXISTS saved_by VARCHAR(50)`)
 }
 
 export type SavedSim = {
@@ -40,6 +24,7 @@ export type SavedSim = {
   savedAt: string
   title: string
   memo: string
+  savedBy: string
   inputs: InputValues
   results: ComputedRow[]
 }
@@ -70,13 +55,16 @@ export async function saveSimulation(
   inputs: InputValues,
   results: ComputedRow[]
 ): Promise<{ id: number; savedAt: string }> {
-  const db = getPool()
+  const session = await auth()
+  const savedBy = (session?.user as { name?: string })?.name ?? "unknown"
+
+  const db = getPensionPool()
   await ensureTable(db)
   const res = await db.query(
-    `INSERT INTO pension_sim_savings_fund (tab_id, tab_label, title, memo, inputs, results)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO pension_sim_savings_fund (tab_id, tab_label, title, memo, inputs, results, saved_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING id, saved_at`,
-    [tabId, tabLabel, title || null, memo || null, JSON.stringify(inputs), JSON.stringify(results)]
+    [tabId, tabLabel, title || null, memo || null, JSON.stringify(inputs), JSON.stringify(results), savedBy]
   )
   return {
     id: res.rows[0].id,
@@ -85,27 +73,44 @@ export async function saveSimulation(
 }
 
 export async function loadSimulations(tabId: string): Promise<SavedSim[]> {
-  const db = getPool()
+  const session = await auth()
+  const role = (session?.user as { role?: string })?.role ?? null
+
+  const db = getPensionPool()
   await ensureTable(db)
-  const res = await db.query(
-    `SELECT id, saved_at, title, memo, inputs, results
-     FROM pension_sim_savings_fund
-     WHERE tab_id = $1
-     ORDER BY saved_at DESC
-     LIMIT 20`,
-    [tabId]
-  )
+
+  const userName = (session?.user as { name?: string })?.name ?? null
+
+  const res = role === "admin"
+    ? await db.query(
+        `SELECT id, saved_at, title, memo, saved_by, inputs, results
+         FROM pension_sim_savings_fund
+         WHERE tab_id = $1
+         ORDER BY saved_at DESC
+         LIMIT 20`,
+        [tabId]
+      )
+    : await db.query(
+        `SELECT id, saved_at, title, memo, saved_by, inputs, results
+         FROM pension_sim_savings_fund
+         WHERE tab_id = $1 AND saved_by = $2
+         ORDER BY saved_at DESC
+         LIMIT 20`,
+        [tabId, userName ?? ""]
+      )
+
   return res.rows.map((r) => ({
     id: r.id,
-    savedAt: (r.saved_at as Date).toISOString(),
-    title:   r.title  ?? "",
-    memo:    r.memo   ?? "",
-    inputs:  r.inputs  as InputValues,
-    results: r.results as ComputedRow[],
+    savedAt:  (r.saved_at as Date).toISOString(),
+    title:    r.title    ?? "",
+    memo:     r.memo     ?? "",
+    savedBy:  r.saved_by ?? "",
+    inputs:   r.inputs   as InputValues,
+    results:  r.results  as ComputedRow[],
   }))
 }
 
 export async function deleteSimulation(id: number): Promise<void> {
-  const db = getPool()
+  const db = getPensionPool()
   await db.query(`DELETE FROM pension_sim_savings_fund WHERE id = $1`, [id])
 }
