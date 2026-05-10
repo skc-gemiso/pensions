@@ -3,6 +3,7 @@
 import { signIn, signOut } from "@/auth"
 import { AuthError } from "next-auth"
 import { cookies } from "next/headers"
+import { findUser } from "@/lib/auth-db"
 
 export async function login(
   _prev: { error?: string; redirect?: string } | undefined,
@@ -18,9 +19,13 @@ export async function login(
     if (error instanceof AuthError) {
       return { error: "아이디 또는 비밀번호가 올바르지 않습니다." }
     }
-    // signIn 성공 시 Next.js가 NEXT_REDIRECT를 throw — 하드 내비게이션으로 처리
+    // signIn 성공 시 Next.js가 NEXT_REDIRECT를 throw — role에 따라 리다이렉트
     if ((error as { digest?: string })?.digest?.startsWith("NEXT_REDIRECT")) {
-      return { redirect: "/" }
+      const user = await findUser(String(formData.get("username") ?? ""))
+      const redirectTo = user?.role === "admin"
+        ? "/"
+        : "/personal-pension/savings-fund"
+      return { redirect: redirectTo }
     }
     throw error
   }
