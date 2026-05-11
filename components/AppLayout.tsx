@@ -36,7 +36,7 @@ function buildNavTree(menus: MenuRow[]): NavItem[] {
 
 function fmtTime(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0")
-  return `${pad(d.getHours())}:${pad(d.getMinutes())} 접속`
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 function maskIp(ip: string): string {
@@ -177,7 +177,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </div>
                 <div className="leading-tight hidden sm:block">
                   <p className="text-white text-sm font-medium">{user?.name ?? ""}</p>
-                  <p className="text-blue-200 text-[10px]">{mountTime}</p>
+                  {mountTime && (
+                    <p className="text-blue-200 text-xs flex items-center gap-1">
+                      <svg viewBox="0 0 16 16" className="w-3 h-3 flex-shrink-0" fill="currentColor">
+                        <path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-3.5a.75.75 0 0 1 .75.75v3.19l1.9 1.9a.75.75 0 0 1-1.06 1.06l-2.13-2.13A.75.75 0 0 1 7.25 9V5.25A.75.75 0 0 1 8 4.5Z"/>
+                      </svg>
+                      {mountTime} 접속
+                    </p>
+                  )}
                 </div>
                 <form action={logout}>
                   <button
