@@ -62,14 +62,22 @@ async function _init(): Promise<void> {
   `)
 
   // 초기 사용자 시딩 (테이블이 비어있을 때만)
+  // 비밀번호는 환경변수에서 읽어 해시 후 저장 — 소스코드에 해시값 노출 방지
   const { rows: uc } = await pool.query<{ c: string }>("SELECT COUNT(*) AS c FROM app_users")
   if (parseInt(uc[0].c) === 0) {
-    await pool.query(`
-      INSERT INTO app_users (id, name, password_hash, role) VALUES
-        ('skc',  '신기철', '73927e165d5bf16bbcb2abf6039903375d735c9e6ce3efd3b0f854b11d5ece6c', 'admin'),
-        ('user', '테스터', '0ac8adfad468b363de01d0556d4239831b654eab5d732cf7564b8e975853c22c', 'normal'),
-        ('khj',  '김현정', '653a64eed49df7e39aa9648d73a5df94ac21ea5d152da63d0fc5118ee8ed66a8', 'khj')
-    `)
+    const p1 = process.env.SEED_ADMIN_PASSWORD
+    const p2 = process.env.SEED_USER_PASSWORD
+    const p3 = process.env.SEED_KHJ_PASSWORD
+    if (!p1 || !p2 || !p3) {
+      throw new Error("SEED_*_PASSWORD 환경변수가 설정되지 않았습니다.")
+    }
+    await pool.query(
+      `INSERT INTO app_users (id, name, password_hash, role) VALUES
+        ($1, '신기철', $2, 'admin'),
+        ($3, '테스터', $4, 'normal'),
+        ($5, '김현정', $6, 'khj')`,
+      ["skc", sha256(p1), "user", sha256(p2), "khj", sha256(p3)]
+    )
   }
 
   // 초기 메뉴 시딩

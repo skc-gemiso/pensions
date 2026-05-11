@@ -58,7 +58,8 @@ export async function saveSimulation(
   results: ComputedRow[]
 ): Promise<{ id: number; savedAt: string }> {
   const session = await auth()
-  const savedBy = (session?.user as { name?: string })?.name ?? "unknown"
+  if (!session?.user) throw new Error("Unauthorized")
+  const savedBy = (session.user as { name?: string })?.name ?? "unknown"
 
   const db = getPensionPool()
   await ensureTable(db)
@@ -76,12 +77,13 @@ export async function saveSimulation(
 
 export async function loadSimulations(tabId: string): Promise<SavedSim[]> {
   const session = await auth()
-  const role = (session?.user as { role?: string })?.role ?? null
+  if (!session?.user) throw new Error("Unauthorized")
+  const role = (session.user as { role?: string })?.role ?? null
 
   const db = getPensionPool()
   await ensureTable(db)
 
-  const userName = (session?.user as { name?: string })?.name ?? null
+  const userName = (session.user as { name?: string })?.name ?? null
 
   const res = role === "admin"
     ? await db.query(
@@ -113,6 +115,20 @@ export async function loadSimulations(tabId: string): Promise<SavedSim[]> {
 }
 
 export async function deleteSimulation(id: number): Promise<void> {
+  const session = await auth()
+  if (!session?.user) throw new Error("Unauthorized")
+
+  const role    = (session.user as { role?: string })?.role ?? null
+  const userName = (session.user as { name?: string })?.name ?? null
+
   const db = getPensionPool()
-  await db.query(`DELETE FROM pension_sim_savings_fund WHERE id = $1`, [id])
+  // admin은 전체 삭제 가능, 일반 사용자는 본인 데이터만 삭제
+  if (role === "admin") {
+    await db.query(`DELETE FROM pension_sim_savings_fund WHERE id = $1`, [id])
+  } else {
+    await db.query(
+      `DELETE FROM pension_sim_savings_fund WHERE id = $1 AND saved_by = $2`,
+      [id, userName ?? ""]
+    )
+  }
 }
