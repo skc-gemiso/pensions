@@ -144,7 +144,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       <footer className="bg-white border-t border-gray-200 px-6 py-3">
         <p className="text-center text-xs text-gray-400">
-          © {new Date().getFullYear()} 신기철 (Shin Ki-chul). All rights reserved.
+          © {new Date().getFullYear()} 신기철 (skc). All rights reserved.
           <span className="mx-2 text-gray-300">|</span>
           개인 학습 및 참고 목적으로 제공되며 투자 권유가 아닙니다.
         </p>
