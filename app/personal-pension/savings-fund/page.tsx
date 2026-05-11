@@ -8,6 +8,7 @@ import {
   saveSimulation,
   loadSimulations,
   deleteSimulation,
+  checkAndRecordIpUsage,
   type InputValues,
   type ComputedRow,
   type SavedSim,
@@ -1640,6 +1641,8 @@ export default function SavingsFundPage() {
     ? ((session?.user as { role?: string })?.role ?? "admin")
     : null
 
+  const isLoggedIn = status === "authenticated"
+
   const visibleTabs = (role === "admin" || role === "khj")
     ? TABS
     : TABS.filter((t) => t.id === "reference" || t.id === "irp-reference")
@@ -1662,6 +1665,7 @@ export default function SavingsFundPage() {
   const [loading, setLoading]         = useState(false)
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [saveDraft, setSaveDraft]     = useState({ title: "", memo: "" })
+  const [ipBlocked, setIpBlocked]     = useState(false)
 
   // role이 결정되면 첫 번째 visible 탭으로 맞춤
   useEffect(() => {
@@ -1670,6 +1674,16 @@ export default function SavingsFundPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role])
+
+  // 비로그인 사용자 IP 사용량 체크 (페이지 로드 1회)
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      checkAndRecordIpUsage()
+        .then(({ allowed }) => { if (!allowed) setIpBlocked(true) })
+        .catch(() => {})
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status])
 
   const tab      = TABS.find((t) => t.id === activeId)!
   const curInput = inputs[activeId]
@@ -1699,8 +1713,12 @@ export default function SavingsFundPage() {
   }, [])
 
   useEffect(() => {
-    fetchSaved(activeId)
-  }, [activeId, fetchSaved])
+    if (isLoggedIn) {
+      fetchSaved(activeId)
+    } else {
+      setSavedList([])
+    }
+  }, [activeId, fetchSaved, isLoggedIn])
 
   function handleTabChange(id: string) {
     setInputs((prev) => {
@@ -1857,6 +1875,17 @@ export default function SavingsFundPage() {
           <p className="text-gray-500 text-sm">퇴직 시점 연금 시뮬레이션 (KODEX200 ETF vs KODEX200 타겟위클리커버드콜 ETF)</p>
         </div>
 
+        {/* IP 사용 한도 초과 안내 */}
+        {ipBlocked && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-3">
+            <span className="text-red-500 text-lg flex-shrink-0">⚠</span>
+            <div className="text-sm text-red-700">
+              <p className="font-semibold mb-0.5">1시간 내 사용 한도(10회)를 초과했습니다.</p>
+              <p className="text-xs text-red-600">잠시 후 다시 접속하거나, 계정이 있으면 <a href="/login" className="underline font-medium">로그인</a> 후 이용하세요. (로그인 시 제한 없음)</p>
+            </div>
+          </div>
+        )}
+
         {/* 탭 */}
         <div className="flex gap-1 border-b border-gray-200">
           {visibleTabs.map((t) => (
@@ -1891,7 +1920,8 @@ export default function SavingsFundPage() {
             <h2 className="font-semibold text-gray-900 text-sm">입력 값</h2>
             <button
               onClick={editDraft ? () => setEditDraft(null) : openEdit}
-              className="text-xs px-3 py-1.5 rounded-lg border border-blue-300 text-blue-600 hover:bg-blue-50 transition-colors"
+              disabled={ipBlocked}
+              className="text-xs px-3 py-1.5 rounded-lg border border-blue-300 text-blue-600 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {editDraft ? "취소" : "입력 값 수정"}
             </button>
@@ -2124,24 +2154,37 @@ export default function SavingsFundPage() {
                   {saveMsg}
                 </span>
               )}
-              <button
-                onClick={openSaveDialog}
-                disabled={saving}
-                className="text-xs px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-400 transition-colors"
-              >
-                {saving ? "저장 중..." : "시뮬레이션 저장"}
-              </button>
+              {isLoggedIn ? (
+                <button
+                  onClick={openSaveDialog}
+                  disabled={saving}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-400 transition-colors"
+                >
+                  {saving ? "저장 중..." : "시뮬레이션 저장"}
+                </button>
+              ) : (
+                <a
+                  href="/login"
+                  className="text-xs px-3 py-1.5 rounded-lg border border-emerald-400 text-emerald-600 hover:bg-emerald-50 transition-colors"
+                >
+                  로그인 후 저장
+                </a>
+              )}
             </div>
           </div>
           <SimTable rows={rows} accumMonths={curInput.accumMonths} holdMonths={curInput.holdMonths} />
           <SimSummary rows={rows} inp={curInput} />
         </div>
 
-        {/* 저장된 시뮬레이션 목록 */}
+        {/* 저장된 시뮬레이션 목록 — 로그인 사용자 전용 */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h2 className="font-semibold text-gray-900 text-sm mb-3">저장된 시뮬레이션</h2>
 
-          {loading ? (
+          {!isLoggedIn ? (
+            <p className="text-sm text-gray-400">
+              <a href="/login" className="text-blue-600 underline">로그인</a>하면 시뮬레이션을 저장하고 불러올 수 있습니다.
+            </p>
+          ) : loading ? (
             <p className="text-sm text-gray-400">불러오는 중...</p>
           ) : savedList.length === 0 ? (
             <p className="text-sm text-gray-400">저장된 시뮬레이션이 없습니다.</p>

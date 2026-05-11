@@ -30,6 +30,43 @@ async function getClientIp(): Promise<string> {
   )
 }
 
+const IP_PAGE_LIMIT = 10
+const IP_PAGE_WINDOW = "1 hour"
+
+async function ensureIpUsageTable(db: ReturnType<typeof getPensionPool>) {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS sim_ip_usage (
+      id         SERIAL PRIMARY KEY,
+      ip_address VARCHAR(45) NOT NULL,
+      used_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+}
+
+export async function checkAndRecordIpUsage(): Promise<{ allowed: boolean }> {
+  const ip = await getClientIp()
+  if (ip === "unknown") return { allowed: true }
+
+  const db = getPensionPool()
+  await ensureIpUsageTable(db)
+
+  const { rows } = await db.query<{ c: string }>(
+    `SELECT COUNT(*) AS c FROM sim_ip_usage
+     WHERE ip_address = $1 AND used_at > NOW() - INTERVAL '${IP_PAGE_WINDOW}'`,
+    [ip]
+  )
+
+  if (parseInt(rows[0].c) >= IP_PAGE_LIMIT) {
+    return { allowed: false }
+  }
+
+  await db.query(`INSERT INTO sim_ip_usage (ip_address) VALUES ($1)`, [ip])
+  // 오래된 레코드 정리 (2시간 이전)
+  db.query(`DELETE FROM sim_ip_usage WHERE used_at < NOW() - INTERVAL '2 hours'`).catch(() => {})
+
+  return { allowed: true }
+}
+
 export type SavedSim = {
   id: number
   savedAt: string
