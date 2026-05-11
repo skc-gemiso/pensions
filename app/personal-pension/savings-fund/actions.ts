@@ -37,6 +37,8 @@ export type InputValues = {
   ccAnnualRate: number
   retirementAge: number
   birthdate: string   // "YYYY-MM-DD" or ""
+  safeRate?: number      // ISA only: safe-asset annual return rate (0.05 = 5%)
+  taxFreeLimit?: number  // ISA only: non-taxable gain limit in 만원 (200 or 400)
 }
 
 export type ComputedRow = {
