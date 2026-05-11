@@ -354,6 +354,95 @@ function HelpPopover({ title, desc, composition, pros, cons, href }: HelpPopover
 
 // ─── 페이지 도움말 모달 ───────────────────────────────────────────────────────
 
+function DisclaimerModal() {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="text-xs text-gray-400 underline underline-offset-2 hover:text-gray-600 transition-colors"
+      >
+        면책조항 상세보기
+      </button>
+
+      {open && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
+              <h2 className="text-base font-bold text-gray-900">면책조항 (Disclaimer)</h2>
+              <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+            </div>
+
+            <div className="overflow-y-auto px-6 py-5 space-y-5 text-sm">
+
+              {/* 핵심 경고 */}
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <p className="font-bold text-red-800 mb-1">⚠ 투자 원금 손실 가능성</p>
+                <p className="text-red-700 text-xs leading-relaxed">
+                  이 시뮬레이션은 ETF 투자에 따른 수익을 추정하는 도구입니다.
+                  주식·ETF 투자는 원금이 보장되지 않으며, 시장 상황에 따라 투자한 금액보다
+                  적은 금액을 돌려받을 수 있습니다.
+                </p>
+              </div>
+
+              {/* 항목별 상세 */}
+              <div className="space-y-4">
+
+                <div>
+                  <p className="font-semibold text-gray-800 mb-1.5">📊 시뮬레이션의 한계</p>
+                  <ul className="space-y-1.5 text-xs text-gray-600">
+                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>이 페이지의 시뮬레이션 결과는 <span className="font-semibold">미래 수익을 예측하거나 보장하지 않습니다.</span></span></li>
+                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>입력한 연평균 수익률은 가정치이며, 실제 시장은 그보다 높거나 낮게 움직일 수 있습니다.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>과거의 수익률이 미래에도 동일하게 반복된다는 보장은 없습니다.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>커버드콜 ETF의 배당률(연 15%)은 시장 변동성에 따라 달라질 수 있습니다.</span></li>
+                  </ul>
+                </div>
+
+                <div>
+                  <p className="font-semibold text-gray-800 mb-1.5">💰 세금·수수료 미반영</p>
+                  <ul className="space-y-1.5 text-xs text-gray-600">
+                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>시뮬레이션 금액에는 <span className="font-semibold">운용보수·거래수수료·배당소득세·연금소득세</span>가 반영되어 있지 않습니다.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>실제 수령액은 세금 및 수수료 공제 후 시뮬레이션보다 낮을 수 있습니다.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>세율·세법은 정부 정책에 따라 변경될 수 있습니다.</span></li>
+                  </ul>
+                </div>
+
+                <div>
+                  <p className="font-semibold text-gray-800 mb-1.5">📋 정보 제공 목적</p>
+                  <ul className="space-y-1.5 text-xs text-gray-600">
+                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>이 서비스는 <span className="font-semibold">개인 학습 및 참고 목적</span>으로 제공되며, 금융투자상품의 매수·매도를 권유하거나 투자를 자문하는 서비스가 아닙니다.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>금융 관련 중요한 결정을 내리기 전에는 <span className="font-semibold">자격을 갖춘 금융 전문가(FP·투자상담사 등)와 반드시 상담</span>하시기 바랍니다.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>이 페이지에 표시되는 상품명·수치는 공개된 정보를 기반으로 작성되었으며, 최신 정보와 다를 수 있습니다.</span></li>
+                  </ul>
+                </div>
+
+                <div>
+                  <p className="font-semibold text-gray-800 mb-1.5">🔒 책임의 한계</p>
+                  <ul className="space-y-1.5 text-xs text-gray-600">
+                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>이 시뮬레이션 결과를 참고하여 내린 투자 결정으로 발생한 손실에 대해 이 서비스는 <span className="font-semibold">어떠한 법적 책임도 지지 않습니다.</span></span></li>
+                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>모든 투자 결정과 그에 따른 결과는 <span className="font-semibold">투자자 본인의 책임</span>입니다.</span></li>
+                  </ul>
+                </div>
+
+              </div>
+
+              {/* 동의 버튼 */}
+              <button
+                onClick={() => setOpen(false)}
+                className="w-full py-2.5 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-xl transition-colors"
+              >
+                확인했습니다
+              </button>
+
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  )
+}
+
 function PageHelpModal() {
   const [open, setOpen] = useState(false)
   const [section, setSection] = useState<"guide" | "accounts" | "criteria" | "summary" | "detail">("guide")
@@ -2152,6 +2241,15 @@ export default function SavingsFundPage() {
             <SimSummary rows={selectedSim.results} inp={selectedSim.inputs} muted />
           </div>
         )}
+
+        {/* 면책조항 푸터 */}
+        <div className="border-t border-gray-200 pt-4 pb-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+          <p className="text-xs text-gray-400 leading-relaxed">
+            ※ 이 시뮬레이션은 참고용이며 미래 수익을 보장하지 않습니다. 세금·수수료 미반영. 투자 결과는 본인 책임입니다.
+          </p>
+          <DisclaimerModal />
+        </div>
+
       </div>
     </AppLayout>
   )
