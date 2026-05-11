@@ -360,9 +360,9 @@ function DisclaimerModal() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="text-xs text-gray-400 underline underline-offset-2 hover:text-gray-600 transition-colors"
+        className="flex-shrink-0 text-xs font-medium text-amber-700 bg-white border border-amber-300 px-3 py-1.5 rounded-lg hover:bg-amber-100 transition-colors whitespace-nowrap"
       >
-        면책조항 상세보기
+        상세보기 →
       </button>
 
       {open && createPortal(
@@ -2243,10 +2243,17 @@ export default function SavingsFundPage() {
         )}
 
         {/* 면책조항 푸터 */}
-        <div className="border-t border-gray-200 pt-4 pb-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-          <p className="text-xs text-gray-400 leading-relaxed">
-            ※ 이 시뮬레이션은 참고용이며 미래 수익을 보장하지 않습니다. 세금·수수료 미반영. 투자 결과는 본인 책임입니다.
-          </p>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-2">
+            <span className="text-amber-500 text-base flex-shrink-0 mt-0.5">⚠</span>
+            <div>
+              <p className="text-xs font-semibold text-amber-800 mb-0.5">투자 위험 안내</p>
+              <p className="text-xs text-amber-700 leading-relaxed">
+                이 시뮬레이션은 <span className="font-semibold">참고용</span>이며 미래 수익을 보장하지 않습니다.
+                세금·수수료 미반영. 투자 결과는 <span className="font-semibold">본인 책임</span>입니다.
+              </p>
+            </div>
+          </div>
           <DisclaimerModal />
         </div>
 
