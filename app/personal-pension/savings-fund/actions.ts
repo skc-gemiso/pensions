@@ -60,15 +60,16 @@ export type ComputedRow = {
   dividend: [string, string]   // [1년 배당금(만), 1개월 배당금(만)]
 }
 
+// 저장 수량 제한에서 완전 제외되는 역할
+const EXEMPT_ROLES = new Set(["admin", "khj"])
+
 const SAVE_LIMIT: Record<string, number> = {
   normal: 10,
-  khj:    20,
 }
 
-// IP당 허용 저장 수 (역할별 한도의 2배 — 같은 네트워크 다중 계정 고려)
+// IP당 허용 저장 수 (사용자 한도의 2배 — 같은 네트워크 다중 계정 고려)
 const IP_LIMIT: Record<string, number> = {
   normal: 20,
-  khj:    40,
 }
 
 export async function saveSimulation(
@@ -88,8 +89,8 @@ export async function saveSimulation(
   const db = getPensionPool()
   await ensureTable(db)
 
-  // IP 기반 저장 차단 (admin 제외)
-  if (role !== "admin" && ip !== "unknown") {
+  // IP 기반 저장 차단 (면제 역할 제외)
+  if (!EXEMPT_ROLES.has(role) && ip !== "unknown") {
     const ipLimit = IP_LIMIT[role] ?? 20
     const { rows: ipRows } = await db.query<{ c: string }>(
       `SELECT COUNT(*) AS c FROM pension_sim_savings_fund WHERE ip_address = $1`,
@@ -100,8 +101,8 @@ export async function saveSimulation(
     }
   }
 
-  // 사용자별 한도 초과 시 오래된 것부터 자동 삭제 (admin 제외)
-  const limit = role === "admin" ? null : (SAVE_LIMIT[role] ?? 10)
+  // 사용자별 한도 초과 시 오래된 것부터 자동 삭제 (면제 역할 제외)
+  const limit = EXEMPT_ROLES.has(role) ? null : (SAVE_LIMIT[role] ?? 10)
   if (limit !== null) {
     const { rows } = await db.query<{ c: string }>(
       `SELECT COUNT(*) AS c FROM pension_sim_savings_fund WHERE saved_by = $1`,
@@ -143,7 +144,7 @@ export async function loadSimulations(tabId: string): Promise<SavedSim[]> {
   await ensureTable(db)
 
   const userName = (session.user as { name?: string })?.name ?? null
-  const fetchLimit = role === "admin" ? 50 : (SAVE_LIMIT[role ?? ""] ?? 10)
+  const fetchLimit = EXEMPT_ROLES.has(role ?? "") ? 50 : (SAVE_LIMIT[role ?? ""] ?? 10)
 
   const res = role === "admin"
     ? await db.query(
