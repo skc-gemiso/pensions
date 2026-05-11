@@ -3,8 +3,9 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useSession } from "next-auth/react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { logout } from "@/app/actions/auth"
+import { getVisitorIp } from "@/app/actions/visitor"
 import type { MenuRow } from "@/lib/auth-db"
 
 type NavItem = {
@@ -41,6 +42,15 @@ function formatLoginAt(iso: string | undefined): string {
   return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+function maskIp(ip: string): string {
+  if (!ip || ip === "unknown") return ""
+  const v4 = ip.split(".")
+  if (v4.length === 4) return `${v4[0]}.${v4[1]}.xxx.xxx`
+  const v6 = ip.split(":")
+  if (v6.length >= 4) return `${v6[0]}:${v6[1]}:xxxx:…`
+  return ip.slice(0, 8) + "…"
+}
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const path = usePathname()
   const { data: session, status } = useSession()
@@ -60,6 +70,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     href === "/" ? path === "/" : path === href || path.startsWith(href + "/")
 
   const initials = user?.name ? user.name.slice(0, 1) : "?"
+
+  const [visitorIp, setVisitorIp] = useState<string>("")
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      getVisitorIp().then(setVisitorIp).catch(() => {})
+    }
+  }, [status])
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -175,12 +192,25 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </form>
               </>
             ) : status === "unauthenticated" ? (
-              <Link
-                href="/login"
-                className="text-xs text-white/80 border border-white/25 rounded-lg px-3 py-1.5 hover:bg-white/15 hover:text-white transition-colors"
-              >
-                로그인
-              </Link>
+              <>
+                <div className="w-8 h-8 rounded-full bg-white/20 border-2 border-white/30 flex items-center justify-center text-white/70 text-sm flex-shrink-0">
+                  <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+                    <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
+                  </svg>
+                </div>
+                <div className="leading-tight hidden sm:block">
+                  <p className="text-white/90 text-sm font-medium">방문자</p>
+                  {visitorIp && visitorIp !== "unknown" && (
+                    <p className="text-blue-200 text-[10px] font-mono">{maskIp(visitorIp)}</p>
+                  )}
+                </div>
+                <Link
+                  href="/login"
+                  className="text-xs text-white/80 border border-white/25 rounded-lg px-3 py-1.5 hover:bg-white/15 hover:text-white transition-colors"
+                >
+                  로그인
+                </Link>
+              </>
             ) : null}
           </div>
 
