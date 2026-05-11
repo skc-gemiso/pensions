@@ -70,15 +70,25 @@ export async function saveSimulation(
   const db = getPensionPool()
   await ensureTable(db)
 
-  // admin 이외 계정은 저장 개수 제한 확인
+  // admin 이외 계정은 한도 초과 시 오래된 것부터 자동 삭제
   const limit = role === "admin" ? null : (SAVE_LIMIT[role] ?? 10)
   if (limit !== null) {
     const { rows } = await db.query<{ c: string }>(
       `SELECT COUNT(*) AS c FROM pension_sim_savings_fund WHERE saved_by = $1`,
       [savedBy]
     )
-    if (parseInt(rows[0].c) >= limit) {
-      throw new Error(`저장 한도 초과 (최대 ${limit}개). 기존 시뮬레이션을 삭제 후 다시 시도하세요.`)
+    const over = parseInt(rows[0].c) - limit + 1  // 새 항목 추가 후 초과될 수
+    if (over > 0) {
+      await db.query(
+        `DELETE FROM pension_sim_savings_fund
+         WHERE id IN (
+           SELECT id FROM pension_sim_savings_fund
+           WHERE saved_by = $1
+           ORDER BY saved_at ASC
+           LIMIT $2
+         )`,
+        [savedBy, over]
+      )
     }
   }
 
