@@ -1785,8 +1785,13 @@ export default function SavingsFundPage() {
       await saveSimulation(activeId, tab.label, saveDraft.title, saveDraft.memo, curInput, rows)
       setSaveMsg("저장 완료!")
       await fetchSaved(activeId)
-    } catch {
-      setSaveMsg("저장 실패. DB 연결을 확인하세요.")
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : ""
+      if (msg.startsWith("IP_LIMIT_EXCEEDED:")) {
+        setSaveMsg(msg.replace("IP_LIMIT_EXCEEDED:", ""))
+      } else {
+        setSaveMsg("저장 실패. DB 연결을 확인하세요.")
+      }
     } finally {
       setSaving(false)
     }
