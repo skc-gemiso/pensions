@@ -45,7 +45,7 @@ function maskIp(ip: string): string {
   if (v4.length === 4) return `${v4[0]}.${v4[1]}.xxx.xxx`
   const v6 = ip.split(":")
   if (v6.length >= 4) return `${v6[0]}:${v6[1]}:xxxx:…`
-  return ip.slice(0, 8) + "…"
+  return ""
 }
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
