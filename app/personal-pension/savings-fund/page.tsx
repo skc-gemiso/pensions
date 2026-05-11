@@ -805,9 +805,9 @@ function PageHelpModal() {
                     <p className="text-xs text-gray-500 mt-1.5">★ 퇴직 시점 = 적립 완료 후 연금 수령 나이까지 ETF를 계속 보유한 결과(월 배당금은 배당금 수령 시점까지 계속 재투자)</p>
                   </div>
 
-                  {/* 섹션 2: 입력 파라미터 */}
+                  {/* 섹션 2: 입력 값 */}
                   <div>
-                    <p className="font-semibold text-gray-800 mb-2">② 입력 파라미터 설명</p>
+                    <p className="font-semibold text-gray-800 mb-2">② 입력 값 설명</p>
                     <div className="space-y-2">
                       {(([
                         ["생년월일", "현재 나이를 계산해 보관 기간 자동 산출에 사용"],
@@ -1880,10 +1880,10 @@ export default function SavingsFundPage() {
           </ul>
         </div>
 
-        {/* 입력 파라미터 */}
+        {/* 입력 값 */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-gray-900 text-sm">입력 파라미터</h2>
+            <h2 className="font-semibold text-gray-900 text-sm">입력 값</h2>
             <button
               onClick={editDraft ? () => setEditDraft(null) : openEdit}
               className="text-xs px-3 py-1.5 rounded-lg border border-blue-300 text-blue-600 hover:bg-blue-50 transition-colors"
