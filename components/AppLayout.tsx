@@ -34,18 +34,9 @@ function buildNavTree(menus: MenuRow[]): NavItem[] {
   })
 }
 
-function formatLoginAt(iso: string | undefined): string {
-  if (!iso) return ""
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return ""
+function fmtTime(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0")
-  const now = new Date()
-  const diffMin = Math.floor((now.getTime() - d.getTime()) / 60000)
-  if (diffMin < 1)  return "방금 로그인"
-  if (diffMin < 60) return `${diffMin}분 전 로그인`
-  if (d.toDateString() === now.toDateString())
-    return `오늘 ${pad(d.getHours())}:${pad(d.getMinutes())} 로그인`
-  return `${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())} 로그인`
+  return `${pad(d.getHours())}:${pad(d.getMinutes())} 접속`
 }
 
 function maskIp(ip: string): string {
@@ -77,6 +68,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const initials = user?.name ? user.name.slice(0, 1) : "?"
 
+  const [mountTime] = useState(() => fmtTime(new Date()))
   const [visitorIp, setVisitorIp] = useState<string>("")
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -184,9 +176,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </div>
                 <div className="leading-tight hidden sm:block">
                   <p className="text-white text-sm font-medium">{user?.name ?? ""}</p>
-                  {user?.loginAt && (
-                    <p className="text-blue-200 text-[10px]">{formatLoginAt(user.loginAt)}</p>
-                  )}
+                  <p className="text-blue-200 text-[10px]">{mountTime}</p>
                 </div>
                 <form action={logout}>
                   <button
