@@ -49,6 +49,11 @@ export type ComputedRow = {
   dividend: [string, string]   // [1년 배당금(만), 1개월 배당금(만)]
 }
 
+const SAVE_LIMIT: Record<string, number> = {
+  normal: 10,
+  khj:    20,
+}
+
 export async function saveSimulation(
   tabId: string,
   tabLabel: string,
@@ -59,10 +64,24 @@ export async function saveSimulation(
 ): Promise<{ id: number; savedAt: string }> {
   const session = await auth()
   if (!session?.user) throw new Error("Unauthorized")
+  const role    = (session.user as { role?: string })?.role ?? "normal"
   const savedBy = (session.user as { name?: string })?.name ?? "unknown"
 
   const db = getPensionPool()
   await ensureTable(db)
+
+  // admin 이외 계정은 저장 개수 제한 확인
+  const limit = role === "admin" ? null : (SAVE_LIMIT[role] ?? 10)
+  if (limit !== null) {
+    const { rows } = await db.query<{ c: string }>(
+      `SELECT COUNT(*) AS c FROM pension_sim_savings_fund WHERE saved_by = $1`,
+      [savedBy]
+    )
+    if (parseInt(rows[0].c) >= limit) {
+      throw new Error(`저장 한도 초과 (최대 ${limit}개). 기존 시뮬레이션을 삭제 후 다시 시도하세요.`)
+    }
+  }
+
   const res = await db.query(
     `INSERT INTO pension_sim_savings_fund (tab_id, tab_label, title, memo, inputs, results, saved_by)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -85,22 +104,24 @@ export async function loadSimulations(tabId: string): Promise<SavedSim[]> {
 
   const userName = (session.user as { name?: string })?.name ?? null
 
+  const fetchLimit = role === "admin" ? 50 : (SAVE_LIMIT[role ?? ""] ?? 10)
+
   const res = role === "admin"
     ? await db.query(
         `SELECT id, saved_at, title, memo, saved_by, inputs, results
          FROM pension_sim_savings_fund
          WHERE tab_id = $1
          ORDER BY saved_at DESC
-         LIMIT 20`,
-        [tabId]
+         LIMIT $2`,
+        [tabId, fetchLimit]
       )
     : await db.query(
         `SELECT id, saved_at, title, memo, saved_by, inputs, results
          FROM pension_sim_savings_fund
          WHERE tab_id = $1 AND saved_by = $2
          ORDER BY saved_at DESC
-         LIMIT 20`,
-        [tabId, userName ?? ""]
+         LIMIT $3`,
+        [tabId, userName ?? "", fetchLimit]
       )
 
   return res.rows.map((r) => ({
