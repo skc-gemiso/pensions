@@ -39,7 +39,13 @@ function formatLoginAt(iso: string | undefined): string {
   const d = new Date(iso)
   if (isNaN(d.getTime())) return ""
   const pad = (n: number) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  const now = new Date()
+  const diffMin = Math.floor((now.getTime() - d.getTime()) / 60000)
+  if (diffMin < 1)  return "방금 로그인"
+  if (diffMin < 60) return `${diffMin}분 전 로그인`
+  if (d.toDateString() === now.toDateString())
+    return `오늘 ${pad(d.getHours())}:${pad(d.getMinutes())} 로그인`
+  return `${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())} 로그인`
 }
 
 function maskIp(ip: string): string {
