@@ -68,7 +68,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const initials = user?.name ? user.name.slice(0, 1) : "?"
 
-  const [mountTime] = useState(() => fmtTime(new Date()))
+  const [mountTime, setMountTime] = useState("")
+  useEffect(() => { setMountTime(fmtTime(new Date())) }, [])
   const [visitorIp, setVisitorIp] = useState<string>("")
   useEffect(() => {
     if (status === "unauthenticated") {
