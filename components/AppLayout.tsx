@@ -38,7 +38,7 @@ function formatLoginAt(iso: string | undefined): string {
   const d = new Date(iso)
   if (isNaN(d.getTime())) return ""
   const pad = (n: number) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}. ${pad(d.getMonth() + 1)}. ${pad(d.getDate())}. ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -59,89 +59,131 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isActive = (href: string) =>
     href === "/" ? path === "/" : path === href || path.startsWith(href + "/")
 
+  const initials = user?.name ? user.name.slice(0, 1) : "?"
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      {/* 단일 헤더: 브랜드(좌) + 네비게이션(중앙) + 사용자정보(우) */}
-      <header className="bg-white border-b border-gray-200 px-6 sticky top-0 z-20 flex items-stretch">
-        {/* 좌: 브랜드 */}
-        <div className="flex items-center flex-shrink-0 pr-6">
-          <span className="font-bold text-blue-700 text-base">연금 관리</span>
-        </div>
+      {/* 헤더 */}
+      <header className="bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-700 sticky top-0 z-20 shadow-lg">
+        <div className="px-6 flex items-stretch h-14">
 
-        {/* 중앙: 네비게이션 */}
-        <nav className="flex-1 flex justify-center">
-          {status === "loading" ? (
-            <div className="flex items-center">
-              <div className="h-3 w-48 bg-gray-100 rounded animate-pulse" />
+          {/* 좌: 로고 */}
+          <div className="flex items-center gap-3 flex-shrink-0 pr-6">
+            <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+              <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none">
+                <rect x="3"  y="13" width="4" height="8" rx="1" fill="white" opacity="0.85"/>
+                <rect x="10" y="8"  width="4" height="13" rx="1" fill="white"/>
+                <rect x="17" y="4"  width="4" height="17" rx="1" fill="white" opacity="0.85"/>
+              </svg>
             </div>
-          ) : (
-            <ul className="flex items-stretch gap-1">
-              {NAV.map((item) => (
-                <li
-                  key={item.href}
-                  className="relative"
-                  onMouseEnter={() => item.children && setOpenMenu(item.href)}
-                  onMouseLeave={() => setOpenMenu(null)}
-                >
-                  <Link
-                    href={item.href}
-                    className={`inline-flex items-center gap-1 px-3 py-3 text-sm transition-colors border-b-2 ${
-                      isActive(item.href)
-                        ? "border-blue-600 text-blue-700 font-medium"
-                        : "border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300"
-                    }`}
+            <div className="leading-tight">
+              <p className="font-bold text-white text-sm">연금 관리</p>
+              <p className="text-[10px] text-blue-200">Pension Manager</p>
+            </div>
+          </div>
+
+          {/* 구분선 */}
+          <div className="w-px bg-white/15 my-2.5 flex-shrink-0" />
+
+          {/* 중앙: 네비게이션 */}
+          <nav className="flex-1 flex justify-center">
+            {status === "loading" ? (
+              <div className="flex items-center px-4">
+                <div className="h-3 w-48 bg-white/20 rounded animate-pulse" />
+              </div>
+            ) : (
+              <ul className="flex items-center gap-0.5 px-4">
+                {NAV.map((item) => (
+                  <li
+                    key={item.href}
+                    className="relative"
+                    onMouseEnter={() => item.children && setOpenMenu(item.href)}
+                    onMouseLeave={() => setOpenMenu(null)}
                   >
-                    {item.label}
-                    {item.children && (
-                      <svg className="w-3 h-3 opacity-50" viewBox="0 0 12 12" fill="currentColor">
-                        <path d="M6 8L1 3h10z" />
-                      </svg>
+                    <Link
+                      href={item.href}
+                      className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                        isActive(item.href)
+                          ? "bg-white text-blue-700 shadow-sm"
+                          : "text-white/85 hover:text-white hover:bg-white/15"
+                      }`}
+                    >
+                      {item.label}
+                      {item.children && (
+                        <svg
+                          className={`w-3 h-3 transition-transform duration-150 ${openMenu === item.href ? "rotate-180" : ""}`}
+                          viewBox="0 0 12 12"
+                          fill="currentColor"
+                        >
+                          <path d="M6 8L1 3h10z" />
+                        </svg>
+                      )}
+                    </Link>
+
+                    {/* 드롭다운 */}
+                    {item.children && openMenu === item.href && (
+                      <ul className="absolute top-full mt-1.5 left-0 min-w-[180px] bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-30">
+                        {item.children.map((child) => (
+                          <li key={child.href}>
+                            <Link
+                              href={child.href}
+                              className={`flex items-center gap-2 mx-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${
+                                path === child.href
+                                  ? "bg-blue-50 text-blue-700 font-medium"
+                                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                              }`}
+                            >
+                              {path === child.href && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
+                              )}
+                              {child.label}
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
                     )}
-                  </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </nav>
 
-                  {/* 드롭다운 */}
-                  {item.children && openMenu === item.href && (
-                    <ul className="absolute top-full left-0 min-w-[160px] bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-30">
-                      {item.children.map((child) => (
-                        <li key={child.href}>
-                          <Link
-                            href={child.href}
-                            className={`block px-4 py-2 text-sm transition-colors ${
-                              path === child.href
-                                ? "bg-blue-50 text-blue-700 font-medium"
-                                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                            }`}
-                          >
-                            {child.label}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
+          {/* 구분선 */}
+          <div className="w-px bg-white/15 my-2.5 flex-shrink-0" />
+
+          {/* 우: 사용자 정보 */}
+          <div className="flex items-center gap-3 flex-shrink-0 pl-6">
+            {status === "authenticated" ? (
+              <>
+                {/* 아바타 */}
+                <div className="w-8 h-8 rounded-full bg-white/25 border-2 border-white/40 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+                  {initials}
+                </div>
+                <div className="leading-tight hidden sm:block">
+                  <p className="text-white text-sm font-medium">{user?.name ?? ""}</p>
+                  {user?.loginAt && (
+                    <p className="text-blue-200 text-[10px]">{formatLoginAt(user.loginAt)}</p>
                   )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </nav>
+                </div>
+                <form action={logout}>
+                  <button
+                    type="submit"
+                    className="text-xs text-white/80 border border-white/25 rounded-lg px-3 py-1.5 hover:bg-white/15 hover:text-white transition-colors"
+                  >
+                    로그아웃
+                  </button>
+                </form>
+              </>
+            ) : status === "unauthenticated" ? (
+              <Link
+                href="/login"
+                className="text-xs text-white/80 border border-white/25 rounded-lg px-3 py-1.5 hover:bg-white/15 hover:text-white transition-colors"
+              >
+                로그인
+              </Link>
+            ) : null}
+          </div>
 
-        {/* 우: 사용자 정보 + 로그아웃 */}
-        <div className="flex items-center gap-4 flex-shrink-0 pl-6">
-          {status === "authenticated" && (
-            <span className="text-sm text-gray-600">
-              <span className="font-semibold text-gray-800">{user?.name ?? ""}</span>
-              {user?.loginAt && (
-                <span className="text-gray-400 ml-1">{` [로그인 : ${formatLoginAt(user.loginAt)}]`}</span>
-              )}
-            </span>
-          )}
-          <form action={logout}>
-            <button
-              type="submit"
-              className="text-sm text-gray-600 border border-gray-300 rounded-md px-3 py-1 hover:bg-gray-100 hover:border-gray-400 transition-colors"
-            >
-              로그아웃
-            </button>
-          </form>
         </div>
       </header>
 
