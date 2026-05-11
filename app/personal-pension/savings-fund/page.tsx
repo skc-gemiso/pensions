@@ -2252,6 +2252,13 @@ export default function SavingsFundPage() {
                 이 시뮬레이션은 <span className="font-semibold">참고용</span>이며 미래 수익을 보장하지 않습니다.
                 세금·수수료 미반영. 투자 결과는 <span className="font-semibold">본인 책임</span>입니다.
               </p>
+              <p className="text-xs text-amber-600 mt-1">
+                계산 오류가 있을 수 있습니다. 오류 발견 시{" "}
+                <a href="mailto:baramgil@hotmail.com" className="font-semibold underline underline-offset-2 hover:text-amber-800">
+                  baramgil@hotmail.com
+                </a>
+                으로 알려주시면 감사하겠습니다.
+              </p>
             </div>
           </div>
           <DisclaimerModal />
