@@ -2254,8 +2254,8 @@ export default function SavingsFundPage() {
               </p>
               <p className="text-xs text-amber-600 mt-1">
                 계산 오류가 있을 수 있습니다. 오류 발견 시{" "}
-                <a href="mailto:baramgil@hotmail.com" className="font-semibold underline underline-offset-2 hover:text-amber-800">
-                  baramgil@hotmail.com
+                <a href="mailto:baramgil@hotmail.com?subject=연금투자 시뮬레이션 오류 제보" className="font-semibold underline underline-offset-2 hover:text-amber-800">
+                  baramgil@hotmail.com (신기철)
                 </a>
                 으로 알려주시면 감사하겠습니다.
               </p>
