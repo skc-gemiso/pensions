@@ -19,13 +19,13 @@ const ANNUAL_RATES = [-0.2, -0.1, 0, 0.05, 0.1, 0.2]
 const RATE_LABELS  = ["-20%", "-10%", "0%", "5%", "10%", "20%"]
 
 const NOTES = [
-  "KODEX200 타겟위클리커버드콜 ETF : 년 고정 수익률 15% (세후 약 12%)",
+  "KODEX200 타겟위클리커버드콜 ETF : 목표 배당률 연 15% (세후 약 12%, 시장 상황에 따라 변동)",
 ]
 
 const IRP_NOTES = [
   "IRP 의무 투자 비율 : 안전자산(채권·적금) 30% + ETF(KODEX200 또는 커버드콜) 70%",
   "시뮬레이션 결과는 두 자산을 합산한 기준 (안전자산 연복리 · ETF 월복리)",
-  "KODEX200 타겟위클리커버드콜 ETF : 년 고정 수익률 15% (세후 약 12%)",
+  "KODEX200 타겟위클리커버드콜 ETF : 목표 배당률 연 15% (세후 약 12%, 시장 상황에 따라 변동)",
 ]
 
 type TabMeta = {
@@ -504,7 +504,7 @@ function PageHelpModal() {
                     <div className="grid grid-cols-2 gap-3 text-xs">
                       <div className="bg-white rounded-lg p-3 border border-amber-100">
                         <p className="font-bold text-amber-800 mb-1">세액공제 = 국가 보조금</p>
-                        <p className="text-gray-600">연금저축에 월 50만원 넣으면 연말에 <span className="font-semibold text-amber-700">약 99만원</span> 돌려받음 (13.2% 기준). 투자 원금의 일부를 국가가 내주는 것.</p>
+                        <p className="text-gray-600">연금저축에 월 50만원 넣으면 연말에 <span className="font-semibold text-amber-700">약 99만원</span> 돌려받음 (16.5% 기준, 총급여 5,500만원 이하). 투자 원금의 일부를 국가가 내주는 것.</p>
                       </div>
                       <div className="bg-white rounded-lg p-3 border border-amber-100">
                         <p className="font-bold text-amber-800 mb-1">복리 = 시간이 돈</p>
@@ -1284,7 +1284,7 @@ function PageHelpModal() {
                         <p className="font-semibold text-indigo-800 mb-2">✅ 절세 극대화 납입 순서 (추천)</p>
                         <div className="space-y-1.5 text-gray-700">
                           {[
-                            ["①", "bg-blue-600", "연금저축 월 50만원", "연간 600만원 납입 → 세액공제 최대 99만원 (13.2% 기준)"],
+                            ["①", "bg-blue-600", "연금저축 월 50만원", "연간 600만원 납입 → 세액공제 최대 99만원 (16.5% 기준) / 79만원 (13.2% 기준)"],
                             ["②", "bg-emerald-700", "IRP 월 25만원", "연간 300만원 추가 납입 → 세액공제 추가 최대 49.5만원"],
                             ["③", "bg-purple-600", "ISA 월 50만원 이하", "3년 후 만기 → 연금저축 이전 시 추가 세액공제 최대 30만원"],
                             ["④", "bg-amber-600", "DC형 적극 운용", "어차피 납입되는 퇴직금 — ETF 선택으로 수익률 높이기"],
@@ -1332,7 +1332,7 @@ function PageHelpModal() {
                       {[
                         { acct: "종합계좌 (CMA)", color: "bg-red-50 border-red-200 text-red-800", desc: "배당금 지급 시 증권사가 15.4% 사전 공제" },
                         { acct: "연금저축 계좌", color: "bg-blue-50 border-blue-200 text-blue-800", desc: "배당소득세 이연 → 퇴직 시점에 5.5% 이하로 납부" },
-                        { acct: "개인형 IRP", color: "bg-emerald-50 border-emerald-200 text-emerald-800", desc: "연말정산 소득공제 혜택 (13.2% ~ 16.5%)" },
+                        { acct: "개인형 IRP", color: "bg-emerald-50 border-emerald-200 text-emerald-800", desc: "배당소득세 이연 → 수령 시 연금소득세 3.3~5.5% / 납입 시 세액공제 13.2~16.5%" },
                         { acct: "ISA 계좌", color: "bg-purple-50 border-purple-200 text-purple-800", desc: "연 200만원(서민형 400만원)까지 비과세 / 초과분 9.9% 분리과세" },
                       ].map(({ acct, color, desc }) => (
                         <div key={acct} className={`text-xs rounded-lg border px-3 py-1.5 ${color}`}>
