@@ -3,7 +3,8 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useSession } from "next-auth/react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
+import { createPortal } from "react-dom"
 import { logout } from "@/app/actions/auth"
 import { getVisitorIp } from "@/app/actions/visitor"
 import type { MenuRow } from "@/lib/auth-db"
@@ -39,6 +40,16 @@ function fmtTime(d: Date): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+function fmtCountdown(s: number): string {
+  const m = Math.floor(s / 60)
+  const sec = s % 60
+  return `${m}:${String(sec).padStart(2, "0")}`
+}
+
+const VISITOR_LIMIT_SEC  = 30 * 60 // 30분 고정
+const SESSION_LIMIT_SEC  = 30 * 60 // 30분
+const SESSION_WARN_SEC   =  5 * 60 //  5분 전 경고
+
 function maskIp(ip: string): string {
   if (!ip || ip === "unknown") return ""
   const v4 = ip.split(".")
@@ -50,7 +61,7 @@ function maskIp(ip: string): string {
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const path = usePathname()
-  const { data: session, status } = useSession()
+  const { data: session, status, update } = useSession()
   const [openMenu, setOpenMenu] = useState<string | null>(null)
 
   const user = session?.user as {
@@ -75,6 +86,70 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     if (status === "unauthenticated") {
       getVisitorIp().then(setVisitorIp).catch(() => {})
     }
+  }, [status])
+
+  // 비로그인 방문자 10분 카운트다운 → 로그인 이동
+  const [visitorSeconds, setVisitorSeconds] = useState<number | null>(null)
+  useEffect(() => {
+    if (status !== "unauthenticated") return
+    setVisitorSeconds(VISITOR_LIMIT_SEC)
+  }, [status])
+  useEffect(() => {
+    if (visitorSeconds === null) return
+    if (visitorSeconds <= 0) {
+      window.location.href = "/login"
+      return
+    }
+    const t = setTimeout(() => setVisitorSeconds((s) => (s !== null ? s - 1 : null)), 1000)
+    return () => clearTimeout(t)
+  }, [visitorSeconds])
+
+  // 로그인 세션 30분 자동 로그아웃 (5분 전 경고)
+  const [sessionSeconds, setSessionSeconds]       = useState<number | null>(null)
+  const [showSessionWarning, setShowSessionWarning] = useState(false)
+  useEffect(() => {
+    if (status === "authenticated") {
+      setSessionSeconds(SESSION_LIMIT_SEC)
+      setShowSessionWarning(false)
+    } else {
+      setSessionSeconds(null)
+      setShowSessionWarning(false)
+    }
+  }, [status])
+  useEffect(() => {
+    if (sessionSeconds === null) return
+    if (sessionSeconds <= 0) {
+      logout()
+      return
+    }
+    if (sessionSeconds === SESSION_WARN_SEC) {
+      setShowSessionWarning(true)
+    }
+    const t = setTimeout(() => setSessionSeconds((s) => (s !== null ? s - 1 : null)), 1000)
+    return () => clearTimeout(t)
+  }, [sessionSeconds])
+
+  async function extendSession() {
+    await update()
+    setSessionSeconds(SESSION_LIMIT_SEC)
+    setShowSessionWarning(false)
+  }
+
+  // 로그인 사용자 활동 감지 → 세션 타이머 리셋 (60초 스로틀)
+  const lastActivityResetRef = useRef<number>(0)
+  function handleUserActivity() {
+    const now = Date.now()
+    if (now - lastActivityResetRef.current < 60_000) return
+    lastActivityResetRef.current = now
+    setSessionSeconds(SESSION_LIMIT_SEC)
+    setShowSessionWarning(false)
+  }
+  useEffect(() => {
+    if (status !== "authenticated") return
+    const evts = ["mousemove", "mousedown", "keydown", "touchstart"] as const
+    evts.forEach((e) => window.addEventListener(e, handleUserActivity, { passive: true }))
+    return () => evts.forEach((e) => window.removeEventListener(e, handleUserActivity))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status])
 
   return (
@@ -185,6 +260,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                       {mountTime} 접속
                     </p>
                   )}
+                  {sessionSeconds !== null && sessionSeconds <= SESSION_WARN_SEC && sessionSeconds > 0 && (
+                    <p className={`text-[10px] font-mono tabular-nums ${sessionSeconds <= 60 ? "text-red-300" : "text-amber-300"}`}>
+                      {fmtCountdown(sessionSeconds)} 후 로그아웃
+                    </p>
+                  )}
                 </div>
                 <form action={logout}>
                   <button
@@ -207,6 +287,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   {visitorIp && visitorIp !== "unknown" && (
                     <p className="text-blue-200 text-[10px] font-mono">{maskIp(visitorIp)}</p>
                   )}
+                  {visitorSeconds !== null && visitorSeconds > 0 && (
+                    <p className={`text-[10px] font-mono tabular-nums ${visitorSeconds <= 60 ? "text-red-300" : "text-blue-200"}`}>
+                      {fmtCountdown(visitorSeconds)} 남음
+                    </p>
+                  )}
                 </div>
                 <Link
                   href="/login"
@@ -222,6 +307,82 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </header>
 
       <main className="flex-1 p-6 overflow-auto">{children}</main>
+
+      {/* 로그인 세션 만료 경고 (5분 전) */}
+      {showSessionWarning && sessionSeconds !== null && sessionSeconds > 0 && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+            <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-5 text-center">
+              <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-3">
+                <svg viewBox="0 0 24 24" className="w-8 h-8 text-white" fill="currentColor">
+                  <path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm.75-13a.75.75 0 0 0-1.5 0v5.25c0 .199.079.39.22.53l3.25 3.25a.75.75 0 1 0 1.06-1.06L12.75 12.69V7Z"/>
+                </svg>
+              </div>
+              <p className="text-white font-bold text-lg">세션 만료 예정</p>
+            </div>
+            <div className="px-6 py-5 text-center space-y-4">
+              <p className="text-gray-700 text-sm leading-relaxed">
+                자동 로그아웃까지 <span className="font-semibold">5분</span> 남았습니다.<br />
+                계속 이용하시려면 로그인을 연장하세요.
+              </p>
+              <p className={`text-3xl font-mono font-bold tabular-nums ${sessionSeconds <= 60 ? "text-red-500" : "text-amber-500"}`}>
+                {fmtCountdown(sessionSeconds)}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => logout()}
+                  className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm hover:bg-gray-50 transition-colors"
+                >
+                  로그아웃
+                </button>
+                <button
+                  onClick={extendSession}
+                  className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 transition-colors"
+                >
+                  로그인 연장
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* 비로그인 방문자 10초 전 경고 오버레이 */}
+      {visitorSeconds !== null && visitorSeconds > 0 && visitorSeconds <= 10 && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5 text-center">
+              <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-3">
+                <svg viewBox="0 0 24 24" className="w-8 h-8 text-white" fill="currentColor">
+                  <path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm.75-13a.75.75 0 0 0-1.5 0v5.25c0 .199.079.39.22.53l3.25 3.25a.75.75 0 1 0 1.06-1.06L12.75 12.69V7Z"/>
+                </svg>
+              </div>
+              <p className="text-white font-bold text-lg">체험 시간이 종료되었습니다</p>
+            </div>
+            <div className="px-6 py-5 text-center space-y-3">
+              <p className="text-gray-700 text-sm leading-relaxed">
+                비로그인 방문자는 <span className="font-semibold">10분</span> 동안 이용 가능합니다.<br />
+                로그인하면 <span className="font-semibold text-blue-700">시간 제한 없이</span> 시뮬레이션을 이용하고<br />
+                결과를 저장할 수 있습니다.
+              </p>
+              <div className="flex items-center justify-center gap-1.5 text-gray-400 text-xs">
+                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor">
+                  <path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-3.5a.75.75 0 0 1 .75.75v3.19l1.9 1.9a.75.75 0 0 1-1.06 1.06l-2.13-2.13A.75.75 0 0 1 7.25 9V5.25A.75.75 0 0 1 8 4.5Z" />
+                </svg>
+                <span>{visitorSeconds}초 후 로그인 페이지로 이동합니다</span>
+              </div>
+              <a
+                href="/login"
+                className="block w-full py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 transition-colors"
+              >
+                지금 로그인하기
+              </a>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       <footer className="bg-white border-t border-gray-200 px-6 py-3">
         <p className="text-center text-xs text-gray-400">

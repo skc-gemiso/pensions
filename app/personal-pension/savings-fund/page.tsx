@@ -1875,15 +1875,33 @@ export default function SavingsFundPage() {
           <p className="text-gray-500 text-sm">퇴직 시점 연금 시뮬레이션 (KODEX200 ETF vs KODEX200 타겟위클리커버드콜 ETF)</p>
         </div>
 
-        {/* IP 사용 한도 초과 안내 */}
-        {ipBlocked && (
-          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-3">
-            <span className="text-red-500 text-lg flex-shrink-0">⚠</span>
-            <div className="text-sm text-red-700">
-              <p className="font-semibold mb-0.5">1시간 내 사용 한도(10회)를 초과했습니다.</p>
-              <p className="text-xs text-red-600">잠시 후 다시 접속하거나, 계정이 있으면 <a href="/login" className="underline font-medium">로그인</a> 후 이용하세요. (로그인 시 제한 없음)</p>
+        {/* IP 사용 한도 초과 팝업 */}
+        {ipBlocked && typeof document !== "undefined" && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+              <div className="bg-gradient-to-r from-red-500 to-rose-600 px-6 py-5 text-center">
+                <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-3">
+                  <svg viewBox="0 0 24 24" className="w-8 h-8 text-white" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                  </svg>
+                </div>
+                <p className="text-white font-bold text-lg">사용 한도 초과</p>
+              </div>
+              <div className="px-6 py-5 text-center space-y-3">
+                <p className="text-gray-700 text-sm leading-relaxed">
+                  1시간 내 무료 체험 횟수(<span className="font-semibold">10회</span>)를 초과했습니다.<br />
+                  로그인하면 <span className="font-semibold text-blue-700">횟수 제한 없이</span> 이용할 수 있습니다.
+                </p>
+                <button
+                  onClick={() => { window.location.href = "/login" }}
+                  className="block w-full py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 transition-colors"
+                >
+                  확인 (로그인 페이지로 이동)
+                </button>
+              </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* 탭 */}
@@ -2313,6 +2331,7 @@ export default function SavingsFundPage() {
         </div>
 
       </div>
+
     </AppLayout>
   )
 }
