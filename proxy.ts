@@ -6,18 +6,11 @@ const { auth } = NextAuth(authConfig)
 
 const SAVINGS_FUND = "/personal-pension/savings-fund"
 
-// 로그인 없이 접근 가능한 경로
-const PUBLIC_PATHS = [SAVINGS_FUND]
-
 export default auth((req) => {
   const { nextUrl } = req
 
-  const isPublic = PUBLIC_PATHS.some(
-    (p) => nextUrl.pathname === p || nextUrl.pathname.startsWith(p + "/")
-  )
-
-  // 미인증 사용자 → 로그인 (공개 경로 제외)
-  if (!req.auth && nextUrl.pathname !== "/login" && !isPublic) {
+  // 미인증 사용자 → 로그인
+  if (!req.auth && nextUrl.pathname !== "/login") {
     return NextResponse.redirect(new URL("/login", nextUrl.origin))
   }
 
