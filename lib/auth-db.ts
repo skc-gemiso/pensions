@@ -121,6 +121,15 @@ export function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex")
 }
 
+export async function createUser(email: string, name: string): Promise<void> {
+  const pool = getPensionPool()
+  const { randomUUID } = await import("crypto")
+  await pool.query(
+    `INSERT INTO app_users (id, name, password_hash, role, email) VALUES ($1, $2, 'GOOGLE_AUTH', 'normal', $3)`,
+    [randomUUID(), name, email]
+  )
+}
+
 export async function findUserByEmail(email: string): Promise<DbUser | null> {
   const pool = getPensionPool()
   const { rows } = await pool.query<DbUser>(

@@ -1,6 +1,7 @@
 import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 import Google from "next-auth/providers/google"
+import { createHmac } from "crypto"
 import { authConfig } from "./auth.config"
 import { ensureAuthTables, sha256, findUser, findUserByEmail, getMenusForRole, type MenuRow } from "@/lib/auth-db"
 
@@ -43,8 +44,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signIn({ account, profile }) {
       if (account?.provider === "google") {
         await ensureAuthTables()
-        const dbUser = await findUserByEmail(profile?.email ?? "")
-        if (!dbUser) return "/login?error=unregistered"
+        const email = profile?.email ?? ""
+        const dbUser = await findUserByEmail(email)
+        if (!dbUser) {
+          const token = createHmac("sha256", process.env.AUTH_SECRET ?? "").update(email).digest("hex")
+          const params = new URLSearchParams({ email, name: profile?.name ?? "", token })
+          return `/register?${params}`
+        }
       }
       return true
     },

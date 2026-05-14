@@ -10,7 +10,8 @@ export default auth((req) => {
   const { nextUrl } = req
 
   // 미인증 사용자 → 로그인
-  if (!req.auth && nextUrl.pathname !== "/login") {
+  const publicPaths = ["/login", "/register"]
+  if (!req.auth && !publicPaths.includes(nextUrl.pathname)) {
     return NextResponse.redirect(new URL("/login", nextUrl.origin))
   }
 

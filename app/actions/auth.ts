@@ -3,7 +3,8 @@
 import { signIn, signOut } from "@/auth"
 import { AuthError } from "next-auth"
 import { cookies } from "next/headers"
-import { findUser } from "@/lib/auth-db"
+import { createHmac } from "crypto"
+import { findUser, createUser } from "@/lib/auth-db"
 
 export async function login(
   _prev: { error?: string; redirect?: string } | undefined,
@@ -32,6 +33,18 @@ export async function login(
 }
 
 export async function loginWithGoogle() {
+  await signIn("google", { redirectTo: "/" })
+}
+
+export async function registerAndLogin(formData: FormData) {
+  const email = String(formData.get("email") ?? "")
+  const name  = String(formData.get("name")  ?? "")
+  const token = String(formData.get("token") ?? "")
+
+  const expected = createHmac("sha256", process.env.AUTH_SECRET ?? "").update(email).digest("hex")
+  if (token !== expected) throw new Error("유효하지 않은 요청입니다.")
+
+  await createUser(email, name)
   await signIn("google", { redirectTo: "/" })
 }
 

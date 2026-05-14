@@ -15,9 +15,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    const err = params.get("error")
-    if (err === "unregistered") setUrlError("등록되지 않은 Google 계정입니다.")
-    else if (err) setUrlError("로그인 중 오류가 발생했습니다.")
+    if (params.get("error")) setUrlError("로그인 중 오류가 발생했습니다.")
   }, [])
 
   return (
