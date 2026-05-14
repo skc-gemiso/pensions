@@ -31,6 +31,10 @@ export async function login(
   }
 }
 
+export async function loginWithGoogle() {
+  await signIn("google", { redirectTo: "/" })
+}
+
 export async function logout() {
   const jar = await cookies()
   for (const name of [

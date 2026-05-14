@@ -44,6 +44,10 @@ async function _init(): Promise<void> {
   `)
 
   await pool.query(`
+    ALTER TABLE app_users ADD COLUMN IF NOT EXISTS email VARCHAR(200) UNIQUE
+  `)
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS app_menus (
       id         VARCHAR(50)  PRIMARY KEY,
       label      VARCHAR(100) NOT NULL,
@@ -115,6 +119,15 @@ async function _init(): Promise<void> {
 
 export function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex")
+}
+
+export async function findUserByEmail(email: string): Promise<DbUser | null> {
+  const pool = getPensionPool()
+  const { rows } = await pool.query<DbUser>(
+    "SELECT id, name, password_hash, role FROM app_users WHERE email = $1",
+    [email]
+  )
+  return rows[0] ?? null
 }
 
 export async function findUser(id: string): Promise<DbUser | null> {

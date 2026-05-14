@@ -1,13 +1,17 @@
 import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
+import Google from "next-auth/providers/google"
 import { authConfig } from "./auth.config"
-import { ensureAuthTables, sha256, findUser, getMenusForRole, type MenuRow } from "@/lib/auth-db"
+import { ensureAuthTables, sha256, findUser, findUserByEmail, getMenusForRole, type MenuRow } from "@/lib/auth-db"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
-  secret: process.env.AUTH_SECRET,
   trustHost: true,
   providers: [
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    }),
     Credentials({
       credentials: {
         username: { label: "아이디", type: "text" },
@@ -34,4 +38,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
+  callbacks: {
+    ...authConfig.callbacks,
+    async jwt({ token, user, account, profile }) {
+      if (user) {
+        const u = user as Record<string, unknown>
+        token.role    = u.role    as string | undefined
+        token.loginAt = u.loginAt as string | undefined
+        token.menus   = u.menus
+      }
+      if (account?.provider === "google" && profile?.email) {
+        await ensureAuthTables()
+        const dbUser = await findUserByEmail(profile.email)
+        if (!dbUser) throw new Error("등록되지 않은 이메일입니다.")
+        const menus = await getMenusForRole(dbUser.role)
+        token.name    = dbUser.name
+        token.role    = dbUser.role
+        token.loginAt = new Date().toISOString()
+        token.menus   = menus
+      }
+      return token
+    },
+  },
 })
