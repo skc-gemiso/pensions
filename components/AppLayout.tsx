@@ -138,7 +138,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
                     {/* 드롭다운 */}
                     {item.children && openMenu === item.href && (
-                      <ul className="absolute top-full mt-1.5 left-0 min-w-[180px] bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-30">
+                      <div className="absolute top-full left-0 z-30 pt-1.5">
+                      <ul className="min-w-[180px] bg-white rounded-xl shadow-xl border border-gray-100 py-1.5">
                         {item.children.map((child) => (
                           <li key={child.href}>
                             <Link
@@ -157,6 +158,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                           </li>
                         ))}
                       </ul>
+                      </div>
                     )}
                   </li>
                 ))}
