@@ -1,16 +1,24 @@
 "use client"
 
-import { useActionState, useEffect } from "react"
+import { useActionState, useEffect, useState } from "react"
 import { login, loginWithGoogle } from "@/app/actions/auth"
 
 export default function LoginPage() {
   const [state, action, pending] = useActionState(login, undefined)
+  const [urlError, setUrlError] = useState<string | null>(null)
 
   useEffect(() => {
     if (state?.redirect) {
       window.location.replace(state.redirect)
     }
   }, [state])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const err = params.get("error")
+    if (err === "unregistered") setUrlError("등록되지 않은 Google 계정입니다.")
+    else if (err) setUrlError("로그인 중 오류가 발생했습니다.")
+  }, [])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -57,9 +65,9 @@ export default function LoginPage() {
             />
           </div>
 
-          {state?.error && (
+          {(state?.error || urlError) && (
             <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
-              {state.error}
+              {state?.error ?? urlError}
             </p>
           )}
 

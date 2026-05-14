@@ -40,6 +40,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
   callbacks: {
     ...authConfig.callbacks,
+    async signIn({ account, profile }) {
+      if (account?.provider === "google") {
+        await ensureAuthTables()
+        const dbUser = await findUserByEmail(profile?.email ?? "")
+        if (!dbUser) return "/login?error=unregistered"
+      }
+      return true
+    },
     async jwt({ token, user, account, profile }) {
       if (user) {
         const u = user as Record<string, unknown>
@@ -48,14 +56,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.menus   = u.menus
       }
       if (account?.provider === "google" && profile?.email) {
-        await ensureAuthTables()
         const dbUser = await findUserByEmail(profile.email)
-        if (!dbUser) throw new Error("등록되지 않은 이메일입니다.")
-        const menus = await getMenusForRole(dbUser.role)
-        token.name    = dbUser.name
-        token.role    = dbUser.role
-        token.loginAt = new Date().toISOString()
-        token.menus   = menus
+        if (dbUser) {
+          const menus = await getMenusForRole(dbUser.role)
+          token.name    = dbUser.name
+          token.role    = dbUser.role
+          token.loginAt = new Date().toISOString()
+          token.menus   = menus
+        }
       }
       return token
     },
