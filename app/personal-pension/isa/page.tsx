@@ -9,7 +9,7 @@ export default function IsaPage() {
           <p className="text-gray-500 text-sm">비과세·분리과세 혜택으로 다양한 금융상품에 투자</p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4 mb-6">
+        <div className="grid grid-cols-2 gap-4 mb-6 lg:grid-cols-4">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <p className="text-xs text-gray-500 mb-1">총 납입액</p>
             <p className="text-xl font-bold text-gray-900">- 원</p>
