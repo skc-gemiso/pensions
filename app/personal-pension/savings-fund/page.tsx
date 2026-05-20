@@ -1458,7 +1458,7 @@ function SimTable({
                   composition={["삼성전자 (22.81%)", "SK하이닉스 (14.86%)", "KODEX200 (17.09%) 등 대형 우량주 위주 구성", "코스피 상위 200개 종목 분산 투자", "운용보수 연 0.15% (저비용)"]}
                   pros={["코스피200 지수와 동일한 성과 — 시장 성장 그대로 수혜", "낮은 운용보수(0.15%)로 장기 보유에 유리", "국내 최대 규모 ETF — 유동성 풍부", "상승장에서 높은 시세차익 기대"]}
                   cons={["하락장 손실 그대로 반영 (지수 방어 기능 없음)", "배당금 거의 없어 퇴직 후 현금흐름 확보 어려움", "시장 전체 위험에 고스란히 노출"]}
-                  href="https://www.kodex.com"
+                  href="https://www.samsungfund.com/etf/product/view.do?id=2ETF01"
                 /></>
               </th>
               <th colSpan={4} className="px-3 py-2 text-emerald-700 font-semibold border-r border-gray-200">
@@ -1468,7 +1468,7 @@ function SimTable({
                   composition={["기초자산: KODEX200 ETF", "전략: 매주 콜옵션 매도(위클리 커버드콜)", "월배당 지급 — 연 약 15% (세후 약 12%)"]}
                   pros={["안정적인 월배당 수익 (연 약 15%)", "하락장에서 프리미엄으로 손실 일부 보전", "은퇴 후 고정 현금흐름(월수입) 확보에 최적", "위클리 옵션 매도로 배당 안정성 강화"]}
                   cons={["주가 상승 시 시세차익이 콜옵션 행사가에 제한됨", "강세장에서 KODEX200 ETF 대비 수익 낮음", "배당소득세 15.4% 부담 (종합계좌 기준)", "인덱스 ETF보다 운용보수가 높음"]}
-                  href="https://www.kodex.com"
+                  href="https://www.samsungfund.com/etf/product/view.do?id=2ETFP4"
                 /></>
               </th>
               <th colSpan={4} className="px-3 py-2 text-purple-700 font-semibold border-r border-gray-200">
