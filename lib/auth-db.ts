@@ -132,7 +132,10 @@ async function _init(): Promise<void> {
 export async function ensureMigrations(): Promise<void> {
   if (global._authMigrationsApplied) return
   if (migrationsPromise) return migrationsPromise
-  migrationsPromise = _applyMigrations().then(() => { global._authMigrationsApplied = true })
+  migrationsPromise = _applyMigrations().then(
+    () => { global._authMigrationsApplied = true },
+    (err) => { migrationsPromise = null; throw err }
+  )
   return migrationsPromise
 }
 
@@ -257,7 +260,9 @@ async function _applyMigrations(): Promise<void> {
     // admin, khj: 신규 카테고리 메뉴 권한 부여
     await pool.query(`
       INSERT INTO app_role_menus (role, menu_id)
-      SELECT unnest(ARRAY['admin','khj']::text[]), unnest(ARRAY['pension','assets','invest','shopping','life']::text[])
+      SELECT r.role, m.menu_id
+      FROM (SELECT unnest(ARRAY['admin','khj']::text[]) AS role) r
+      CROSS JOIN (SELECT unnest(ARRAY['pension','assets','invest','shopping','life']::text[]) AS menu_id) m
       ON CONFLICT DO NOTHING
     `)
     await pool.query(
