@@ -3,7 +3,7 @@ import Credentials from "next-auth/providers/credentials"
 import Google from "next-auth/providers/google"
 import { createHmac } from "crypto"
 import { authConfig } from "./auth.config"
-import { ensureAuthTables, sha256, findUser, findUserByEmail, getMenusForRole, type MenuRow } from "@/lib/auth-db"
+import { ensureAuthTables, ensureMigrations, sha256, findUser, findUserByEmail, getMenusForRole, type MenuRow } from "@/lib/auth-db"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -20,6 +20,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
       authorize: async (credentials) => {
         await ensureAuthTables()
+        await ensureMigrations()
 
         const user = await findUser(String(credentials?.username ?? ""))
         if (!user) return null
@@ -44,6 +45,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signIn({ account, profile }) {
       if (account?.provider === "google") {
         await ensureAuthTables()
+        await ensureMigrations()
         const email = profile?.email ?? ""
         const dbUser = await findUserByEmail(email)
         if (!dbUser) {

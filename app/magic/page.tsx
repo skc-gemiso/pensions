@@ -44,7 +44,7 @@ export default function CompoundMagicPage() {
 
   return (
     <AppLayout>
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-1">복리의 마법</h1>
           <p className="text-gray-500 text-sm">장기 복리 투자 시뮬레이션</p>

@@ -3,7 +3,7 @@ import AppLayout from "@/components/AppLayout"
 export default function SeniorPensionPage() {
   return (
     <AppLayout>
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-1">노령연금</h1>
           <p className="text-gray-500 text-sm">국민연금 노령연금 수급 조건 및 예상 수령액</p>

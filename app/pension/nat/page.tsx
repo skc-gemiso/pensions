@@ -15,6 +15,11 @@ function fmtPremium(n: number) {
   const rem = Math.floor((n % 100_000_000) / 10_000)
   return rem > 0 ? `${ok}억 ${rem.toLocaleString()}만원` : `${ok}억원`
 }
+function fmtNumInput(raw: string): string {
+  const digits = raw.replace(/[^0-9]/g, "")
+  return digits ? parseInt(digits).toLocaleString() : ""
+}
+
 function todayStr() {
   const d = new Date()
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`
@@ -58,9 +63,9 @@ export default function NationalPensionPage() {
   function openForm() {
     setForm({
       date:         todayStr(),
-      totalPremium: latest ? String(latest.totalPremium) : "",
-      monthlyNet:   latest ? String(latest.monthlyNet)   : "",
-      monthlyGross: latest?.monthlyGross ? String(latest.monthlyGross) : "",
+      totalPremium: latest ? latest.totalPremium.toLocaleString() : "",
+      monthlyNet:   latest ? latest.monthlyNet.toLocaleString()   : "",
+      monthlyGross: latest?.monthlyGross ? latest.monthlyGross.toLocaleString() : "",
     })
     setShowForm(true)
   }
@@ -92,7 +97,7 @@ export default function NationalPensionPage() {
 
   return (
     <AppLayout>
-      <div className="max-w-3xl mx-auto space-y-5">
+      <div className="max-w-7xl mx-auto space-y-5">
 
         {/* 헤더 */}
         <div>
@@ -199,39 +204,42 @@ export default function NationalPensionPage() {
                     placeholder="YYYY.MM.DD"
                     value={form.date}
                     onChange={(e) => setForm({ ...form, date: e.target.value })}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-center text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
                     required
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">총 납부액 (원)</label>
+                  <label className="text-xs text-gray-500 block mb-1">총 납부액</label>
                   <input
-                    type="number"
-                    placeholder="예: 144142920"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="144,142,920"
                     value={form.totalPremium}
-                    onChange={(e) => setForm({ ...form, totalPremium: e.target.value })}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    onChange={(e) => setForm({ ...form, totalPremium: fmtNumInput(e.target.value) })}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-right text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
                     required
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">월 수령 예상 세전 (원)</label>
+                  <label className="text-xs text-gray-500 block mb-1">월 수령 세전</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     placeholder="선택 입력"
                     value={form.monthlyGross}
-                    onChange={(e) => setForm({ ...form, monthlyGross: e.target.value })}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    onChange={(e) => setForm({ ...form, monthlyGross: fmtNumInput(e.target.value) })}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-right text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">월 수령 예상 세후 (원)</label>
+                  <label className="text-xs text-gray-500 block mb-1">월 수령 세후</label>
                   <input
-                    type="number"
-                    placeholder="예: 1311130"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="1,311,130"
                     value={form.monthlyNet}
-                    onChange={(e) => setForm({ ...form, monthlyNet: e.target.value })}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    onChange={(e) => setForm({ ...form, monthlyNet: fmtNumInput(e.target.value) })}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-right text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
                     required
                   />
                 </div>

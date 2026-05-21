@@ -41,7 +41,7 @@ export default function NationalPensionPage() {
 
   return (
     <AppLayout>
-      <div className="max-w-3xl mx-auto space-y-5">
+      <div className="max-w-7xl mx-auto space-y-5">
 
         {/* 헤더 */}
         <div>

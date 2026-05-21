@@ -27,7 +27,7 @@ const OTHER_NAV_CARDS = [
 export default function DashboardPage() {
   return (
     <AppLayout>
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900 mb-1">나의 연금 현황</h1>
           <p className="text-gray-500 text-sm">모든 연금 계좌를 한눈에 확인하세요</p>

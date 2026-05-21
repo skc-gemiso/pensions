@@ -3,7 +3,7 @@ import AppLayout from "@/components/AppLayout"
 export default function ComingSoonPage() {
   return (
     <AppLayout>
-      <div className="max-w-4xl mx-auto flex items-center justify-center min-h-[40vh]">
+      <div className="max-w-7xl mx-auto flex items-center justify-center min-h-[40vh]">
         <div className="text-center">
           <p className="text-4xl mb-4">🚧</p>
           <h1 className="text-xl font-bold text-gray-700 mb-2">준비 중입니다</h1>

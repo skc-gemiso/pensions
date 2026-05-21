@@ -3,7 +3,7 @@ import AppLayout from "@/components/AppLayout"
 export default function IsaPage() {
   return (
     <AppLayout>
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-1">ISA (개인종합자산관리계좌)</h1>
           <p className="text-gray-500 text-sm">비과세·분리과세 혜택으로 다양한 금융상품에 투자</p>

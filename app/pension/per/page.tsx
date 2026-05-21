@@ -19,7 +19,7 @@ const SUB_MENUS = [
 export default function PersonalPensionPage() {
   return (
     <AppLayout>
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-1">개인연금</h1>
           <p className="text-gray-500 text-sm">개인연금 계좌별 현황을 확인하세요</p>
