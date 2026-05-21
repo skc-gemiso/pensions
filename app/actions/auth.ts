@@ -24,8 +24,8 @@ export async function login(
     if ((error as { digest?: string })?.digest?.startsWith("NEXT_REDIRECT")) {
       const user = await findUser(String(formData.get("username") ?? ""))
       const redirectTo = user?.role === "admin"
-        ? "/"
-        : "/personal-pension/savings-fund"
+        ? "/pension/my"
+        : "/sim"
       return { redirect: redirectTo }
     }
     throw error

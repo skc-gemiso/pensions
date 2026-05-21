@@ -4,7 +4,7 @@ import { NextResponse } from "next/server"
 
 const { auth } = NextAuth(authConfig)
 
-const SAVINGS_FUND = "/personal-pension/savings-fund"
+const SAVINGS_FUND = "/sim"
 
 export default auth((req) => {
   const { nextUrl } = req
@@ -18,8 +18,8 @@ export default auth((req) => {
   if (req.auth) {
     const role = (req.auth.user as { role?: string })?.role
 
-    // admin 이외 계정이 대시보드("/") 접근 → savings-fund로
-    if (role !== "admin" && nextUrl.pathname === "/") {
+    // admin 이외 계정이 대시보드("/pension/my") 접근 → savings-fund로
+    if (role !== "admin" && nextUrl.pathname === "/pension/my") {
       return NextResponse.redirect(new URL(SAVINGS_FUND, nextUrl.origin))
     }
   }
