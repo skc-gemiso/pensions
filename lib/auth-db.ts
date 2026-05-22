@@ -68,25 +68,6 @@ async function _init(): Promise<void> {
     )
   `)
 
-  // 초기 사용자 시딩 (테이블이 비어있을 때만)
-  // 비밀번호는 환경변수에서 읽어 해시 후 저장 — 소스코드에 해시값 노출 방지
-  const { rows: uc } = await pool.query<{ c: string }>("SELECT COUNT(*) AS c FROM app_users")
-  if (parseInt(uc[0].c) === 0) {
-    const p1 = process.env.SEED_ADMIN_PASSWORD
-    const p2 = process.env.SEED_USER_PASSWORD
-    const p3 = process.env.SEED_KHJ_PASSWORD
-    if (!p1 || !p2 || !p3) {
-      throw new Error("SEED_*_PASSWORD 환경변수가 설정되지 않았습니다.")
-    }
-    await pool.query(
-      `INSERT INTO app_users (id, name, password_hash, role) VALUES
-        ($1, '신기철', $2, 'admin'),
-        ($3, '테스터', $4, 'normal'),
-        ($5, '김현정', $6, 'khj')`,
-      ["skc", sha256(p1), "user", sha256(p2), "khj", sha256(p3)]
-    )
-  }
-
   // 초기 메뉴 시딩
   const { rows: mc } = await pool.query<{ c: string }>("SELECT COUNT(*) AS c FROM app_menus")
   if (parseInt(mc[0].c) === 0) {
@@ -98,32 +79,30 @@ async function _init(): Promise<void> {
         ('invest',             '투자',               '/invest',       NULL,       30),
         ('shopping',           '쇼핑',               '/shopping',     NULL,       40),
         ('life',               '생활',               '/life',         NULL,       50),
-        ('savings-fund',       '연금투자 시뮬레이션', '/sim',         NULL,       60),
-        ('compound-magic',     '복리의 마법',         '/magic',        NULL,       70)
+        ('sim',       '연금투자 시뮬레이션', '/sim',         NULL,       60),
+        ('magic',     '복리의 마법',         '/magic',        NULL,       70)
     `)
     // 연금 하위 메뉴
     await pool.query(`
       INSERT INTO app_menus (id, label, href, parent_id, sort_order) VALUES
         ('home',               '나의 연금 현황',      '/pension/my',   'pension',  10),
-        ('personal-pension',   '개인연금',            '/pension/per',  'pension',  20),
-        ('retirement-pension', '퇴직연금',            '/pension/ret',  'pension',  30),
-        ('national-pension',   '국민연금',            '/pension/nat',  'pension',  40),
-        ('senior-pension',     '노령연금',            '/pension/seni', 'pension',  50)
+        ('per',   '개인연금',            '/pension/per',  'pension',  20),
+        ('ret', '퇴직연금',            '/pension/ret',  'pension',  30),
+        ('nat',   '국민연금',            '/pension/nat',  'pension',  40),
+        ('seni',     '노령연금',            '/pension/seni', 'pension',  50)
     `)
 
-    // admin, khj: 전체 메뉴
+    // admin: 전체 메뉴
     await pool.query(`
       INSERT INTO app_role_menus (role, menu_id)
-      SELECT r.role, m.id
-      FROM app_menus m
-      CROSS JOIN (SELECT unnest(ARRAY['admin','khj']::text[]) AS role) r
+      SELECT 'admin', m.id FROM app_menus m
     `)
 
     // normal: 연금투자 시뮬레이션 + 복리의 마법 접근 가능
     await pool.query(`
       INSERT INTO app_role_menus (role, menu_id) VALUES
-        ('normal', 'savings-fund'),
-        ('normal', 'compound-magic')
+        ('normal', 'sim'),
+        ('normal', 'magic')
     `)
   }
 
@@ -155,10 +134,10 @@ async function _applyMigrations(): Promise<void> {
   )
   if (v002.length === 0) {
     await pool.query(
-      "UPDATE app_menus SET parent_id = NULL, sort_order = 60 WHERE id = 'savings-fund'"
+      "UPDATE app_menus SET parent_id = NULL, sort_order = 60 WHERE id = 'sim'"
     )
     await pool.query(
-      "DELETE FROM app_role_menus WHERE role = 'normal' AND menu_id = 'personal-pension'"
+      "DELETE FROM app_role_menus WHERE role = 'normal' AND menu_id = 'per'"
     )
     await pool.query(
       "INSERT INTO app_migrations (name) VALUES ('v002_savings_fund_top_level')"
@@ -175,12 +154,12 @@ async function _applyMigrations(): Promise<void> {
     await pool.query("DELETE FROM app_menus WHERE id IN ('irp', 'isa')")
     // 복리의 마법 → 최상위, 연금투자 시뮬레이션(sort_order 60) 오른쪽
     await pool.query(
-      "UPDATE app_menus SET parent_id = NULL, sort_order = 70 WHERE id = 'compound-magic'"
+      "UPDATE app_menus SET parent_id = NULL, sort_order = 70 WHERE id = 'magic'"
     )
-    // 모든 역할에 복리의 마법 권한 부여 (admin/khj는 이미 있으므로 충돌 무시)
+    // 모든 역할에 복리의 마법 권한 부여 (admin은 이미 있으므로 충돌 무시)
     await pool.query(`
       INSERT INTO app_role_menus (role, menu_id)
-      SELECT unnest(ARRAY['admin','khj','normal']::text[]), 'compound-magic'
+      SELECT unnest(ARRAY['admin','normal']::text[]), 'magic'
       ON CONFLICT DO NOTHING
     `)
     await pool.query(
@@ -194,7 +173,7 @@ async function _applyMigrations(): Promise<void> {
   )
   if (v005.length === 0) {
     await pool.query(
-      "UPDATE app_menus SET href = '/personal-pension' WHERE id = 'personal-pension'"
+      "UPDATE app_menus SET href = '/personal-pension' WHERE id = 'per'"
     )
     await pool.query(
       "INSERT INTO app_migrations (name) VALUES ('v005_revert_personal_pension_href')"
@@ -206,12 +185,12 @@ async function _applyMigrations(): Promise<void> {
     "SELECT name FROM app_migrations WHERE name = 'v006_shorten_menu_hrefs'"
   )
   if (v006.length === 0) {
-    await pool.query("UPDATE app_menus SET href = '/sim'   WHERE id = 'savings-fund'")
-    await pool.query("UPDATE app_menus SET href = '/magic' WHERE id = 'compound-magic'")
-    // compound-magic 전체 공개 (이미 v003에서 처리됐지만 누락 방지)
+    await pool.query("UPDATE app_menus SET href = '/sim'   WHERE id = 'sim'")
+    await pool.query("UPDATE app_menus SET href = '/magic' WHERE id = 'magic'")
+    // magic 전체 공개 (이미 v003에서 처리됐지만 누락 방지)
     await pool.query(`
       INSERT INTO app_role_menus (role, menu_id)
-      SELECT unnest(ARRAY['admin','khj','normal']::text[]), 'compound-magic'
+      SELECT unnest(ARRAY['admin','normal']::text[]), 'magic'
       ON CONFLICT DO NOTHING
     `)
     await pool.query(
@@ -239,34 +218,108 @@ async function _applyMigrations(): Promise<void> {
       UPDATE app_menus SET href = '/pension/my',   parent_id = 'pension', sort_order = 10 WHERE id = 'home'
     `)
     await pool.query(`
-      UPDATE app_menus SET href = '/pension/per',  parent_id = 'pension', sort_order = 20 WHERE id = 'personal-pension'
+      UPDATE app_menus SET href = '/pension/per',  parent_id = 'pension', sort_order = 20 WHERE id = 'per'
     `)
     await pool.query(`
-      UPDATE app_menus SET href = '/pension/ret',  parent_id = 'pension', sort_order = 30 WHERE id = 'retirement-pension'
+      UPDATE app_menus SET href = '/pension/ret',  parent_id = 'pension', sort_order = 30 WHERE id = 'ret'
     `)
     await pool.query(`
-      UPDATE app_menus SET href = '/pension/nat',  parent_id = 'pension', sort_order = 40 WHERE id = 'national-pension'
+      UPDATE app_menus SET href = '/pension/nat',  parent_id = 'pension', sort_order = 40 WHERE id = 'nat'
     `)
     await pool.query(`
-      UPDATE app_menus SET href = '/pension/seni', parent_id = 'pension', sort_order = 50 WHERE id = 'senior-pension'
+      UPDATE app_menus SET href = '/pension/seni', parent_id = 'pension', sort_order = 50 WHERE id = 'seni'
     `)
-    // savings-fund, compound-magic sort_order 유지 (60, 70)
+    // sim, magic sort_order 유지 (60, 70)
     await pool.query(`
-      UPDATE app_menus SET sort_order = 60 WHERE id = 'savings-fund'
+      UPDATE app_menus SET sort_order = 60 WHERE id = 'sim'
     `)
     await pool.query(`
-      UPDATE app_menus SET sort_order = 70 WHERE id = 'compound-magic'
+      UPDATE app_menus SET sort_order = 70 WHERE id = 'magic'
     `)
-    // admin, khj: 신규 카테고리 메뉴 권한 부여
+    // admin: 신규 카테고리 메뉴 권한 부여
     await pool.query(`
       INSERT INTO app_role_menus (role, menu_id)
-      SELECT r.role, m.menu_id
-      FROM (SELECT unnest(ARRAY['admin','khj']::text[]) AS role) r
-      CROSS JOIN (SELECT unnest(ARRAY['pension','assets','invest','shopping','life']::text[]) AS menu_id) m
+      SELECT 'admin', unnest(ARRAY['pension','assets','invest','shopping','life']::text[])
       ON CONFLICT DO NOTHING
     `)
     await pool.query(
       "INSERT INTO app_migrations (name) VALUES ('v007_restructure_top_menus')"
+    )
+  }
+
+  // v009: email UNIQUE 제약조건 보장 (ADD COLUMN IF NOT EXISTS는 기존 컬럼에 제약 추가 안 함)
+  const { rows: v009 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v009_email_unique_constraint'"
+  )
+  if (v009.length === 0) {
+    // 중복 이메일 제거 (생성일 최신 것 제외하고 삭제)
+    await pool.query(`
+      DELETE FROM app_users
+      WHERE id IN (
+        SELECT id FROM (
+          SELECT id, ROW_NUMBER() OVER (PARTITION BY email ORDER BY created_at DESC) AS rn
+          FROM app_users WHERE email IS NOT NULL
+        ) t WHERE rn > 1
+      )
+    `)
+    // UNIQUE 제약조건이 없으면 추가
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'app_users'::regclass AND contype = 'u'
+            AND conname LIKE '%email%'
+        ) THEN
+          ALTER TABLE app_users ADD CONSTRAINT app_users_email_unique UNIQUE (email);
+        END IF;
+      END$$
+    `)
+    await pool.query(
+      "INSERT INTO app_migrations (name) VALUES ('v009_email_unique_constraint')"
+    )
+  }
+
+  // v008: khj 역할 제거 — 기존 khj 사용자 → admin 전환, khj 역할 메뉴 권한 삭제
+  const { rows: v008 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v008_remove_khj_role'"
+  )
+  if (v008.length === 0) {
+    await pool.query(`UPDATE app_users SET role = 'admin' WHERE role = 'khj'`)
+    await pool.query(`DELETE FROM app_role_menus WHERE role = 'khj'`)
+    await pool.query(
+      "INSERT INTO app_migrations (name) VALUES ('v008_remove_khj_role')"
+    )
+  }
+
+  // v010: 메뉴 ID 단축 (savings-fund→sim, compound-magic→magic, personal-pension→per 등)
+  const { rows: v010 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v010_shorten_menu_ids'"
+  )
+  if (v010.length === 0) {
+    // FK 제약조건 임시 제거
+    await pool.query(`ALTER TABLE app_role_menus DROP CONSTRAINT IF EXISTS app_role_menus_menu_id_fkey`)
+    // app_menus PK 변경
+    await pool.query(`UPDATE app_menus SET id = 'sim'    WHERE id = 'savings-fund'`)
+    await pool.query(`UPDATE app_menus SET id = 'magic'  WHERE id = 'compound-magic'`)
+    await pool.query(`UPDATE app_menus SET id = 'per'    WHERE id = 'personal-pension'`)
+    await pool.query(`UPDATE app_menus SET id = 'ret'    WHERE id = 'retirement-pension'`)
+    await pool.query(`UPDATE app_menus SET id = 'nat'    WHERE id = 'national-pension'`)
+    await pool.query(`UPDATE app_menus SET id = 'seni'   WHERE id = 'senior-pension'`)
+    // app_role_menus FK 값 동기화
+    await pool.query(`UPDATE app_role_menus SET menu_id = 'sim'    WHERE menu_id = 'savings-fund'`)
+    await pool.query(`UPDATE app_role_menus SET menu_id = 'magic'  WHERE menu_id = 'compound-magic'`)
+    await pool.query(`UPDATE app_role_menus SET menu_id = 'per'    WHERE menu_id = 'personal-pension'`)
+    await pool.query(`UPDATE app_role_menus SET menu_id = 'ret'    WHERE menu_id = 'retirement-pension'`)
+    await pool.query(`UPDATE app_role_menus SET menu_id = 'nat'    WHERE menu_id = 'national-pension'`)
+    await pool.query(`UPDATE app_role_menus SET menu_id = 'seni'   WHERE menu_id = 'senior-pension'`)
+    // FK 제약조건 복원
+    await pool.query(`
+      ALTER TABLE app_role_menus ADD CONSTRAINT app_role_menus_menu_id_fkey
+        FOREIGN KEY (menu_id) REFERENCES app_menus(id)
+    `)
+    await pool.query(
+      "INSERT INTO app_migrations (name) VALUES ('v010_shorten_menu_ids')"
     )
   }
 

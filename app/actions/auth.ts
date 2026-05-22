@@ -3,8 +3,8 @@
 import { signIn, signOut } from "@/auth"
 import { AuthError } from "next-auth"
 import { cookies } from "next/headers"
-import { createHmac } from "crypto"
-import { findUser, createUser } from "@/lib/auth-db"
+import { createHmac, timingSafeEqual } from "crypto"
+import { findUser, findUserByEmail, createUser } from "@/lib/auth-db"
 
 export async function login(
   _prev: { error?: string; redirect?: string } | undefined,
@@ -41,10 +41,16 @@ export async function registerAndLogin(formData: FormData) {
   const name  = String(formData.get("name")  ?? "")
   const token = String(formData.get("token") ?? "")
 
-  const expected = createHmac("sha256", process.env.AUTH_SECRET ?? "").update(email).digest("hex")
-  if (token !== expected) throw new Error("유효하지 않은 요청입니다.")
+  const [sig, expiryStr] = token.split(".")
+  const expiry = Number(expiryStr)
+  if (!sig || !expiry || Date.now() > expiry) throw new Error("만료된 링크입니다. 다시 로그인해 주세요.")
+  const expected = createHmac("sha256", process.env.AUTH_SECRET ?? "").update(`${email}:${expiry}`).digest("hex")
+  const sigBuf = Buffer.from(sig)
+  const expBuf = Buffer.from(expected)
+  if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) throw new Error("유효하지 않은 요청입니다.")
 
-  await createUser(email, name)
+  const existing = await findUserByEmail(email)
+  if (!existing) await createUser(email, name)
   await signIn("google", { redirectTo: "/" })
 }
 

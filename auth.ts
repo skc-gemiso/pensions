@@ -49,7 +49,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const email = profile?.email ?? ""
         const dbUser = await findUserByEmail(email)
         if (!dbUser) {
-          const token = createHmac("sha256", process.env.AUTH_SECRET ?? "").update(email).digest("hex")
+          const expiry = Date.now() + 30 * 60 * 1000
+          const sig = createHmac("sha256", process.env.AUTH_SECRET ?? "").update(`${email}:${expiry}`).digest("hex")
+          const token = `${sig}.${expiry}`
           const params = new URLSearchParams({ email, name: profile?.name ?? "", token })
           return `/register?${params}`
         }
