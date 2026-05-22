@@ -67,6 +67,9 @@ function rowToSnapshot(r: { id: number; check_date: string; total_premium: strin
 }
 
 export async function loadSnapshots(): Promise<Snapshot[]> {
+  const session = await auth()
+  if (!session?.user) throw new Error("로그인이 필요합니다.")
+
   await ensureSnapshotTable()
   const pool = getPensionPool()
   const { rows } = await pool.query(

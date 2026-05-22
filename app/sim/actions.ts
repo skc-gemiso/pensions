@@ -98,7 +98,7 @@ export type ComputedRow = {
 }
 
 // 저장 수량 제한에서 완전 제외되는 역할
-const EXEMPT_ROLES = new Set(["admin", "khj"])
+const EXEMPT_ROLES = new Set(["admin"])
 
 const SAVE_LIMIT: Record<string, number> = {
   normal: 10,
