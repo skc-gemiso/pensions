@@ -3,7 +3,7 @@ import AppLayout from "@/components/AppLayout"
 export default function IrpPage() {
   return (
     <AppLayout>
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-1">IRP (개인형 퇴직연금)</h1>
           <p className="text-gray-500 text-sm">추가 세액공제 및 퇴직급여를 통합 운용하는 계좌</p>

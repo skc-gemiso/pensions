@@ -9,18 +9,6 @@ const SUB_MENUS = [
     icon: "📈",
   },
   {
-    href: "/personal-pension/irp",
-    title: "IRP (개인형 퇴직연금)",
-    desc: "추가 세액공제 및 퇴직급여 운용",
-    icon: "🏦",
-  },
-  {
-    href: "/personal-pension/isa",
-    title: "ISA (개인종합자산관리계좌)",
-    desc: "비과세 혜택으로 다양한 상품 투자",
-    icon: "💰",
-  },
-  {
     href: "/magic",
     title: "복리의 마법",
     desc: "복리 수익 시뮬레이션",
