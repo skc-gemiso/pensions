@@ -1,7 +1,8 @@
 import type { NextAuthConfig } from "next-auth"
 
 export const authConfig = {
-  pages: { signIn: "/login" },
+  pages: { signIn: "/login", error: "/login" },
+  secret: process.env.AUTH_SECRET,
   providers: [],
   callbacks: {
     jwt({ token, user }) {

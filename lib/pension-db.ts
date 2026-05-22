@@ -13,7 +13,7 @@ export function getPensionPool(): Pool {
       database: process.env.PENSION_SIM_DB_NAME,
       user: process.env.PENSION_SIM_DB_USER,
       password: process.env.PENSION_SIM_DB_PASSWORD,
-      ssl: { rejectUnauthorized: false },
+      ssl: process.env.PENSION_SIM_DB_SSL === "false" ? false : { rejectUnauthorized: false },
       max: 5,
       idleTimeoutMillis: 30000,
     })
