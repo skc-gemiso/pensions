@@ -5,9 +5,9 @@ import { useState, useMemo } from "react"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
 
 function formatKRW(value: number) {
-  if (value >= 100_000_000) return `${(value / 100_000_000).toFixed(1)}억`
-  if (value >= 10_000) return `${(value / 10_000).toFixed(0)}만`
-  return `${value.toLocaleString()}`
+  if (value >= 100_000_000) return `${Number(value / 100_000_000).toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}억`
+  if (value >= 10_000) return `${Math.round(value / 10_000).toLocaleString("ko-KR")}만`
+  return `${value.toLocaleString("ko-KR")}`
 }
 
 export default function CompoundMagicPage() {
@@ -153,6 +153,10 @@ export default function CompoundMagicPage() {
                     `${Number(value).toLocaleString()}원`,
                     name === "balance" ? "평가액" : "납입액",
                   ]}
+                  labelFormatter={(l) => String(l)}
+                  contentStyle={{ fontSize: 12, padding: "5px 10px", border: "1px solid #e5e7eb", borderRadius: 6 }}
+                  labelStyle={{ fontSize: 11, fontWeight: 600, color: "#374151", marginBottom: 2 }}
+                  itemStyle={{ fontSize: 12, padding: "1px 0" }}
                 />
                 <Legend
                   formatter={(value) => (value === "balance" ? "평가액" : "납입액")}

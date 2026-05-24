@@ -280,6 +280,110 @@ async function _applyMigrations(): Promise<void> {
     )
   }
 
+  // v011: 투자 > 글로벌 ETF 하위 메뉴 추가
+  const { rows: v011 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v011_add_invest_etf_menus'"
+  )
+  if (v011.length === 0) {
+    await pool.query(`
+      INSERT INTO app_menus (id, label, href, parent_id, sort_order) VALUES
+        ('etf',          '글로벌 ETF',     '/invest/etf',                          'invest', 10),
+        ('etf-holdings', '종목 주가 조회', '/invest/etf/holdings',                 'invest', 20),
+        ('etf-price',    '주가 상승 분석', '/invest/etf/analysis/price-rise',      'invest', 30),
+        ('etf-vol',      '수량 변동 분석', '/invest/etf/analysis/volume-change',   'invest', 40),
+        ('etf-rec',      '추천 종목',      '/invest/etf/recommend',                'invest', 50)
+      ON CONFLICT (id) DO NOTHING
+    `)
+    await pool.query(`
+      INSERT INTO app_role_menus (role, menu_id)
+      SELECT r, m
+      FROM unnest(ARRAY['admin','normal']::text[]) AS r
+      CROSS JOIN unnest(ARRAY['etf','etf-holdings','etf-price','etf-vol','etf-rec']::text[]) AS m
+      ON CONFLICT DO NOTHING
+    `)
+    await pool.query(
+      "INSERT INTO app_migrations (name) VALUES ('v011_add_invest_etf_menus')"
+    )
+  }
+
+  // v012: 투자 > 미국 경제 지표 하위 메뉴 추가
+  const { rows: v012 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v012_add_invest_usa_menus'"
+  )
+  if (v012.length === 0) {
+    await pool.query(`
+      INSERT INTO app_menus (id, label, href, parent_id, sort_order) VALUES
+        ('usa',           '미국 경제 지표', '/invest/usa',                'invest', 60),
+        ('usa-indicator', '경제 지표',      '/invest/usa/indicator',      'invest', 70),
+        ('usa-treasury',  '국채 보유',      '/invest/usa/treasury',       'invest', 80),
+        ('usa-fx',        'USD/KRW 환율',  '/invest/usa/fx',             'invest', 90)
+      ON CONFLICT (id) DO NOTHING
+    `)
+    await pool.query(`
+      INSERT INTO app_role_menus (role, menu_id)
+      SELECT r, m
+      FROM unnest(ARRAY['admin','normal']::text[]) AS r
+      CROSS JOIN unnest(ARRAY['usa','usa-indicator','usa-treasury','usa-fx']::text[]) AS m
+      ON CONFLICT DO NOTHING
+    `)
+    await pool.query(
+      "INSERT INTO app_migrations (name) VALUES ('v012_add_invest_usa_menus')"
+    )
+  }
+
+  // v013: 투자 하위에 그룹 메뉴(글로벌 ETF 분석, 미국 경제 지표 분석) 추가 및 하위 메뉴 재배치
+  const { rows: v013 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v013_add_invest_group_menus'"
+  )
+  if (v013.length === 0) {
+    await pool.query(`
+      INSERT INTO app_menus (id, label, href, parent_id, sort_order) VALUES
+        ('etf-group', '글로벌 ETF 분석',     '/invest/etf', 'invest', 10),
+        ('usa-group', '미국 경제 지표 분석', '/invest/usa', 'invest', 20)
+      ON CONFLICT (id) DO NOTHING
+    `)
+    await pool.query(`
+      UPDATE app_menus SET parent_id = 'etf-group', sort_order =
+        CASE id
+          WHEN 'etf'          THEN 10
+          WHEN 'etf-holdings' THEN 20
+          WHEN 'etf-price'    THEN 30
+          WHEN 'etf-vol'      THEN 40
+          WHEN 'etf-rec'      THEN 50
+        END
+      WHERE id IN ('etf', 'etf-holdings', 'etf-price', 'etf-vol', 'etf-rec')
+    `)
+    await pool.query(`
+      UPDATE app_menus SET parent_id = 'usa-group', sort_order =
+        CASE id
+          WHEN 'usa'           THEN 10
+          WHEN 'usa-indicator' THEN 20
+          WHEN 'usa-treasury'  THEN 30
+          WHEN 'usa-fx'        THEN 40
+        END
+      WHERE id IN ('usa', 'usa-indicator', 'usa-treasury', 'usa-fx')
+    `)
+    await pool.query(`
+      INSERT INTO app_role_menus (role, menu_id)
+      SELECT r, m
+      FROM unnest(ARRAY['admin','normal']::text[]) AS r
+      CROSS JOIN unnest(ARRAY['etf-group','usa-group']::text[]) AS m
+      ON CONFLICT DO NOTHING
+    `)
+    await pool.query(
+      "INSERT INTO app_migrations (name) VALUES ('v013_add_invest_group_menus')"
+    )
+  }
+
+  // v014: ETF 수집 이력 메뉴 이름 변경 — '글로벌 ETF' → '글로벌 ETF 데이터 수집'
+  const { rows: v014 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v014_rename_etf_menu'"
+  )
+  if (v014.length === 0) {
+    await pool.query(`UPDATE app_menus SET label = '글로벌 ETF 데이터 수집' WHERE id = 'etf'`)
+    await pool.query("INSERT INTO app_migrations (name) VALUES ('v014_rename_etf_menu')")
+  }
+
   // v008: khj 역할 제거 — 기존 khj 사용자 → admin 전환, khj 역할 메뉴 권한 삭제
   const { rows: v008 } = await pool.query<{ name: string }>(
     "SELECT name FROM app_migrations WHERE name = 'v008_remove_khj_role'"

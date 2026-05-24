@@ -1,0 +1,52 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"d:\\\\dev_project\\\\pensions\" -Force)",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "Bash(xargs -0 grep -l \"auth\\\\|login\\\\|session\\\\|credential\")",
+      "PowerShell(Get-ChildItem -Path \"d:\\\\dev_project\\\\pensions\" -File | Where-Object { $_.Name -notmatch \"node_modules\" } | Select-Object Name)",
+      "Bash(Get-ChildItem -Path \"d:\\\\dev_project\\\\pensions\\\\app\" -Recurse -File)",
+      "Bash(Select-Object FullName)",
+      "Bash(Sort-Object FullName)",
+      "Bash(dir d:\\\\dev_project\\\\pensions\\\\docs\\\\pension /a)",
+      "Bash(Get-ChildItem \"d:\\\\dev_project\\\\pensions\\\\docs\\\\pension\" -Force)",
+      "Bash(npm install *)",
+      "Bash(xargs cat)",
+      "Bash(xargs ls -la)",
+      "Bash(npx tsc *)",
+      "Bash(PGPASSWORD='Skc2002!!@@##' psql -h aws-1-ap-south-1.pooler.supabase.com -p 5432 -U postgres.gpevyrmakclyxijrtbrf -d postgres -f d:/dev_project/pensions/collector/sql/create_usa_tables.sql)",
+      "PowerShell(python -c \"import sys; print\\(sys.executable\\); import loguru; print\\('loguru OK'\\)\" 2>&1)",
+      "PowerShell(python -m pip install requests python-dotenv tenacity loguru psycopg2-binary 2>&1)",
+      "Bash(python main.py --only fx)",
+      "WebFetch(domain:home.treasury.gov)",
+      "WebFetch(domain:ticdata.treasury.gov)",
+      "Bash(Remove-Item \"d:\\\\dev_project\\\\pensions\\\\collector\\\\usa\\\\collectors\\\\fxrate_collector.py\")",
+      "WebFetch(domain:www.smbs.biz)",
+      "Bash(curl -s \"http://www.smbs.biz/ExRate/StdExRate.jsp\")",
+      "Bash(curl -s \"http://www.smbs.biz/ExRate/StdExRate.jsp\" -o /tmp/stdexrate.html)",
+      "Read(//tmp/**)",
+      "Bash(curl -s \"http://www.smbs.biz/ExRate/StdExRate.jsp?StrSch_sYear=2026&StrSch_sMonth=05&StrSch_sDay=23&StrSch_eYear=2026&StrSch_eMonth=05&StrSch_eDay=23&tongwha_code=USD\")",
+      "Bash(curl -s \"http://www.smbs.biz/ExRate/StdExRate.jsp\" -X POST -d \"StrSch_sYear=2026&StrSch_sMonth=05&StrSch_sDay=20&StrSch_eYear=2026&StrSch_eMonth=05&StrSch_eDay=23&tongwha_code=USD\")",
+      "Bash(curl -s \"http://www.smbs.biz/ExRate/StdExRate_xml.jsp?arr_value=USD_2026-05-20_2026-05-23\")",
+      "Bash(curl -s \"http://www.smbs.biz/ExRate/StdExRate_xml.jsp?arr_value=USD_2026-05-01_2026-05-23\")",
+      "Bash(curl -s \"http://www.smbs.biz/ExRate/StdExRate_xml.jsp?arr_value=EUR_2026-04-01_2026-05-23\")",
+      "Bash(python3 -c \"import sys, html; encoded = sys.stdin.read\\(\\).strip\\(\\); print\\(html.unescape\\(encoded\\)\\)\")",
+      "Bash(curl -s \"http://www.smbs.biz/ExRate/StdExRate_xml.jsp?arr_value=JPY_2026-05-01_2026-05-23\")",
+      "Bash(curl -s -w \"\\\\nHTTP Status: %{http_code}\\\\n\" \"http://www.smbs.biz/ExRate/StdExRate_xml.jsp?arr_value=USD_2025-01-01_2025-01-31\")",
+      "Bash(curl -s -w \"\\\\nHTTP Status: %{http_code}\\\\n\" \"http://www.smbs.biz/ExRate/StdExRate_xml.jsp?arr_value=USD_2024-01-01_2024-12-31\")",
+      "Bash(curl -s -I \"http://www.smbs.biz/ExRate/StdExRate_xml.jsp?arr_value=USD_2026-05-01_2026-05-23\")",
+      "WebFetch(domain:api.frankfurter.dev)",
+      "Bash(mkdir -p \"C:\\\\Users\\\\baram\\\\.claude\\\\skills\\\\collect-fx\")",
+      "Bash(python -c ' *)",
+      "Bash(python main.py)",
+      "Bash(New-Item -ItemType Directory -Force \"d:\\\\dev_project\\\\pensions\\\\collector\\\\etf\")",
+      "Bash(Out-Null)",
+      "Bash(Test-Path \"d:\\\\dev_project\\\\pensions\\\\collector\\\\etf\")",
+      "Bash(Get-ChildItem -Path \"d:\\\\dev_project\\\\pensions\\\\app\\\\api\\\\invest\" -Recurse -Include \"*.ts\")",
+      "Bash(Select-Object -ExpandProperty FullName)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\baram\\.claude\\skills"
+    ]
+  }
+}

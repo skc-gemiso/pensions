@@ -9,11 +9,9 @@ import { logout } from "@/app/actions/auth"
 import { getVisitorIp } from "@/app/actions/visitor"
 import type { MenuRow } from "@/lib/auth-db"
 
-type NavItem = {
-  href: string
-  label: string
-  children?: { href: string; label: string }[]
-}
+type NavLeaf  = { href: string; label: string }
+type NavChild = NavLeaf & { isGroup?: true; children?: NavLeaf[] }
+type NavItem  = NavLeaf & { children?: NavChild[] }
 
 function buildNavTree(menus: MenuRow[]): NavItem[] {
   const roots = menus
@@ -21,16 +19,24 @@ function buildNavTree(menus: MenuRow[]): NavItem[] {
     .sort((a, b) => a.sort_order - b.sort_order)
 
   return roots.map((root) => {
-    const children = menus
+    const level1 = menus
       .filter((m) => m.parent_id === root.id)
       .sort((a, b) => a.sort_order - b.sort_order)
+
+    const children: NavChild[] = level1.map((l1) => {
+      const level2 = menus
+        .filter((m) => m.parent_id === l1.id)
+        .sort((a, b) => a.sort_order - b.sort_order)
+
+      return level2.length > 0
+        ? { href: l1.href, label: l1.label, isGroup: true, children: level2.map((l2) => ({ href: l2.href, label: l2.label })) }
+        : { href: l1.href, label: l1.label }
+    })
 
     return {
       href: root.href,
       label: root.label,
-      ...(children.length > 0
-        ? { children: children.map((c) => ({ href: c.href, label: c.label })) }
-        : {}),
+      ...(children.length > 0 ? { children } : {}),
     }
   })
 }
@@ -218,24 +224,49 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     {/* 드롭다운 */}
                     {item.children && openMenu === item.href && (
                       <div className="absolute top-full left-0 z-30 pt-1.5">
-                      <ul className="min-w-[180px] bg-white rounded-xl shadow-xl border border-gray-100 py-1.5">
-                        {item.children.map((child) => (
-                          <li key={child.href}>
-                            <Link
-                              href={child.href}
-                              className={`flex items-center gap-2 mx-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${
-                                path === child.href
-                                  ? "bg-blue-50 text-blue-700 font-medium"
-                                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                              }`}
-                            >
-                              {path === child.href && (
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
-                              )}
-                              {child.label}
-                            </Link>
-                          </li>
-                        ))}
+                      <ul className="min-w-[200px] bg-white rounded-xl shadow-xl border border-gray-100 py-1.5">
+                        {item.children.map((child, idx) =>
+                          child.isGroup && child.children ? (
+                            <li key={child.href}>
+                              {idx > 0 && <div className="mx-3 my-1 border-t border-gray-100" />}
+                              <p className="mx-1.5 px-3 pt-2 pb-1 text-[11px] font-semibold text-gray-400 tracking-wide">
+                                {child.label}
+                              </p>
+                              {child.children.map((sub) => (
+                                <Link
+                                  key={sub.href}
+                                  href={sub.href}
+                                  className={`flex items-center gap-2 mx-1.5 pl-5 pr-3 py-2 text-sm rounded-lg transition-colors ${
+                                    path === sub.href
+                                      ? "bg-blue-50 text-blue-700 font-medium"
+                                      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                                  }`}
+                                >
+                                  {path === sub.href && (
+                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
+                                  )}
+                                  {sub.label}
+                                </Link>
+                              ))}
+                            </li>
+                          ) : (
+                            <li key={child.href}>
+                              <Link
+                                href={child.href}
+                                className={`flex items-center gap-2 mx-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${
+                                  path === child.href
+                                    ? "bg-blue-50 text-blue-700 font-medium"
+                                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                                }`}
+                              >
+                                {path === child.href && (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
+                                )}
+                                {child.label}
+                              </Link>
+                            </li>
+                          )
+                        )}
                       </ul>
                       </div>
                     )}
@@ -350,22 +381,46 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   >
                     {item.label}
                   </Link>
-                  {item.children?.map((child) => (
-                    <Link
-                      key={child.href}
-                      href={child.href}
-                      className={`flex items-center pl-8 pr-3 py-2 rounded-lg text-sm transition-colors ${
-                        path === child.href
-                          ? "bg-white/15 text-white font-medium"
-                          : "text-white/65 hover:bg-white/10 hover:text-white"
-                      }`}
-                    >
-                      {path === child.href && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-300 mr-2 flex-shrink-0" />
-                      )}
-                      {child.label}
-                    </Link>
-                  ))}
+                  {item.children?.map((child) =>
+                    child.isGroup && child.children ? (
+                      <div key={child.href}>
+                        <p className="pl-6 pr-3 pt-2 pb-0.5 text-[11px] font-semibold text-blue-200/60 tracking-wide">
+                          {child.label}
+                        </p>
+                        {child.children.map((sub) => (
+                          <Link
+                            key={sub.href}
+                            href={sub.href}
+                            className={`flex items-center pl-10 pr-3 py-2 rounded-lg text-sm transition-colors ${
+                              path === sub.href
+                                ? "bg-white/15 text-white font-medium"
+                                : "text-white/65 hover:bg-white/10 hover:text-white"
+                            }`}
+                          >
+                            {path === sub.href && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-300 mr-2 flex-shrink-0" />
+                            )}
+                            {sub.label}
+                          </Link>
+                        ))}
+                      </div>
+                    ) : (
+                      <Link
+                        key={child.href}
+                        href={child.href}
+                        className={`flex items-center pl-8 pr-3 py-2 rounded-lg text-sm transition-colors ${
+                          path === child.href
+                            ? "bg-white/15 text-white font-medium"
+                            : "text-white/65 hover:bg-white/10 hover:text-white"
+                        }`}
+                      >
+                        {path === child.href && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-300 mr-2 flex-shrink-0" />
+                        )}
+                        {child.label}
+                      </Link>
+                    )
+                  )}
                 </div>
               ))}
             </nav>

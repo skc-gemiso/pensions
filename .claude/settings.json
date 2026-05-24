@@ -1,0 +1,38 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const i=process.env.CLAUDE_TOOL_INPUT||''; if(i.includes('/app/')||i.includes('\\\\\\\\app\\\\\\\\')) console.log('[DOCS] app/ 코드 변경 감지 — CLAUDE.md 문서 동기화 규칙에 따라 관련 docs/ 파일을 확인하세요.');\""
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(gh auth *)",
+      "Bash(git add *)",
+      "Bash(ls *.ts *.mjs *.md)",
+      "Bash(ls *.json)",
+      "Bash(git commit -m ' *)",
+      "Bash(git remote *)",
+      "Bash(git branch *)",
+      "Bash(git push *)",
+      "Bash(Get-ChildItem -Path \"d:\\\\dev_project\\\\pensions\" -Directory)",
+      "Bash(Select-Object Name)",
+      "Bash(xargs -I {} sh -c 'echo \"=== {} ===\" && head -30 \"{}\"')",
+      "Bash(cd /d \"d:\\\\dev_project\\\\pensions\")",
+      "Bash(node -e \"const fs=require\\('fs'\\); const buf=fs.readFileSync\\('public/info.png'\\); console.log\\('size:', buf.length, 'bytes'\\); console.log\\('header:', buf.slice\\(0,8\\).toString\\('hex'\\)\\)\")",
+      "Bash(node -e \"const fs=require\\('fs'\\); const buf=fs.readFileSync\\('d:/dev_project/pensions/public/info.png'\\); console.log\\('size:', buf.length, 'bytes'\\); console.log\\('header:', buf.slice\\(0,8\\).toString\\('hex'\\)\\)\")",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"const fs=require\\('fs'\\); const b64=fs.readFileSync\\('d:/dev_project/pensions/public/info.png'\\).toString\\('base64'\\); console.log\\('data:image/png;base64,'+b64\\)\")",
+      "Bash(node -e \"const fs=require\\('fs'\\); const b64=fs.readFileSync\\('d:/dev_project/pensions/public/info.png'\\).toString\\('base64'\\); process.stdout.write\\('data:image/png;base64,'+b64\\)\")",
+      "Bash(Remove-Item \"d:\\\\dev_project\\\\pensions\\\\public\\\\info_b64.txt\" -ErrorAction SilentlyContinue)",
+      "PowerShell(\"done\")"
+    ]
+  }
+}

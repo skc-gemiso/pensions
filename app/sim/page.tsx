@@ -215,8 +215,8 @@ function calculateIRPRows(inp: InputValues): ComputedRow[] {
 // ─── 유틸 ────────────────────────────────────────────────────────────────────
 
 function fmtMonths(m: number) {
-  const y = (m / 12).toFixed(1)
-  return `${m}개월 (${y}년)`
+  const y = Number(m / 12).toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+  return `${m.toLocaleString("ko-KR")}개월 (${y}년)`
 }
 
 function fmtKRW(n: number) {
@@ -1733,8 +1733,8 @@ export default function SavingsFundPage() {
 
     const fmtMan = (won: number) =>
       won % 10000 === 0
-        ? `${won / 10000}만`
-        : `${(won / 10000).toFixed(1)}만`
+        ? `${Math.round(won / 10000).toLocaleString("ko-KR")}만`
+        : `${Number(won / 10000).toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}만`
     const fmtY = (months: number) =>
       months % 12 === 0
         ? `${months / 12}년`
