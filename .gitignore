@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+collector/usa/utils/__pycache__/*
+collector/etf/__pycache__/*
+collector/usa/collectors/__pycache__/*
+collector/usa/config/__pycache__/*
+collector/usa/logs/*
+collector/usa/repositories/__pycache__/*
+collector/usa/utils/__pycache__/*
