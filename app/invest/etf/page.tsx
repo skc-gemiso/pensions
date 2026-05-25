@@ -124,7 +124,7 @@ export default function EtfCollectPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                {["ETF", "기준일", "수집 시각", "상태", "종목 수", "메모"].map((h) => (
+                {["기준일", "ETF", "수집 시각", "상태", "종목 수", "메모"].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-700">{h}</th>
                 ))}
               </tr>
@@ -135,10 +135,10 @@ export default function EtfCollectPage() {
               ) : (
                 logs.map((log, i) => (
                   <tr key={i} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900">{log.etf_ticker}</td>
                     <td className="px-4 py-3 text-gray-700">
                       {new Date(log.holding_date).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Seoul" })}
                     </td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{log.etf_ticker}</td>
                     <td className="px-4 py-3 text-gray-500">
                       {new Date(log.fetched_at).toLocaleString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
                     </td>
