@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react"
 import { useSession } from "next-auth/react"
 import AppLayout from "@/components/AppLayout"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts"
+import { fmt, cc } from "@/lib/fmt"
 import { getFxSeries, triggerFxCollect, getFxCollectStatusAction } from "../actions"
 
 const PERIODS = [
@@ -14,11 +15,6 @@ const PERIODS = [
 ]
 
 type Point = { stat_date: string; exchange_rate: number }
-
-function fmt(n: number | null, dec = 2) {
-  if (n == null) return "-"
-  return Number(n).toLocaleString("ko-KR", { minimumFractionDigits: dec, maximumFractionDigits: dec })
-}
 
 type CollectStatus = { running: boolean; startedAt: string | null; finishedAt: string | null; success: boolean | null }
 
@@ -120,20 +116,20 @@ export default function FxPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <p className="text-xs text-gray-500">최근 환율</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">
-            {latest ? fmt(latest.rate) : "-"}
+            {latest ? fmt(latest.rate, 2) : "-"}
           </p>
           <p className="text-xs text-gray-400 mt-0.5">{latest?.date ?? ""}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <p className="text-xs text-gray-500">전일 대비</p>
-          <p className={`text-2xl font-bold mt-1 ${diff == null ? "text-gray-900" : diff > 0 ? "text-red-600" : "text-blue-600"}`}>
-            {diff == null ? "-" : `${diff > 0 ? "+" : ""}${fmt(diff)}`}
+          <p className={`text-2xl font-bold mt-1 ${cc(diff)}`}>
+            {diff == null ? "-" : `${diff > 0 ? "+" : ""}${fmt(diff, 2)}`}
           </p>
           <p className="text-xs text-gray-400 mt-0.5">원</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <p className="text-xs text-gray-500">기간 평균</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{avg != null ? fmt(avg) : "-"}</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1">{avg != null ? fmt(avg, 2) : "-"}</p>
           <p className="text-xs text-gray-400 mt-0.5">원</p>
         </div>
       </div>
@@ -159,7 +155,7 @@ export default function FxPage() {
                   width={70}
                 />
                 <Tooltip
-                  formatter={(v: unknown) => [`${fmt(Number(v))} 원`, "USD/KRW"]}
+                  formatter={(v: unknown) => [`${fmt(Number(v), 2)} 원`, "USD/KRW"]}
                   labelFormatter={(l) => String(l)}
                   contentStyle={{ fontSize: 12, padding: "5px 10px", border: "1px solid #e5e7eb", borderRadius: 6 }}
                   labelStyle={{ fontSize: 11, fontWeight: 600, color: "#374151", marginBottom: 2 }}
@@ -170,7 +166,7 @@ export default function FxPage() {
                     y={avg}
                     stroke="#9ca3af"
                     strokeDasharray="4 2"
-                    label={{ value: `평균 ${fmt(avg)}`, position: "right", fontSize: 10, fill: "#9ca3af" }}
+                    label={{ value: `평균 ${fmt(avg, 2)}`, position: "right", fontSize: 10, fill: "#9ca3af" }}
                   />
                 )}
                 <Line
@@ -190,8 +186,8 @@ export default function FxPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 sticky top-0">
                   <tr>
-                    {["날짜", "환율 (원)", "전일 대비"].map((h) => (
-                      <th key={h} className="px-4 py-2 text-left text-gray-700 font-medium">{h}</th>
+                    {(["날짜", "환율 (원)", "전일 대비"] as const).map((h) => (
+                      <th key={h} className={`px-4 py-2 text-xs font-semibold text-gray-700 ${h === "날짜" ? "text-left" : "text-right"}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -202,9 +198,9 @@ export default function FxPage() {
                     return (
                       <tr key={r.date} className="hover:bg-gray-50">
                         <td className="px-4 py-2 text-gray-700">{r.date}</td>
-                        <td className="px-4 py-2 text-gray-900 font-medium">{fmt(r.rate)}</td>
-                        <td className={`px-4 py-2 font-medium ${d == null ? "" : d > 0 ? "text-red-600" : d < 0 ? "text-blue-600" : "text-gray-500"}`}>
-                          {d == null ? "-" : `${d > 0 ? "+" : ""}${fmt(d)}`}
+                        <td className="px-4 py-2 text-right text-gray-900 font-medium">{fmt(r.rate, 2)}</td>
+                        <td className={`px-4 py-2 text-right font-medium ${cc(d)}`}>
+                          {d == null ? "-" : `${d > 0 ? "+" : ""}${fmt(d, 2)}`}
                         </td>
                       </tr>
                     )

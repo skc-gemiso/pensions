@@ -1,10 +1,21 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import AppLayout from "@/components/AppLayout"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
-import { getIndicatorList, getIndicatorSeries } from "../actions"
-import type { IndicatorMeta } from "../actions"
+import { fmt, cc } from "@/lib/fmt"
+import { getIndicatorList, getIndicatorSeries, getIndicatorLatest } from "../actions"
+import type { IndicatorMeta, IndicatorCard } from "../actions"
+
+const INDICATOR_DESC: Record<string, string> = {
+  FEDFUNDS:     "연준(Fed)이 결정하는 단기 정책금리. 시장의 모든 금리 수준을 좌우하는 기준점으로, 인상 시 대출·채권금리 상승, 인하 시 경기 부양 효과.",
+  GS10:         "10년 만기 미국 국채 수익률. 시장이 예상하는 장기 인플레이션·성장률을 반영하며, 글로벌 장기금리의 벤치마크.",
+  GS30:         "30년 만기 미국 국채 수익률. 초장기 재정 건전성과 인플레이션 전망을 반영하며, 모기지·연금 등 장기 금융상품 금리에 연동.",
+  MORTGAGE30US: "30년 고정 주택담보대출 금리. 미국 주택 구매 여력을 직접 결정하며, 부동산 시장 과열·침체의 선행 지표.",
+  PAYEMS:       "농업 제외 전 산업 분야의 월별 신규 취업자 수. 미국 경제 성장 강도를 가장 빠르게 확인하는 고용 핵심 지표.",
+  PCEPI:        "개인소비지출(PCE) 기반 물가지수. 연준이 공식 기준으로 삼는 인플레이션 척도로, 목표치는 전년 대비 +2%.",
+  UNRATE:       "경제 활동인구(취업자+구직자) 중 실업자 비율. 수치가 낮을수록 노동시장이 타이트하여 임금·물가 상승 압력이 높아짐.",
+}
 
 const INDICATOR_LINKS: Record<string, string> = {
   FEDFUNDS:     "https://kr.investing.com/economic-calendar/interest-rate-decision-168",
@@ -23,23 +34,27 @@ const PERIODS = [
   { label: "전체",  months: undefined },
 ]
 
-function fmt(n: number | null | undefined, dec = 2) {
-  if (n == null) return "-"
-  return Number(n).toLocaleString("ko-KR", { minimumFractionDigits: dec, maximumFractionDigits: dec })
+function fmtCard(v: number | null, unit: string): string {
+  if (v == null) return "-"
+  if (unit === "%" || unit === "%p") return `${fmt(v, 2)}%`
+  return Number(v).toLocaleString("ko-KR", { maximumFractionDigits: 2 })
 }
 
 export default function IndicatorPage() {
   const [indicators, setIndicators] = useState<IndicatorMeta[]>([])
+  const [cards, setCards]           = useState<IndicatorCard[]>([])
   const [code, setCode]             = useState<string>("")
   const [months, setMonths]         = useState<number | undefined>(24)
   const [series, setSeries]         = useState<{ stat_date: string; value: number }[]>([])
   const [loading, setLoading]       = useState(false)
+  const chartRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     getIndicatorList().then((list) => {
       setIndicators(list)
       if (list.length > 0) setCode(list[0].indicator_code)
     })
+    getIndicatorLatest().then(setCards)
   }, [])
 
   useEffect(() => {
@@ -54,10 +69,45 @@ export default function IndicatorPage() {
   return (
     <AppLayout>
       <div className="max-w-7xl mx-auto">
-      <h1 className="text-xl font-bold text-gray-900 mb-1">경제 지표</h1>
+      <h1 className="text-xl font-bold text-gray-900 mb-1">미국 경제 지표</h1>
       <p className="text-sm text-gray-500 mb-4">FRED 지표별 시계열 추이를 확인합니다.</p>
 
-      <div className="flex flex-wrap gap-3 mb-5">
+      {cards.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
+          {cards.map((c) => {
+            const diff = c.latest_value != null && c.prev_value != null ? c.latest_value - c.prev_value : null
+            const isPos = diff != null && diff > 0
+            const isNeg = diff != null && diff < 0
+            const isActive = code === c.indicator_code
+            return (
+              <div
+                key={c.indicator_code}
+                onClick={() => {
+                  setCode(c.indicator_code)
+                  setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100)
+                }}
+                className={`rounded-xl border p-4 cursor-pointer transition-all hover:shadow-sm ${isActive ? "border-blue-400 bg-blue-50" : "border-gray-200 bg-white hover:border-blue-200"}`}
+              >
+                <p className="text-sm font-bold text-gray-900 mb-1">{c.indicator_name}</p>
+                <p className="text-xs text-gray-500 leading-snug mb-3">{INDICATOR_DESC[c.indicator_code] ?? ""}</p>
+                <div className="flex items-baseline justify-between gap-1">
+                  <span className="text-xs text-gray-400">{c.latest_date?.slice(0, 7) ?? ""}</span>
+                  <span>
+                    <span className="text-base font-bold text-gray-900">{fmtCard(c.latest_value, c.unit)}</span>
+                    {diff != null && (
+                      <span className={`text-xs ml-1 ${cc(diff)}`}>
+                        ({diff != null && diff > 0 ? "+" : ""}{fmtCard(diff, c.unit)})
+                      </span>
+                    )}
+                  </span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3 mb-5">
         <select
           value={code}
           onChange={(e) => setCode(e.target.value)}
@@ -85,35 +135,26 @@ export default function IndicatorPage() {
             </button>
           ))}
         </div>
-      </div>
 
-      {meta && (
-        <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-          <div className="flex items-center gap-3">
-            <p className="text-sm font-semibold text-gray-900">{meta.indicator_name}</p>
-            <span className="text-xs text-gray-400">{meta.unit}</span>
-            {meta.description && <span className="text-xs text-gray-500">{meta.description}</span>}
-          </div>
-          {INDICATOR_LINKS[code] && (
-            <a
-              href={INDICATOR_LINKS[code]}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 mt-2.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-              </svg>
-              최신 자료 보기
-            </a>
-          )}
-        </div>
-      )}
+        {INDICATOR_LINKS[code] && (
+          <a
+            href={INDICATOR_LINKS[code]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+            </svg>
+            최신 자료 보기
+          </a>
+        )}
+      </div>
 
       {loading && <p className="text-center text-gray-400 py-8">로딩 중...</p>}
 
       {!loading && chartData.length > 0 && (
-        <div className="space-y-4">
+        <div ref={chartRef} className="space-y-4">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }} barCategoryGap="20%">
@@ -155,8 +196,8 @@ export default function IndicatorPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 sticky top-0">
                   <tr>
-                    {["날짜", "값", "전기 대비"].map((h) => (
-                      <th key={h} className="px-4 py-2 text-left text-gray-700 font-medium">{h}</th>
+                    {(["날짜", "값", "전기 대비"] as const).map((h) => (
+                      <th key={h} className={`px-4 py-2 text-xs font-semibold text-gray-700 ${h === "날짜" ? "text-left" : "text-right"}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -167,9 +208,9 @@ export default function IndicatorPage() {
                     return (
                       <tr key={r.date} className="hover:bg-gray-50">
                         <td className="px-4 py-2 text-gray-700">{r.date}</td>
-                        <td className="px-4 py-2 text-gray-900 font-medium">{fmt(r.value)}</td>
-                        <td className={`px-4 py-2 font-medium text-sm ${diff == null ? "" : diff > 0 ? "text-red-600" : diff < 0 ? "text-blue-600" : "text-gray-500"}`}>
-                          {diff == null ? "-" : `${diff > 0 ? "+" : ""}${fmt(diff)}`}
+                        <td className="px-4 py-2 text-right text-gray-900 font-medium">{fmtCard(r.value, meta?.unit ?? "")}</td>
+                        <td className={`px-4 py-2 text-right font-medium text-sm ${cc(diff)}`}>
+                          {diff == null ? "-" : `${diff > 0 ? "+" : ""}${fmtCard(diff, meta?.unit ?? "")}`}
                         </td>
                       </tr>
                     )

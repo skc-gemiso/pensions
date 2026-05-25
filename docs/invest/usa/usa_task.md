@@ -38,7 +38,7 @@ app/invest/usa/
 | `getIndicatorList()` | `IndicatorMeta[]` | 지표 목록 전체 (드롭다운용) |
 | `getIndicatorLatest()` | `IndicatorCard[]` | 대시보드 카드용 최신값 + 스파크라인(13개월) |
 | `getIndicatorSeries(code, months?)` | `{ stat_date, value }[]` | 지표 시계열 (기간 필터) |
-| `getTreasurySeries(months?)` | `{ stat_date, country_code, amount_usd_billion, fx_rate, amount_krw_trillion }[]` | 국채 보유 시계열 (t_fx_rate LATERAL JOIN) |
+| `getTreasurySeries(months?)` | `{ stat_date, country_code, amount_usd_billion, fx_rate, amount_krw_trillion }[]` | 국채 보유 시계열 (t_fx_rate LATERAL JOIN — 단, 화면에서는 fx_rate·amount_krw_trillion 미사용, FIXED_FX=1400으로 재계산) |
 | `getFxSeries(months?)` | `{ stat_date, exchange_rate }[]` | 환율 시계열 (t_fx_rate, 일별) |
 | `getCollectLastRun()` | `{ collector_name, last_run, last_status }[]` | 수집기별 마지막 실행 이력 |
 | `triggerUsaCollect()` | `{ started, reason? }` | admin 전용 — FRED + TIC 수집 트리거 |
@@ -88,6 +88,19 @@ app/invest/usa/
 - 기준: Investing.com KST 표기 (FOMC 발표 14:00 ET = 익일 03~04시 KST)
 - **매년 연초에 당해 연도 일정 추가 필요** (출처: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm)
 - 긴급 회의(unscheduled) 발생 시 즉시 추가
+
+## 국채 보유 화면 (treasury/page.tsx) 주요 로직
+
+| 항목 | 내용 |
+|------|------|
+| 원화 환산 | `FIXED_FX = 1400` 상수로 프론트엔드 계산 (`amount_usd_billion × 1400 ÷ 1000` → 조원 단위) |
+| DB 원화 컬럼 | `amount_krw_trillion`(실환율 기반) 반환되나 화면에서 사용 안 함 |
+| 테이블 컬럼 순서 | 달러 먼저: 금액(달러)·증감(달러)·증감률(달러) → 원화: 금액(원)·증감(원)·증감률(원) |
+| 요약 카드 | USD `text-xl font-bold` (primary), KRW `text-sm text-gray-400` (secondary 괄호) |
+| 차트 기본 단위 | USD (`useState("usd")`) |
+| 증감률 포맷 | `fmt(rate, 1) + "%"`, 색상 `cc()` |
+
+---
 
 ## 알려진 제약
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import AppLayout from "@/components/AppLayout"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
+import { fmt, cc, fmtKRW } from "@/lib/fmt"
 import { getTreasurySeries } from "../actions"
 
 const PERIODS = [
@@ -23,17 +24,73 @@ type Row = {
 
 type ChartPoint = {
   date: string
-  japan?: number
-  china?: number
+  japanUsd?: number
+  japanKrw?: number
+  chinaUsd?: number
+  chinaKrw?: number
 }
 
-function fmtUsd(v: number | null | undefined) {
-  if (v == null) return "-"
-  return Number(v).toLocaleString("ko-KR", { maximumFractionDigits: 1 })
+type TableRow = {
+  date: string
+  jpnUsd: number | null; jpnKrw: number | null
+  chnUsd: number | null; chnKrw: number | null
 }
-function fmtKrw(v: number | null | undefined) {
+
+// amount_krw_trillion은 조 단위(÷1e12) 값 → fmtKRW에 원 단위로 환산해 전달
+function krwTril(v: number | null | undefined): string {
   if (v == null) return "-"
-  return Number(v).toLocaleString("ko-KR", { maximumFractionDigits: 1 })
+  return fmtKRW(v * 1e12)
+}
+// 증감 표시 (양수일 때 + 접두사 추가)
+function krwTrilDiff(v: number | null | undefined): string {
+  if (v == null) return "-"
+  return (v > 0 ? "+" : "") + fmtKRW(v * 1e12)
+}
+// USD 십억달러: KRW 조원과 동일한 크기별 자리수 + $...B 단위 포함
+// ≥10십억달러 → 0자리, <10십억달러 → 1자리
+function usdBil(v: number | null | undefined): string {
+  if (v == null) return "-"
+  return `$${fmt(v, Math.abs(v) >= 10 ? 0 : 1)}B`
+}
+const FIXED_FX = 1400  // 원화 참조 환산용 고정 환율 (1 USD = 1,400 KRW)
+
+// USD 증감 표시 (+$12B / -$5B)
+function usdBilDiff(v: number | null | undefined): string {
+  if (v == null) return "-"
+  const sign = v > 0 ? "+" : v < 0 ? "-" : ""
+  const abs = Math.abs(v)
+  return `${sign}$${fmt(abs, abs >= 10 ? 0 : 1)}B`
+}
+
+function CustomTooltip({ active, payload, label }: {
+  active?: boolean
+  payload?: Array<{ name: string; color: string; payload: ChartPoint }>
+  label?: string
+}) {
+  if (!active || !payload?.length) return null
+  const pt = payload[0]?.payload
+  if (!pt) return null
+  const entries = [
+    { name: "일본", color: "#3b82f6", krw: pt.japanKrw, usd: pt.japanUsd },
+    { name: "중국", color: "#ef4444", krw: pt.chinaKrw, usd: pt.chinaUsd },
+  ]
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm text-xs min-w-[200px]">
+      <p className="font-semibold text-gray-700 mb-2">{label}</p>
+      {entries.map((e) => (
+        <div key={e.name} className="flex items-center gap-2 mb-1 last:mb-0">
+          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: e.color }} />
+          <span className="text-gray-500 w-7">{e.name}</span>
+          <span className="font-bold" style={{ color: e.color }}>
+            {usdBil(e.usd)}
+          </span>
+          {e.krw != null && (
+            <span className="text-gray-400 ml-1">({krwTril(e.krw)})</span>
+          )}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export default function TreasuryPage() {
@@ -53,32 +110,75 @@ export default function TreasuryPage() {
     const d = r.stat_date.slice(0, 10)
     if (!dateMap.has(d)) dateMap.set(d, { date: d })
     const pt = dateMap.get(d)!
-    const val = unit === "usd" ? r.amount_usd_billion : (r.amount_krw_trillion ?? null)
-    if (r.country_code === "JPN") pt.japan = val ?? undefined
-    if (r.country_code === "CHN") pt.china = val ?? undefined
+    if (r.country_code === "JPN") {
+      pt.japanUsd = r.amount_usd_billion
+      pt.japanKrw = r.amount_usd_billion * FIXED_FX / 1000
+    }
+    if (r.country_code === "CHN") {
+      pt.chinaUsd = r.amount_usd_billion
+      pt.chinaKrw = r.amount_usd_billion * FIXED_FX / 1000
+    }
   }
   const chartData = Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date))
 
-  const unitLabel = unit === "usd" ? "십억 달러" : "조 원"
-  const lastPt    = chartData[chartData.length - 1]
-
-  // Table: pivot by date with both countries per row
-  type TableRow = { date: string; jpnUsd: number | null; jpnKrw: number | null; chnUsd: number | null; chnKrw: number | null }
+  // Pivot for table
   const tableMap = new Map<string, TableRow>()
   for (const r of rows) {
     const d = r.stat_date.slice(0, 10)
     if (!tableMap.has(d)) tableMap.set(d, { date: d, jpnUsd: null, jpnKrw: null, chnUsd: null, chnKrw: null })
     const tr = tableMap.get(d)!
-    if (r.country_code === "JPN") { tr.jpnUsd = r.amount_usd_billion; tr.jpnKrw = r.amount_krw_trillion }
-    if (r.country_code === "CHN") { tr.chnUsd = r.amount_usd_billion; tr.chnKrw = r.amount_krw_trillion }
+    if (r.country_code === "JPN") { tr.jpnUsd = r.amount_usd_billion; tr.jpnKrw = r.amount_usd_billion * FIXED_FX / 1000 }
+    if (r.country_code === "CHN") { tr.chnUsd = r.amount_usd_billion; tr.chnKrw = r.amount_usd_billion * FIXED_FX / 1000 }
   }
   const tableData = Array.from(tableMap.values()).sort((a, b) => b.date.localeCompare(a.date))
+
+  // Latest summary
+  const lastJpn = rows.filter(r => r.country_code === "JPN").slice(-1)[0]
+  const lastChn = rows.filter(r => r.country_code === "CHN").slice(-1)[0]
 
   return (
     <AppLayout>
       <div className="max-w-7xl mx-auto">
       <h1 className="text-xl font-bold text-gray-900 mb-1">미국 국채 보유 현황</h1>
       <p className="text-sm text-gray-500 mb-4">일본·중국의 미국 국채 보유 추이 (TIC 데이터)</p>
+
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 mb-6">
+        <h3 className="font-semibold text-blue-800 mb-3">데이터 안내</h3>
+        <ul className="text-sm text-blue-700 space-y-1.5">
+          <li>• <span className="font-medium">자료 출처</span>: 미국 재무부 TIC(Treasury International Capital) — Major Foreign Holders of Treasury Securities 공식 집계</li>
+          <li>• <span className="font-medium">발표 시차</span>: 기준월 종료 후 약 1.5개월 후 발표 (예: 4월 데이터 → 6월 중순 공개)</li>
+          <li>• <span className="font-medium">예측 자료</span>: 현재(2026.05) 국가별로 더 빠르고 정확하게 제공하는 무료 공개 API 없음 — TIC가 사실상 유일한 공식 소스</li>
+        </ul>
+        <br></br>
+        <ul className="text-sm text-red-700 space-y-1.5">
+          <li># <span className="font-medium">원화 자료</span>: 원화로 환산된 금액은 단순 참고용이며 달러를 기준으로 변동을 확인하여야 함 — 환율 변동으로 착시 발생 할수 있어서 $1 = 1,400원 환율 고정함</li>
+        </ul>
+      </div>
+
+      {/* 요약 카드 */}
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        {[
+          { label: "일본 최근 보유액", last: lastJpn, color: "text-blue-600" },
+          { label: "중국 최근 보유액", last: lastChn, color: "text-red-600" },
+        ].map(({ label, last, color }) => (
+          <div key={label} className="bg-white rounded-xl border border-gray-200 p-4">
+            <p className="text-sm font-semibold text-gray-700 mb-2">{label}</p>
+            {last ? (
+              <div className="flex items-baseline gap-3 flex-wrap">
+                <span className="text-sm text-gray-400">{last.stat_date?.slice(0, 7)}</span>
+                <span className={`text-xl font-bold ${color}`}>
+                  {usdBil(last.amount_usd_billion)}
+                </span>
+                <span className="text-sm text-gray-400">
+                  ({krwTril(last.amount_usd_billion * FIXED_FX / 1000)})
+                </span>
+              </div>
+            ) : (
+              <p className="text-gray-400">-</p>
+            )}
+          </div>
+        ))}
+      </div>
 
       <div className="flex flex-wrap gap-3 mb-5">
         <div className="flex gap-1">
@@ -108,65 +208,37 @@ export default function TreasuryPage() {
         </button>
       </div>
 
-      {lastPt && (
-        <div className="grid grid-cols-2 gap-3 mb-5">
-          {[
-            { country: "일본", code: "JPN", key: "japan" as const, color: "text-blue-600" },
-            { country: "중국", code: "CHN", key: "china" as const, color: "text-red-600" },
-          ].map(({ country, code, key, color }) => {
-            const last = rows.filter(r => r.country_code === code).slice(-1)[0]
-            return (
-              <div key={key} className="bg-white rounded-xl border border-gray-200 p-4">
-                <p className="text-xs text-gray-500">{country} 최근 보유액</p>
-                <p className={`text-xl font-bold mt-1 ${color}`}>
-                  {last ? `${fmtUsd(last.amount_usd_billion)} 십억달러` : "-"}
-                </p>
-                {last?.amount_krw_trillion != null && (
-                  <p className="text-sm text-gray-600 mt-0.5">
-                    ≈ {fmtKrw(last.amount_krw_trillion)} 조원
-                    {last.fx_rate && <span className="text-xs text-gray-400 ml-1">({last.fx_rate.toLocaleString()} 원/달러)</span>}
-                  </p>
-                )}
-                <p className="text-xs text-gray-400 mt-0.5">{last?.stat_date ?? ""}</p>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
       {loading && <p className="text-center text-gray-400 py-8">로딩 중...</p>}
 
       {!loading && chartData.length > 0 && (
         <div className="space-y-4">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-400 mb-2">단위: {unitLabel}</p>
             <ResponsiveContainer width="100%" height={320}>
               <LineChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis
                   dataKey="date"
-                  tick={{ fontSize: 11, fill: "#374151" }}
+                  tick={{ fontSize: 12, fill: "#374151" }}
                   tickFormatter={(v) => v.slice(0, 7)}
                   interval="preserveStartEnd"
                 />
                 <YAxis
-                  tick={{ fontSize: 11, fill: "#374151" }}
+                  tick={{ fontSize: 12, fill: "#374151" }}
                   tickFormatter={(v) => Number(v).toLocaleString()}
                   width={80}
                 />
-                <Tooltip
-                  formatter={(v: unknown, name: unknown) => [
-                    `${Number(v).toLocaleString("ko-KR", { maximumFractionDigits: 1 })} ${unitLabel}`,
-                    String(name),
-                  ]}
-                  labelFormatter={(l) => String(l)}
-                  contentStyle={{ fontSize: 12, padding: "5px 10px", border: "1px solid #e5e7eb", borderRadius: 6 }}
-                  labelStyle={{ fontSize: 11, fontWeight: 600, color: "#374151", marginBottom: 2 }}
-                  itemStyle={{ fontSize: 12, padding: "1px 0" }}
-                />
+                <Tooltip content={<CustomTooltip />} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Line type="monotone" dataKey="japan" stroke="#3b82f6" dot={false} strokeWidth={2} name="일본" connectNulls />
-                <Line type="monotone" dataKey="china" stroke="#ef4444" dot={false} strokeWidth={2} name="중국" connectNulls />
+                <Line
+                  type="monotone"
+                  dataKey={unit === "usd" ? "japanUsd" : "japanKrw"}
+                  stroke="#3b82f6" dot={false} strokeWidth={2} name="일본" connectNulls
+                />
+                <Line
+                  type="monotone"
+                  dataKey={unit === "usd" ? "chinaUsd" : "chinaKrw"}
+                  stroke="#ef4444" dot={false} strokeWidth={2} name="중국" connectNulls
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -176,27 +248,54 @@ export default function TreasuryPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 sticky top-0">
                   <tr>
-                    <th className="px-4 py-2 text-left text-gray-700 font-medium" rowSpan={2}>날짜</th>
-                    <th className="px-4 py-2 text-center text-blue-700 font-medium border-l border-gray-200" colSpan={2}>일본</th>
-                    <th className="px-4 py-2 text-center text-red-700 font-medium border-l border-gray-200" colSpan={2}>중국</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700" rowSpan={2}>날짜</th>
+                    <th className="px-4 py-2 text-center text-xs font-semibold text-blue-700 border-l border-gray-200" colSpan={6}>일본</th>
+                    <th className="px-4 py-2 text-center text-xs font-semibold text-red-700 border-l border-gray-200" colSpan={6}>중국</th>
                   </tr>
                   <tr>
-                    <th className="px-4 py-2 text-right text-gray-600 font-medium border-l border-gray-200">USD(십억달러)</th>
-                    <th className="px-4 py-2 text-right text-gray-600 font-medium">KRW(조원)</th>
-                    <th className="px-4 py-2 text-right text-gray-600 font-medium border-l border-gray-200">USD(십억달러)</th>
-                    <th className="px-4 py-2 text-right text-gray-600 font-medium">KRW(조원)</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700 border-l border-gray-200">금액(달러)</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">증감(달러)</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">증감률(달러)</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">금액(원)</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">증감(원)</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">증감률(원)</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700 border-l border-gray-200">금액(달러)</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">증감(달러)</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">증감률(달러)</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">금액(원)</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">증감(원)</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">증감률(원)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {tableData.map((r) => (
-                    <tr key={r.date} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 text-gray-700">{r.date}</td>
-                      <td className="px-4 py-2 text-right text-blue-700 font-medium border-l border-gray-100">{fmtUsd(r.jpnUsd)}</td>
-                      <td className="px-4 py-2 text-right text-blue-600">{fmtKrw(r.jpnKrw)}</td>
-                      <td className="px-4 py-2 text-right text-red-700 font-medium border-l border-gray-100">{fmtUsd(r.chnUsd)}</td>
-                      <td className="px-4 py-2 text-right text-red-600">{fmtKrw(r.chnKrw)}</td>
-                    </tr>
-                  ))}
+                  {tableData.map((r, i) => {
+                    const prev = tableData[i + 1]
+                    const jpnKrwDiff = r.jpnKrw != null && prev?.jpnKrw != null ? r.jpnKrw - prev.jpnKrw : null
+                    const jpnKrwRate = jpnKrwDiff != null && prev?.jpnKrw ? jpnKrwDiff / prev.jpnKrw * 100 : null
+                    const jpnUsdDiff = r.jpnUsd != null && prev?.jpnUsd != null ? r.jpnUsd - prev.jpnUsd : null
+                    const jpnUsdRate = jpnUsdDiff != null && prev?.jpnUsd ? jpnUsdDiff / prev.jpnUsd * 100 : null
+                    const chnKrwDiff = r.chnKrw != null && prev?.chnKrw != null ? r.chnKrw - prev.chnKrw : null
+                    const chnKrwRate = chnKrwDiff != null && prev?.chnKrw ? chnKrwDiff / prev.chnKrw * 100 : null
+                    const chnUsdDiff = r.chnUsd != null && prev?.chnUsd != null ? r.chnUsd - prev.chnUsd : null
+                    const chnUsdRate = chnUsdDiff != null && prev?.chnUsd ? chnUsdDiff / prev.chnUsd * 100 : null
+                    return (
+                      <tr key={r.date} className="hover:bg-gray-50">
+                        <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">{r.date}</td>
+                        <td className="px-3 py-2 text-sm text-right text-blue-700 font-medium border-l border-gray-100">{usdBil(r.jpnUsd)}</td>
+                        <td className={`px-3 py-2 text-sm text-right font-medium ${cc(jpnUsdDiff)}`}>{usdBilDiff(jpnUsdDiff)}</td>
+                        <td className={`px-3 py-2 text-sm text-right font-medium ${cc(jpnUsdRate)}`}>{jpnUsdRate == null ? "-" : (jpnUsdRate > 0 ? "+" : "") + fmt(jpnUsdRate, 1) + "%"}</td>
+                        <td className="px-3 py-2 text-sm text-right text-blue-500">{krwTril(r.jpnKrw)}</td>
+                        <td className={`px-3 py-2 text-sm text-right font-medium ${cc(jpnKrwDiff)}`}>{krwTrilDiff(jpnKrwDiff)}</td>
+                        <td className={`px-3 py-2 text-sm text-right font-medium ${cc(jpnKrwRate)}`}>{jpnKrwRate == null ? "-" : (jpnKrwRate > 0 ? "+" : "") + fmt(jpnKrwRate, 1) + "%"}</td>
+                        <td className="px-3 py-2 text-sm text-right text-red-700 font-medium border-l border-gray-100">{usdBil(r.chnUsd)}</td>
+                        <td className={`px-3 py-2 text-sm text-right font-medium ${cc(chnUsdDiff)}`}>{usdBilDiff(chnUsdDiff)}</td>
+                        <td className={`px-3 py-2 text-sm text-right font-medium ${cc(chnUsdRate)}`}>{chnUsdRate == null ? "-" : (chnUsdRate > 0 ? "+" : "") + fmt(chnUsdRate, 1) + "%"}</td>
+                        <td className="px-3 py-2 text-sm text-right text-red-500">{krwTril(r.chnKrw)}</td>
+                        <td className={`px-3 py-2 text-sm text-right font-medium ${cc(chnKrwDiff)}`}>{krwTrilDiff(chnKrwDiff)}</td>
+                        <td className={`px-3 py-2 text-sm text-right font-medium ${cc(chnKrwRate)}`}>{chnKrwRate == null ? "-" : (chnKrwRate > 0 ? "+" : "") + fmt(chnKrwRate, 1) + "%"}</td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

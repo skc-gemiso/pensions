@@ -160,6 +160,27 @@ export async function getFxSeries(months?: number) {
   }))
 }
 
+export async function getCollectLogRecent() {
+  const pool = getPensionPool()
+  const { rows } = await pool.query<{
+    log_id: number
+    collector_name: string
+    target_name: string | null
+    stat_date: string | null
+    started_at: string | null
+    finished_at: string | null
+    status: string
+    row_count: number | null
+    message: string | null
+  }>(
+    `SELECT log_id, collector_name, target_name, stat_date, started_at, finished_at, status, row_count, message
+     FROM usa_collect_log
+     ORDER BY started_at DESC NULLS LAST
+     LIMIT 60`
+  )
+  return rows
+}
+
 export async function getCollectLastRun() {
   const pool = getPensionPool()
   const { rows } = await pool.query<{
