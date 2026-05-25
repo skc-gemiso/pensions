@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useSession } from "next-auth/react"
 import AppLayout from "@/components/AppLayout"
-import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts"
+import { BarChart, Bar, XAxis, ResponsiveContainer, Tooltip } from "recharts"
 import { getIndicatorLatest, getCollectLastRun, triggerUsaCollect, getUsaCollectStatusAction } from "./actions"
 import type { IndicatorCard } from "./actions"
 
@@ -35,25 +35,37 @@ function ChangeChip({ current, prev }: { current: number | null; prev: number | 
   const isNeg = diff < 0
   const cls = isPos ? "text-red-600 bg-red-50" : isNeg ? "text-blue-600 bg-blue-50" : "text-gray-500 bg-gray-50"
   return (
-    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${cls}`}>
-      {isPos ? "+" : ""}{Number(diff).toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${cls}`} title="직전 기간 대비 변화량">
+      전월 대비 {isPos ? "+" : ""}{Number(diff).toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
     </span>
   )
 }
 
-function SparkLine({ data, color }: { data: { date: string; value: number }[]; color: string }) {
+const COLLECTOR_LABELS: Record<string, string> = {
+  fred:   "미국 연방준비제도 경제 데이터 수집",
+  fxrate: "원/달러 환율 수집",
+  tic:    "미국 국채 금리 수집",
+}
+
+function SparkLine({ data, color, name, unit }: { data: { date: string; value: number }[]; color: string; name: string; unit: string }) {
   return (
     <ResponsiveContainer width="100%" height={50}>
-      <LineChart data={data} margin={{ top: 4, right: 4, left: 4, bottom: 4 }}>
-        <Line dataKey="value" stroke={color} dot={false} strokeWidth={1.5} isAnimationActive={false} />
+      <BarChart data={data} margin={{ top: 4, right: 4, left: 4, bottom: 4 }} barCategoryGap="15%">
+        <XAxis dataKey="date" hide />
+        <Bar dataKey="value" fill={color} radius={[2, 2, 0, 0]} isAnimationActive={false} />
         <Tooltip
-          formatter={(v: unknown) => [Number(v).toLocaleString(), ""]}
-          labelFormatter={(l) => String(l)}
+          formatter={(v: unknown) => [fmt(Number(v), unit), name]}
+          labelFormatter={(l) => {
+            const s = String(l)
+            if (s.length >= 7) return `${s.slice(0, 4)}년 ${parseInt(s.slice(5, 7))}월`
+            return s
+          }}
           contentStyle={{ fontSize: 12, padding: "5px 10px", border: "1px solid #e5e7eb", borderRadius: 6 }}
           labelStyle={{ fontSize: 11, fontWeight: 600, color: "#374151", marginBottom: 2 }}
           itemStyle={{ fontSize: 12, padding: "1px 0" }}
+          cursor={{ fill: "#f3f4f6" }}
         />
-      </LineChart>
+      </BarChart>
     </ResponsiveContainer>
   )
 }
@@ -114,7 +126,7 @@ export default function UsaDashboardPage() {
   return (
     <AppLayout>
       <div className="max-w-7xl mx-auto">
-      <h1 className="text-xl font-bold text-gray-900 mb-1">미국 경제 지표</h1>
+      <h1 className="text-xl font-bold text-gray-900 mb-1">미국 경제 지표 수집</h1>
       <p className="text-sm text-gray-500 mb-4">FRED 주요 경제 지표 최신값 및 추이</p>
 
       {/* Admin 수집 패널 */}
@@ -124,7 +136,7 @@ export default function UsaDashboardPage() {
           <ul className="text-sm text-blue-700 space-y-1 mb-4">
             <li>• <span className="font-medium">자동 수집</span>: 매주 월요일 09:00 자동 실행</li>
             <li>• <span className="font-medium">수집 대상</span>: FRED 경제지표 · 미국 국채 보유(TIC)</li>
-            <li>• <span className="font-medium">환율 수집</span>: "USD/KRW 환율" 메뉴에서 별도 관리</li>
+            <li>• <span className="font-medium">환율 수집</span>: "원/달러 환율 조회" 메뉴에서 별도 관리</li>
           </ul>
 
           <div className="flex items-center gap-4 mb-4">
@@ -163,7 +175,7 @@ export default function UsaDashboardPage() {
               <tbody className="divide-y divide-gray-100">
                 {lastRuns.map((r) => (
                   <tr key={r.collector_name}>
-                    <td className="px-3 py-2 font-medium text-gray-800">{r.collector_name}</td>
+                    <td className="px-3 py-2 font-medium text-gray-800">{COLLECTOR_LABELS[r.collector_name] ?? r.collector_name}</td>
                     <td className="px-3 py-2 text-gray-500">
                       {r.last_run ? new Date(r.last_run).toLocaleString("ko-KR") : "—"}
                     </td>
@@ -204,7 +216,7 @@ export default function UsaDashboardPage() {
                   <span className="text-xs text-gray-400 shrink-0 mt-0.5">{c.unit}</span>
                 </div>
 
-                <SparkLine data={c.spark} color={sparkColor} />
+                <SparkLine data={c.spark} color={sparkColor} name={c.indicator_name} unit={c.unit} />
 
                 <div className="flex items-end justify-between">
                   <div>

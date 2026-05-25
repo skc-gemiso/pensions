@@ -7,11 +7,13 @@
 ```
 app/invest/etf/
 ├── page.tsx                        수집 이력 + 수동 실행 (클라이언트)
-├── holdings/page.tsx               종목별 주가 조회 (클라이언트)
+├── holdings/page.tsx               종목 주가 조회 (클라이언트)
 ├── analysis/
 │   ├── price-rise/page.tsx         주가 상승 분석 (클라이언트)
 │   └── volume-change/page.tsx      수량 변동 분석 (클라이언트)
 ├── recommend/page.tsx              추천 종목 (클라이언트)
+├── components/
+│   └── StockSeriesPanel.tsx        공통 차트+테이블 패널 (주가·비중 추이 / 종목 추세 / 날짜별 테이블)
 └── actions.ts                      서버 액션 (DB 조회 + 수집 실행)
 
 lib/
@@ -110,7 +112,10 @@ const pool = new Pool({
 | `HoldingsChart` | 주가·비중 이중 라인 차트 |
 | `RankBarChart` | TOP 20 가로 바차트 (클릭 → 상세 시계열) |
 | `ScoreBadge` | 점수 뱃지 (0~39pt: 회색, 40~69pt: 파랑, 70pt+: 초록) |
+| `StockSeriesPanel` | 공통 차트+테이블 패널 — 주가 추이 + 비중(%) 추이 + 종목 추세(4지표 0~100 정규화) + 날짜별 상세 테이블. holdings·price-rise·volume-change·recommend 4개 화면에서 공통 사용. `ChartPoint` 타입 export |
 | 요약 테이블 패턴 | 모든 화면 공통: 5열(항목/기초/기말/변화/변동(%)), 4행(주가/비중/수량/투자금액). 상세 영역과 카드 그리드 모두 동일 구조 |
+| ETF 소개 카드 패턴 | holdings·price-rise·volume-change·recommend 공통: IEMG/EEM/EWY 3열 그리드, iShares 최신 자료 보기 링크 버튼 포함 |
+| ETF 요약 카드 패턴 | 4개 화면 공통: `getEtfSummary(days?)` 결과 → ETF별 보유금액·증감·분석기간·기초금액·3ETF 비중·종목당평균 3열 카드 |
 
 ## 숫자 유틸리티
 

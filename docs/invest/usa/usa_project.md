@@ -17,10 +17,10 @@ FRED(미국 연방준비제도 경제 데이터), 미국 재무부 TIC, Frankfur
 
 ```
 /invest/usa                         미국 경제지표
-├── /invest/usa                     대시보드 (6개 지표 최신값 카드)
+├── /invest/usa                     미국 경제 지표 수집 (6개 지표 최신값 카드)
 ├── /invest/usa/indicator           지표별 시계열 차트
 ├── /invest/usa/treasury            미국 국채 보유 현황 (일본·중국)
-└── /invest/usa/fx                  USD/KRW 환율 추이
+└── /invest/usa/fx                  원/달러 환율 조회
 ```
 
 ---
@@ -54,7 +54,7 @@ FRED(미국 연방준비제도 경제 데이터), 미국 재무부 TIC, Frankfur
 | 기간 선택 | 1년 / 2년 / 5년 / 전체 |
 | 상세 테이블 | 날짜, 일본/중국 USD·KRW 금액 |
 
-### USD/KRW 환율 추이 (`/invest/usa/fx`)
+### 원/달러 환율 조회 (`/invest/usa/fx`)
 
 | 기능 | 설명 |
 |------|------|

@@ -74,8 +74,8 @@ export default function FxPage() {
   return (
     <AppLayout>
       <div className="max-w-7xl mx-auto">
-      <h1 className="text-xl font-bold text-gray-900 mb-1">USD/KRW 환율</h1>
-      <p className="text-sm text-gray-500 mb-4">일별 USD/KRW 환율 추이</p>
+      <h1 className="text-xl font-bold text-gray-900 mb-1">원/달러 환율 조회</h1>
+      <p className="text-sm text-gray-500 mb-4">일별 원/달러 환율 추이</p>
 
       {isAdmin && (
         <div className="flex items-center gap-4 mb-5 p-4 bg-blue-50 border border-blue-200 rounded-xl">

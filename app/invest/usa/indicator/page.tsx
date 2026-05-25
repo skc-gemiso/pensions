@@ -54,7 +54,7 @@ export default function IndicatorPage() {
   return (
     <AppLayout>
       <div className="max-w-7xl mx-auto">
-      <h1 className="text-xl font-bold text-gray-900 mb-1">경제 지표 시계열</h1>
+      <h1 className="text-xl font-bold text-gray-900 mb-1">경제 지표</h1>
       <p className="text-sm text-gray-500 mb-4">FRED 지표별 시계열 추이를 확인합니다.</p>
 
       <div className="flex flex-wrap gap-3 mb-5">

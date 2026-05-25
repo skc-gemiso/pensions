@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react"
 import AppLayout from "@/components/AppLayout"
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import { getRecommend, getStockSeries, getStockEtfWeights, getEtfSummary } from "../actions"
 import { fmt, fmtKRW, fmtShares } from "@/lib/fmt"
+import { StockSeriesPanel } from "../components/StockSeriesPanel"
 
 const ETF_LIST = [
   { value: "ALL",  label: "전체 ETF" },
@@ -27,6 +27,12 @@ const ETF_INFO: Record<string, { short: string; desc: string }> = {
   EWY:  { short: "iShares MSCI South Korea ETF",           desc: "한국 단일국가 ETF · MSCI Korea 지수 추종" },
 }
 
+const ETF_PRODUCT_PAGES: Record<string, string> = {
+  IEMG: "https://www.ishares.com/us/products/244050/ishares-core-msci-emerging-markets-etf",
+  EEM:  "https://www.ishares.com/us/products/239637/ishares-msci-emerging-markets-etf",
+  EWY:  "https://www.ishares.com/us/products/239681/ishares-msci-south-korea-capped-etf",
+}
+
 type Stock = {
   ticker: string; name: string; sector: string; location: string
   last_price: number; last_weight: number; last_shares: number
@@ -39,12 +45,6 @@ type EtfSummaryRow = {
   etf_ticker: string; last_date: string; first_date: string
   last_mv_krw: number; first_mv_krw: number
   mv_change_krw: number; mv_change_pct: number; stock_count: number
-}
-
-const TT = {
-  contentStyle: { fontSize: 12, padding: "5px 10px", border: "1px solid #e5e7eb", borderRadius: 6 },
-  labelStyle:   { fontSize: 11, fontWeight: 600 as const, color: "#374151", marginBottom: 2 },
-  itemStyle:    { fontSize: 12, padding: "1px 0" },
 }
 
 type ScoreDetail = { total: number; weight: number; shares: number; price: number }
@@ -191,7 +191,19 @@ export default function RecommendPage() {
               <div key={k} className={`rounded-lg border px-3 py-2 transition-opacity ${active ? "border-gray-200 bg-white" : "border-gray-100 bg-gray-50 opacity-40"}`}>
                 <div className="flex items-center gap-2 mb-0.5">
                   <span className="font-bold text-sm text-blue-700">{k}</span>
-                  <span className="text-xs text-gray-500 truncate">{info.short}</span>
+                  <span className="text-xs text-gray-500 truncate flex-1">{info.short}</span>
+                  <a
+                    href={ETF_PRODUCT_PAGES[k]}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                    </svg>
+                    최신 자료 보기
+                  </a>
                 </div>
                 <p className="text-xs text-gray-400">{info.desc}</p>
               </div>
@@ -461,89 +473,7 @@ export default function RecommendPage() {
                   })()}
                 </div>
 
-                {chartData.length > 0 && (
-                  <>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-                      <div className="bg-white rounded-xl border border-gray-200 p-4">
-                        <h3 className="text-sm font-semibold text-gray-800 mb-3">주가 추이</h3>
-                        <ResponsiveContainer width="100%" height={220}>
-                          <LineChart data={chartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                            <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#374151" }} tickFormatter={(v) => v.slice(5)} />
-                            <YAxis tick={{ fontSize: 10, fill: "#374151" }} domain={["auto", "auto"]} />
-                            <Tooltip formatter={(v: unknown) => fmt(v as number, 0)} labelFormatter={(l) => String(l)} {...TT} />
-                            <Line type="monotone" dataKey="price_krw" stroke="#2563eb" dot={false} strokeWidth={2} name="주가(KRW)" />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div className="bg-white rounded-xl border border-gray-200 p-4">
-                        <h3 className="text-sm font-semibold text-gray-800 mb-3">비중(%) 추이</h3>
-                        <ResponsiveContainer width="100%" height={220}>
-                          <LineChart data={chartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                            <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#374151" }} tickFormatter={(v) => v.slice(5)} />
-                            <YAxis tick={{ fontSize: 10, fill: "#374151" }} domain={["auto", "auto"]} />
-                            <Tooltip formatter={(v: unknown) => `${fmt(v as number, 1)}%`} labelFormatter={(l) => String(l)} {...TT} />
-                            <Line type="monotone" dataKey="weight" stroke="#16a34a" dot={false} strokeWidth={2} name="비중" />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead className="bg-gray-50 border-b border-gray-200">
-                            <tr>
-                              {["날짜", "주가", "주가 증감", "보유 비중", "비중 증감률", "보유수량", "수량 증감", "총 보유 금액", "보유 금액 증감"].map((h, i) => (
-                                <th key={h} className={`px-4 py-3 text-xs font-semibold text-gray-700 ${i === 0 ? "text-left" : "text-right"}`}>{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {(() => {
-                              const rev = [...chartData].reverse()
-                              return rev.map((row, i) => {
-                                const prevRow = rev[i + 1]
-                                const priceDiff  = prevRow ? row.price_krw - prevRow.price_krw : null
-                                const pctChg     = prevRow && prevRow.price_krw > 0
-                                  ? ((row.price_krw - prevRow.price_krw) / prevRow.price_krw) * 100 : null
-                                const sharesDiff = prevRow ? row.shares - prevRow.shares : null
-                                const nationDiff = prevRow ? row.nation_value - prevRow.nation_value : null
-                                const isKrw = row.market_currency === "KRW"
-                                const priceDisplay = isKrw
-                                  ? fmt(row.price_krw, 0)
-                                  : `${fmt(row.price_krw, 0)} (USD ${fmt(row.price, 4)})`
-                                const cc = (v: number | null) => v == null ? "text-gray-400" : v > 0 ? "text-red-600" : v < 0 ? "text-blue-600" : "text-gray-400"
-                                return (
-                                  <tr key={row.date} className="hover:bg-gray-50">
-                                    <td className="px-4 py-2.5 text-left text-gray-700">{row.date}</td>
-                                    <td className="px-4 py-2.5 text-right text-gray-900 font-medium">{priceDisplay}</td>
-                                    <td className={`px-4 py-2.5 text-right font-medium ${cc(priceDiff)}`}>
-                                      {priceDiff != null ? `${priceDiff > 0 ? "+" : ""}${fmt(priceDiff, 0)}` : "-"}
-                                    </td>
-                                    <td className="px-4 py-2.5 text-right text-gray-900 font-medium">{fmt(row.weight, 1)}%</td>
-                                    <td className={`px-4 py-2.5 text-right font-medium ${cc(pctChg)}`}>
-                                      {pctChg != null ? `${pctChg > 0 ? "+" : ""}${fmt(pctChg, 1)}%` : "-"}
-                                    </td>
-                                    <td className="px-4 py-2.5 text-right text-gray-900 font-medium">{fmt(row.shares, 0)}</td>
-                                    <td className={`px-4 py-2.5 text-right font-medium ${cc(sharesDiff)}`}>
-                                      {sharesDiff != null ? `${sharesDiff > 0 ? "+" : ""}${fmt(sharesDiff, 0)}` : "-"}
-                                    </td>
-                                    <td className="px-4 py-2.5 text-right text-gray-900 font-medium">{fmtKRW(row.nation_value)}</td>
-                                    <td className={`px-4 py-2.5 text-right font-medium ${cc(nationDiff)}`}>
-                                      {nationDiff != null ? `${nationDiff > 0 ? "+" : ""}${fmtKRW(nationDiff)}` : "-"}
-                                    </td>
-                                  </tr>
-                                )
-                              })
-                            })()}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </>
-                )}
+                {chartData.length > 0 && <StockSeriesPanel data={chartData} />}
               </>
             )}
           </>

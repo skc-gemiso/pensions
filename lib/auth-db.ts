@@ -313,10 +313,10 @@ async function _applyMigrations(): Promise<void> {
   if (v012.length === 0) {
     await pool.query(`
       INSERT INTO app_menus (id, label, href, parent_id, sort_order) VALUES
-        ('usa',           '미국 경제 지표', '/invest/usa',                'invest', 60),
+        ('usa',           '미국 경제 지표 수집', '/invest/usa',                'invest', 60),
         ('usa-indicator', '경제 지표',      '/invest/usa/indicator',      'invest', 70),
         ('usa-treasury',  '국채 보유',      '/invest/usa/treasury',       'invest', 80),
-        ('usa-fx',        'USD/KRW 환율',  '/invest/usa/fx',             'invest', 90)
+        ('usa-fx',        '원/달러 환율 조회',  '/invest/usa/fx',             'invest', 90)
       ON CONFLICT (id) DO NOTHING
     `)
     await pool.query(`

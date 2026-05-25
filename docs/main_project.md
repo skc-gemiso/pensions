@@ -22,15 +22,15 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 /invest                                  투자 분석
 ├── 글로벌 ETF 분석 (etf-group)
 │   ├── /invest/etf                      글로벌 ETF 데이터 수집 (IEMG·EEM·EWY 보유 종목)
-│   ├── /invest/etf/holdings             종목별 주가 조회
+│   ├── /invest/etf/holdings             종목 주가 조회
 │   ├── /invest/etf/analysis/price-rise  주가 상승 분석
 │   ├── /invest/etf/analysis/volume-change 수량 변동 분석
 │   └── /invest/etf/recommend            추천 종목
 └── 미국 경제 지표 분석 (usa-group)
-    ├── /invest/usa                      대시보드
+    ├── /invest/usa                      미국 경제 지표 수집
     ├── /invest/usa/indicator            지표별 시계열
     ├── /invest/usa/treasury             미국 국채 보유
-    └── /invest/usa/fx                   USD/KRW 환율
+    └── /invest/usa/fx                   원/달러 환율 조회
 /login                           로그인
 /register                        회원가입
 ```
@@ -142,7 +142,7 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 | 기능 | 설명 |
 |------|------|
 | 수집 이력 | ETF 보유 종목 수집 이력 조회·수동 실행 |
-| 종목별 주가 조회 | IEMG/EEM/EWY 종목 검색 + 주가·비중 추이 차트 |
+| 종목 주가 조회 | IEMG/EEM/EWY 종목 검색 + 주가·비중 추이 차트 |
 | 주가 상승 분석 | 수집 기간 내 상승률 TOP 20 바차트 |
 | 수량 변동 분석 | 보유 수량 변동폭 TOP 20 바차트 |
 | 추천 종목 | 비중·수량·주가 모멘텀 기반 스코어링 카드 |
@@ -160,7 +160,7 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 | `usa` | `/invest/usa` | FRED 7개 지표 최신값 카드 + 스파크라인 대시보드 |
 | `usa-indicator` | `/invest/usa/indicator` | 지표 선택 + 기간 필터 + 시계열 차트 + 테이블 |
 | `usa-treasury` | `/invest/usa/treasury` | 일본·중국 미국 국채 보유액 이중 라인 차트 (USD/KRW 전환) |
-| `usa-fx` | `/invest/usa/fx` | USD/KRW 월별 환율 차트 + 평균 기준선 + 테이블 |
+| `usa-fx` | `/invest/usa/fx` | 원/달러 환율 조회 월별 환율 차트 + 평균 기준선 + 테이블 |
 
 - 참고 파일: [app/invest/usa/](../app/invest/usa/)
 - 수집기: [collector/usa/](../collector/usa/) (완성)
