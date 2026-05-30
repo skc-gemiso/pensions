@@ -393,39 +393,80 @@ export default function StockPage() {
                 )}
 
                 {!chartLoading && chartData.length > 0 && (
-                  <ResponsiveContainer width="100%" height={240}>
-                    <LineChart data={chartData} margin={{ top: 5, right: 14, left: 0, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis
-                        dataKey="date"
-                        tick={{ fontSize: 10, fill: "#374151" }}
-                        tickFormatter={(v) => String(v).slice(0, 7)}
-                        interval="preserveStartEnd"
-                      />
-                      <YAxis
-                        tick={{ fontSize: 10, fill: "#374151" }}
-                        tickFormatter={(v) => Number(v).toLocaleString()}
-                        domain={["auto", "auto"]}
-                        width={72}
-                      />
-                      <Tooltip
-                        formatter={(v: unknown) => [`${fmt(Number(v))} 원`, "종가"]}
-                        labelFormatter={(l) => String(l)}
-                        contentStyle={{ fontSize: 12, padding: "5px 10px", border: "1px solid #e5e7eb", borderRadius: 6 }}
-                        labelStyle={{ fontSize: 11, fontWeight: 600, color: "#374151", marginBottom: 2 }}
-                        itemStyle={{ fontSize: 12, padding: "1px 0" }}
-                      />
-                      {chartAvg != null && (
-                        <ReferenceLine
-                          y={chartAvg}
-                          stroke="#9ca3af"
-                          strokeDasharray="4 2"
-                          label={{ value: `평균 ${fmt(chartAvg)}`, position: "insideTopRight", fontSize: 9, fill: "#9ca3af" }}
+                  <>
+                    <ResponsiveContainer width="100%" height={240}>
+                      <LineChart data={chartData} margin={{ top: 5, right: 14, left: 0, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis
+                          dataKey="date"
+                          tick={{ fontSize: 10, fill: "#374151" }}
+                          tickFormatter={(v) => String(v).slice(0, 7)}
+                          interval="preserveStartEnd"
                         />
-                      )}
-                      <Line type="monotone" dataKey="amt" stroke="#2563eb" dot={false} strokeWidth={2} name="종가" />
-                    </LineChart>
-                  </ResponsiveContainer>
+                        <YAxis
+                          tick={{ fontSize: 10, fill: "#374151" }}
+                          tickFormatter={(v) => Number(v).toLocaleString()}
+                          domain={["auto", "auto"]}
+                          width={72}
+                        />
+                        <Tooltip
+                          formatter={(v: unknown) => [`${fmt(Number(v))} 원`, "종가"]}
+                          labelFormatter={(l) => String(l)}
+                          contentStyle={{ fontSize: 12, padding: "5px 10px", border: "1px solid #e5e7eb", borderRadius: 6 }}
+                          labelStyle={{ fontSize: 11, fontWeight: 600, color: "#374151", marginBottom: 2 }}
+                          itemStyle={{ fontSize: 12, padding: "1px 0" }}
+                        />
+                        {chartAvg != null && (
+                          <ReferenceLine
+                            y={chartAvg}
+                            stroke="#9ca3af"
+                            strokeDasharray="4 2"
+                            label={{ value: `평균 ${fmt(chartAvg)}`, position: "insideTopRight", fontSize: 9, fill: "#9ca3af" }}
+                          />
+                        )}
+                        <Line type="monotone" dataKey="amt" stroke="#2563eb" dot={false} strokeWidth={2} name="종가" />
+                      </LineChart>
+                    </ResponsiveContainer>
+
+                    {/* 일자별 주가 테이블 */}
+                    <div className="border border-gray-100 rounded-lg overflow-hidden">
+                      <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-50 sticky top-0">
+                            <tr>
+                              {["날짜", "종가", "전일 대비", "등락률"].map((h) => (
+                                <th
+                                  key={h}
+                                  className={`px-3 py-2 text-xs font-semibold text-gray-700 ${h === "날짜" ? "text-left" : "text-right"}`}
+                                >
+                                  {h}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {[...chartData].reverse().map((row, i, arr) => {
+                              const prevAmt = arr[i + 1]?.amt ?? null
+                              const change     = prevAmt != null ? row.amt - prevAmt : null
+                              const changeRate = (change != null && prevAmt) ? (change / prevAmt) * 100 : null
+                              return (
+                                <tr key={row.date} className="hover:bg-gray-50">
+                                  <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap">{row.date}</td>
+                                  <td className="px-3 py-1.5 text-right font-medium text-gray-900">{fmt(row.amt)}원</td>
+                                  <td className={`px-3 py-1.5 text-right font-medium ${cc(change)}`}>
+                                    {change != null ? `${change > 0 ? "+" : ""}${fmt(change)}` : "-"}
+                                  </td>
+                                  <td className={`px-3 py-1.5 text-right font-medium ${cc(changeRate)}`}>
+                                    {changeRate != null ? `${changeRate > 0 ? "+" : ""}${fmt(changeRate, 2)}%` : "-"}
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
             )}
