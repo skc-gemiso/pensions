@@ -19,6 +19,8 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
     └── /pension/seni            노령연금 (진행 중)
 /sim                             연금투자 시뮬레이션 (ETF 비교)
 /magic                           복리의 마법 (복리 계산기)
+/assets                          자산 (admin 전용)
+└── /assets/stock                주식 투자 (my_stock / f_stock_amt)
 /invest                                  투자 분석
 ├── 글로벌 ETF 분석 (etf-group)
 │   ├── /invest/etf                      글로벌 ETF 데이터 수집 (IEMG·EEM·EWY 보유 종목)
@@ -134,6 +136,22 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 
 - 참고 파일: [app/magic/page.tsx](../app/magic/page.tsx)
 - 상세 문서: [magic/magic_project.md](magic/magic_project.md), [magic/magic_task.md](magic/magic_task.md)
+
+---
+
+### 주식 투자 (`/assets/stock`) — admin 전용
+
+| 기능 | 설명 |
+|------|------|
+| 실시간 포트폴리오 | my_stock 잔고 + 네이버 금융 실시간 현재가로 평가금액·손익·수익률 표시 |
+| 종목별 주가 차트 | 종목 선택 시 f_stock_amt 일별 주가 라인 차트 (기간 필터) |
+| 네이버 주가 가져오기 | m.stock.naver.com candle API로 일별 주가 500건 수집 후 f_stock_amt 저장 |
+| 매입/매도 내역 추가 | my_stock에 거래 내역 입력 (구분/일자/종목코드/유형/단가/수량) |
+| 거래 내역 조회·삭제 | 전체 거래 내역 테이블 + 개별 삭제 |
+
+- 참고 파일: [app/assets/stock/page.tsx](../app/assets/stock/page.tsx), [app/assets/stock/actions.ts](../app/assets/stock/actions.ts)
+- API 라우트: [app/api/stock/price/route.ts](../app/api/stock/price/route.ts), [app/api/stock/daily/route.ts](../app/api/stock/daily/route.ts)
+- DB 마이그레이션: `v015_add_stock_menu` (lib/auth-db.ts)
 
 ---
 

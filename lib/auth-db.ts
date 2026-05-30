@@ -396,6 +396,24 @@ async function _applyMigrations(): Promise<void> {
     )
   }
 
+  // v015: 자산 > 주식 투자 메뉴 추가 (admin 전용)
+  const { rows: v015 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v015_add_stock_menu'"
+  )
+  if (v015.length === 0) {
+    await pool.query(`
+      INSERT INTO app_menus (id, label, href, parent_id, sort_order)
+      VALUES ('stock', '주식 투자', '/assets/stock', 'assets', 10)
+      ON CONFLICT (id) DO NOTHING
+    `)
+    await pool.query(`
+      INSERT INTO app_role_menus (role, menu_id)
+      VALUES ('admin', 'stock')
+      ON CONFLICT DO NOTHING
+    `)
+    await pool.query("INSERT INTO app_migrations (name) VALUES ('v015_add_stock_menu')")
+  }
+
   // v010: 메뉴 ID 단축 (savings-fund→sim, compound-magic→magic, personal-pension→per 등)
   const { rows: v010 } = await pool.query<{ name: string }>(
     "SELECT name FROM app_migrations WHERE name = 'v010_shorten_menu_ids'"

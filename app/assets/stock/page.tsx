@@ -1,0 +1,628 @@
+"use client"
+
+import { useEffect, useState, useCallback } from "react"
+import AppLayout from "@/components/AppLayout"
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, ReferenceLine,
+} from "recharts"
+import { fmt, cc, fmtKRW } from "@/lib/fmt"
+import {
+  getHoldings, getTransactions, addTransaction, deleteTransaction,
+  getDailyPrices, fetchAndSaveNaverPrices,
+  type StockHolding, type StockTransaction, type DailyPrice,
+} from "./actions"
+
+type NaverPrice = { price: number; change: number; changeRate: number; name: string; volume: number }
+
+type FormState = {
+  cnt: "1" | "2"
+  stock_type: "1" | "2"
+  stock_code: string
+  s_date: string
+  qty: string
+  s_amt: string
+}
+
+const today = new Date()
+const todayStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}`
+
+const EMPTY_FORM: FormState = {
+  cnt: "1",
+  stock_type: "1",
+  stock_code: "",
+  s_date: todayStr,
+  qty: "",
+  s_amt: "",
+}
+
+const CHART_PERIODS = [
+  { label: "1개월", days: 30 },
+  { label: "3개월", days: 90 },
+  { label: "6개월", days: 180 },
+  { label: "1년",   days: 365 },
+  { label: "전체",  days: 9999 },
+]
+
+function fmtDate(s: string) {
+  // YYYYMMDD → YYYY-MM-DD
+  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`
+}
+
+export default function StockPage() {
+  const [holdings, setHoldings]           = useState<StockHolding[]>([])
+  const [naverPrices, setNaverPrices]     = useState<Record<string, NaverPrice>>({})
+  const [pricesLoading, setPricesLoading] = useState(false)
+  const [selectedCode, setSelectedCode]   = useState<string | null>(null)
+  const [dailyPrices, setDailyPrices]     = useState<DailyPrice[]>([])
+  const [chartLoading, setChartLoading]   = useState(false)
+  const [chartDays, setChartDays]         = useState(365)
+  const [fetchingNaver, setFetchingNaver] = useState(false)
+  const [transactions, setTransactions]   = useState<StockTransaction[]>([])
+  const [txLoading, setTxLoading]         = useState(false)
+  const [showModal, setShowModal]         = useState(false)
+  const [form, setForm]                   = useState<FormState>(EMPTY_FORM)
+  const [submitting, setSubmitting]       = useState(false)
+  const [formError, setFormError]         = useState("")
+  const [activeTab, setActiveTab]         = useState<"portfolio" | "history">("portfolio")
+
+  const loadHoldings = useCallback(async () => {
+    const h = await getHoldings()
+    setHoldings(h)
+    return h
+  }, [])
+
+  const loadNaverPrices = useCallback(async (codes: string[]) => {
+    if (codes.length === 0) return
+    setPricesLoading(true)
+    try {
+      const res = await fetch(`/api/stock/price?codes=${codes.join(",")}`)
+      const data: Record<string, NaverPrice> = await res.json()
+      setNaverPrices(data)
+    } finally {
+      setPricesLoading(false)
+    }
+  }, [])
+
+  const loadDailyPrices = useCallback(async (code: string) => {
+    setChartLoading(true)
+    const prices = await getDailyPrices(code)
+    setDailyPrices(prices)
+    setChartLoading(false)
+  }, [])
+
+  const loadTransactions = useCallback(async () => {
+    setTxLoading(true)
+    const tx = await getTransactions()
+    setTransactions(tx)
+    setTxLoading(false)
+  }, [])
+
+  useEffect(() => {
+    loadHoldings().then((h) => {
+      if (h.length > 0) loadNaverPrices(h.map((x) => x.stock_code))
+    })
+    loadTransactions()
+  }, [loadHoldings, loadNaverPrices, loadTransactions])
+
+  useEffect(() => {
+    if (selectedCode) loadDailyPrices(selectedCode)
+    else setDailyPrices([])
+  }, [selectedCode, loadDailyPrices])
+
+  async function handleFetchNaver() {
+    if (!selectedCode) return
+    const holding = holdings.find((h) => h.stock_code === selectedCode)
+    const stockType = holding?.stock_type ?? 1
+    setFetchingNaver(true)
+    try {
+      const saved = await fetchAndSaveNaverPrices(selectedCode, stockType)
+      await loadDailyPrices(selectedCode)
+      alert(`${saved}건 저장 완료`)
+    } catch (e) {
+      alert(`오류: ${e instanceof Error ? e.message : "알 수 없는 오류"}`)
+    } finally {
+      setFetchingNaver(false)
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setFormError("")
+    if (!form.stock_code.trim()) { setFormError("종목코드를 입력하세요."); return }
+    if (form.s_date.length !== 8 || isNaN(Number(form.s_date))) { setFormError("일자 형식이 올바르지 않습니다 (YYYYMMDD)."); return }
+    const qty  = Number(form.qty)
+    const sAmt = Number(form.s_amt)
+    if (!qty || qty <= 0)   { setFormError("수량을 올바르게 입력하세요."); return }
+    if (!sAmt || sAmt <= 0) { setFormError("단가를 올바르게 입력하세요."); return }
+
+    setSubmitting(true)
+    try {
+      await addTransaction({
+        stock_code: form.stock_code.trim().toUpperCase(),
+        s_date: form.s_date,
+        cnt: Number(form.cnt),
+        stock_type: Number(form.stock_type),
+        qty,
+        s_amt: sAmt,
+      })
+      setShowModal(false)
+      setForm(EMPTY_FORM)
+      const h = await loadHoldings()
+      loadNaverPrices(h.map((x) => x.stock_code))
+      loadTransactions()
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "저장 실패")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleDelete(id: number) {
+    if (!confirm("이 거래 내역을 삭제하시겠습니까?")) return
+    await deleteTransaction(id)
+    const h = await loadHoldings()
+    loadNaverPrices(h.map((x) => x.stock_code))
+    loadTransactions()
+  }
+
+  // Chart data filtered by period
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - chartDays)
+  const chartData = dailyPrices
+    .filter((p) => chartDays === 9999 || new Date(p.s_date) >= cutoff)
+    .map((p) => ({ date: p.s_date, amt: p.amt }))
+  const chartAvg = chartData.length > 0
+    ? chartData.reduce((s, r) => s + r.amt, 0) / chartData.length
+    : null
+
+  // Portfolio with Naver prices merged
+  const portfolioRows = holdings.map((h) => {
+    const naver   = naverPrices[h.stock_code]
+    const curPrice = naver?.price ?? null
+    const evalAmt  = curPrice != null ? Math.round(curPrice * h.net_qty) : null
+    const pnl      = evalAmt != null ? evalAmt - h.total_buy_amount : null
+    const pnlRate  = (pnl != null && h.total_buy_amount > 0)
+      ? (pnl / h.total_buy_amount) * 100 : null
+    return { ...h, naver, curPrice, evalAmt, pnl, pnlRate }
+  })
+
+  const totalBuy   = portfolioRows.reduce((s, r) => s + r.total_buy_amount, 0)
+  const totalEval  = portfolioRows.reduce((s, r) => s + (r.evalAmt ?? 0), 0)
+  const totalPnl   = totalEval - totalBuy
+  const totalRate  = totalBuy > 0 ? (totalPnl / totalBuy) * 100 : null
+
+  return (
+    <AppLayout>
+      <div className="max-w-7xl mx-auto space-y-5">
+
+        {/* 헤더 */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">주식 투자</h1>
+            <p className="text-xs text-gray-500 mt-0.5">실시간 평가 현황 및 거래 내역 관리</p>
+          </div>
+          <button
+            onClick={() => { setForm(EMPTY_FORM); setFormError(""); setShowModal(true) }}
+            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            + 매입/매도 내역 추가
+          </button>
+        </div>
+
+        {/* 탭 */}
+        <div className="flex gap-1 border-b border-gray-200">
+          {(["portfolio", "history"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === tab
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {tab === "portfolio" ? "포트폴리오" : "거래 내역"}
+            </button>
+          ))}
+        </div>
+
+        {/* ── 포트폴리오 탭 ── */}
+        {activeTab === "portfolio" && (
+          <>
+            {/* 요약 카드 */}
+            {portfolioRows.length > 0 && (
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <p className="text-xs text-gray-500">총 매입금액</p>
+                  <p className="text-lg font-bold text-gray-900 mt-1">{fmtKRW(totalBuy)}</p>
+                </div>
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <p className="text-xs text-gray-500">총 평가금액</p>
+                  <p className={`text-lg font-bold mt-1 ${cc(totalEval - totalBuy)}`}>
+                    {pricesLoading ? "..." : fmtKRW(totalEval)}
+                  </p>
+                </div>
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <p className="text-xs text-gray-500">총 평가손익 / 수익률</p>
+                  <p className={`text-lg font-bold mt-1 ${cc(totalPnl)}`}>
+                    {pricesLoading ? "..." : (
+                      <>
+                        {totalPnl > 0 ? "+" : ""}{fmtKRW(totalPnl)}
+                        {totalRate != null && (
+                          <span className="text-sm ml-1">
+                            ({totalRate > 0 ? "+" : ""}{fmt(totalRate, 2)}%)
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* 포트폴리오 테이블 */}
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-gray-800">보유 종목</h2>
+                <div className="flex items-center gap-2">
+                  {pricesLoading && <span className="text-xs text-gray-400">실시간 조회 중...</span>}
+                  <button
+                    onClick={() => loadNaverPrices(holdings.map((h) => h.stock_code))}
+                    className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50"
+                  >
+                    새로고침
+                  </button>
+                </div>
+              </div>
+              {portfolioRows.length === 0 ? (
+                <p className="text-center text-gray-400 py-10 text-sm">보유 종목이 없습니다.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        {["종목코드", "종목명", "구분", "잔고", "평균매입가", "현재가", "매입금액", "평가금액", "평가손익", "수익률"].map((h) => (
+                          <th
+                            key={h}
+                            className={`px-3 py-2.5 text-xs font-semibold text-gray-700 whitespace-nowrap ${
+                              h === "종목코드" || h === "종목명" || h === "구분" ? "text-left" : "text-right"
+                            }`}
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {portfolioRows.map((r) => (
+                        <tr
+                          key={r.stock_code}
+                          onClick={() => setSelectedCode(selectedCode === r.stock_code ? null : r.stock_code)}
+                          className={`cursor-pointer transition-colors ${
+                            selectedCode === r.stock_code ? "bg-blue-50" : "hover:bg-gray-50"
+                          }`}
+                        >
+                          <td className="px-3 py-2 font-mono text-xs text-gray-700">{r.stock_code}</td>
+                          <td className="px-3 py-2 text-gray-900 font-medium whitespace-nowrap">
+                            {r.naver?.name ?? r.stock_code}
+                          </td>
+                          <td className="px-3 py-2 text-gray-500 text-xs whitespace-nowrap">
+                            {r.stock_type === 2 ? "ETF" : "주식"}
+                          </td>
+                          <td className="px-3 py-2 text-right text-gray-900">{fmt(r.net_qty)}주</td>
+                          <td className="px-3 py-2 text-right text-gray-700">{fmt(r.avg_buy_price)}원</td>
+                          <td className={`px-3 py-2 text-right font-medium ${cc(r.naver?.change ?? null)}`}>
+                            {r.curPrice != null ? `${fmt(r.curPrice)}원` : "-"}
+                            {r.naver && (
+                              <div className="text-xs">
+                                {r.naver.change > 0 ? "+" : ""}{fmt(r.naver.change)}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right text-gray-700">{fmtKRW(r.total_buy_amount)}</td>
+                          <td className={`px-3 py-2 text-right font-medium ${cc(r.pnl)}`}>
+                            {r.evalAmt != null ? fmtKRW(r.evalAmt) : "-"}
+                          </td>
+                          <td className={`px-3 py-2 text-right font-medium ${cc(r.pnl)}`}>
+                            {r.pnl != null ? `${r.pnl > 0 ? "+" : ""}${fmtKRW(r.pnl)}` : "-"}
+                          </td>
+                          <td className={`px-3 py-2 text-right font-medium whitespace-nowrap ${cc(r.pnlRate)}`}>
+                            {r.pnlRate != null ? `${r.pnlRate > 0 ? "+" : ""}${fmt(r.pnlRate, 2)}%` : "-"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* 차트 패널 */}
+            {selectedCode && (
+              <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <h2 className="text-sm font-semibold text-gray-800">
+                      {naverPrices[selectedCode]?.name ?? selectedCode} 일별 주가
+                    </h2>
+                    <p className="text-xs text-gray-500 mt-0.5">f_stock_amt 저장 데이터 기준</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleFetchNaver}
+                      disabled={fetchingNaver}
+                      className="text-xs px-3 py-1.5 border border-blue-400 text-blue-600 rounded-lg hover:bg-blue-50 disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {fetchingNaver ? "가져오는 중..." : "네이버 주가 가져오기"}
+                    </button>
+                    <a
+                      href={`https://finance.naver.com/item/sise.naver?code=${selectedCode}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs px-3 py-1.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 whitespace-nowrap"
+                    >
+                      네이버 금융 →
+                    </a>
+                  </div>
+                </div>
+
+                {/* 기간 선택 */}
+                <div className="flex gap-1">
+                  {CHART_PERIODS.map((p) => (
+                    <button
+                      key={p.label}
+                      onClick={() => setChartDays(p.days)}
+                      className={`px-3 py-1.5 text-xs rounded-lg border font-medium transition-colors ${
+                        chartDays === p.days
+                          ? "bg-blue-600 text-white border-blue-600"
+                          : "border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+
+                {chartLoading && <p className="text-center text-gray-400 py-8 text-sm">로딩 중...</p>}
+
+                {!chartLoading && chartData.length === 0 && (
+                  <p className="text-center text-gray-400 py-8 text-sm">
+                    저장된 주가 데이터가 없습니다. 위 "네이버 주가 가져오기" 버튼을 눌러 데이터를 불러오세요.
+                  </p>
+                )}
+
+                {!chartLoading && chartData.length > 0 && (
+                  <ResponsiveContainer width="100%" height={240}>
+                    <LineChart data={chartData} margin={{ top: 5, right: 14, left: 0, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 10, fill: "#374151" }}
+                        tickFormatter={(v) => String(v).slice(0, 7)}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis
+                        tick={{ fontSize: 10, fill: "#374151" }}
+                        tickFormatter={(v) => Number(v).toLocaleString()}
+                        domain={["auto", "auto"]}
+                        width={72}
+                      />
+                      <Tooltip
+                        formatter={(v: unknown) => [`${fmt(Number(v))} 원`, "종가"]}
+                        labelFormatter={(l) => String(l)}
+                        contentStyle={{ fontSize: 12, padding: "5px 10px", border: "1px solid #e5e7eb", borderRadius: 6 }}
+                        labelStyle={{ fontSize: 11, fontWeight: 600, color: "#374151", marginBottom: 2 }}
+                        itemStyle={{ fontSize: 12, padding: "1px 0" }}
+                      />
+                      {chartAvg != null && (
+                        <ReferenceLine
+                          y={chartAvg}
+                          stroke="#9ca3af"
+                          strokeDasharray="4 2"
+                          label={{ value: `평균 ${fmt(chartAvg)}`, position: "insideTopRight", fontSize: 9, fill: "#9ca3af" }}
+                        />
+                      )}
+                      <Line type="monotone" dataKey="amt" stroke="#2563eb" dot={false} strokeWidth={2} name="종가" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── 거래 내역 탭 ── */}
+        {activeTab === "history" && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100">
+              <h2 className="text-sm font-semibold text-gray-800">전체 거래 내역</h2>
+            </div>
+            {txLoading ? (
+              <p className="text-center text-gray-400 py-8 text-sm">로딩 중...</p>
+            ) : transactions.length === 0 ? (
+              <p className="text-center text-gray-400 py-8 text-sm">거래 내역이 없습니다.</p>
+            ) : (
+              <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      {["일자", "종목코드", "종목명", "구분", "수량", "단가", "금액", ""].map((h, i) => (
+                        <th
+                          key={i}
+                          className={`px-3 py-2.5 text-xs font-semibold text-gray-700 whitespace-nowrap ${
+                            i < 3 ? "text-left" : "text-right"
+                          } ${i === 7 ? "text-center" : ""}`}
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {transactions.map((tx) => (
+                      <tr key={tx.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{fmtDate(tx.s_date)}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-gray-700">{tx.stock_code}</td>
+                        <td className="px-3 py-2 text-gray-900 whitespace-nowrap">
+                          {naverPrices[tx.stock_code]?.name ?? tx.stock_code}
+                        </td>
+                        <td className={`px-3 py-2 text-right font-medium ${tx.cnt === 1 ? "text-red-600" : "text-blue-600"}`}>
+                          {tx.cnt === 1 ? "매입" : "매도"}
+                        </td>
+                        <td className="px-3 py-2 text-right text-gray-900">{fmt(tx.qty)}주</td>
+                        <td className="px-3 py-2 text-right text-gray-700">{fmt(tx.s_amt)}원</td>
+                        <td className="px-3 py-2 text-right text-gray-700">{fmtKRW(tx.qty * tx.s_amt)}</td>
+                        <td className="px-3 py-2 text-center">
+                          <button
+                            onClick={() => handleDelete(tx.id)}
+                            className="text-xs text-gray-400 hover:text-red-500 transition-colors px-2 py-1"
+                          >
+                            삭제
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── 매입/매도 추가 모달 ── */}
+        {showModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                <h2 className="text-base font-semibold text-gray-900">매입/매도 내역 추가</h2>
+                <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+              </div>
+              <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+
+                {/* 구분 */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">구분</label>
+                  <div className="flex gap-2">
+                    {(["1", "2"] as const).map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, cnt: v }))}
+                        className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                          form.cnt === v
+                            ? v === "1" ? "bg-red-500 text-white border-red-500" : "bg-blue-500 text-white border-blue-500"
+                            : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        {v === "1" ? "매입" : "매도"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 종목 구분 */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">종목 유형</label>
+                  <div className="flex gap-2">
+                    {(["1", "2"] as const).map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, stock_type: v }))}
+                        className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                          form.stock_type === v
+                            ? "bg-blue-600 text-white border-blue-600"
+                            : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        {v === "1" ? "주식" : "ETF"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 일자 */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">일자 (YYYYMMDD)</label>
+                  <input
+                    type="text"
+                    maxLength={8}
+                    placeholder="20260531"
+                    value={form.s_date}
+                    onChange={(e) => setForm((f) => ({ ...f, s_date: e.target.value.replace(/\D/g, "") }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* 종목코드 */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">종목코드</label>
+                  <input
+                    type="text"
+                    placeholder="005930"
+                    value={form.stock_code}
+                    onChange={(e) => setForm((f) => ({ ...f, stock_code: e.target.value.toUpperCase() }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono"
+                  />
+                </div>
+
+                {/* 단가 / 수량 */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5">단가 (원)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      placeholder="65900"
+                      value={form.s_amt}
+                      onChange={(e) => setForm((f) => ({ ...f, s_amt: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5">수량 (주)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      placeholder="10"
+                      value={form.qty}
+                      onChange={(e) => setForm((f) => ({ ...f, qty: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+
+                {/* 금액 미리보기 */}
+                {form.qty && form.s_amt && (
+                  <p className="text-xs text-gray-500">
+                    총 금액: <span className="font-semibold text-gray-800">{fmtKRW(Number(form.qty) * Number(form.s_amt))}</span>
+                  </p>
+                )}
+
+                {formError && <p className="text-xs text-red-500">{formError}</p>}
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowModal(false)}
+                    className="flex-1 py-2.5 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="flex-1 py-2.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
+                  >
+                    {submitting ? "저장 중..." : "저장"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
+    </AppLayout>
+  )
+}
