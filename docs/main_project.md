@@ -143,15 +143,24 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 
 | 기능 | 설명 |
 |------|------|
-| 실시간 포트폴리오 | my_stock 잔고 + 네이버 금융 실시간 현재가로 평가금액·손익·수익률 표시 |
-| 종목별 주가 차트 | 종목 선택 시 f_stock_amt 일별 주가 라인 차트 (기간 필터) |
-| 네이버 주가 가져오기 | m.stock.naver.com candle API로 일별 주가 500건 수집 후 f_stock_amt 저장 |
-| 매입/매도 내역 추가 | my_stock에 거래 내역 입력 (구분/일자/종목코드/유형/단가/수량) |
+| 포트폴리오 현황 | my_stock 잔고 기반 보유 종목 + f_stock_amt 최신 저장가로 평가금액·손익·수익률 표시 |
+| 코스피·코스닥 지수 | 보유 종목 테이블 헤더에 실시간 지수 현황 표시 |
+| 종목별 주가 차트 | 종목 클릭 시 f_stock_amt 일별 주가 라인 차트 (기간 필터: 1개월/3개월/6개월/1년/전체) |
+| 차트 하단 일자별 테이블 | 날짜·종가·전일대비·등락률 스크롤 테이블 |
+| 네이버 주가 가져오기 | sise_day.naver HTML 파싱으로 증분 수집 → f_stock_amt UPSERT |
+| 자동 수집 스케줄 | Vercel Cron 매일 20:30 KST (`/api/cron/stock-sync`) |
+| 매입/매도 내역 추가 | my_stock에 거래 내역 입력 (구분/일자 달력/t_stock_list 종목 검색/유형/단가/수량) |
 | 거래 내역 조회·삭제 | 전체 거래 내역 테이블 + 개별 삭제 |
+| 매입 내역 호버 툴팁 | 보유 종목 행 호버 시 매입일·수량·매입가·현재가·수익률 툴팁 표시 |
 
 - 참고 파일: [app/assets/stock/page.tsx](../app/assets/stock/page.tsx), [app/assets/stock/actions.ts](../app/assets/stock/actions.ts)
-- API 라우트: [app/api/stock/price/route.ts](../app/api/stock/price/route.ts), [app/api/stock/daily/route.ts](../app/api/stock/daily/route.ts)
+- 리다이렉트: [app/assets/page.tsx](../app/assets/page.tsx) → `/assets/stock`
+- Cron 엔드포인트: [app/api/cron/stock-sync/route.ts](../app/api/cron/stock-sync/route.ts)
+- API 라우트 (미사용): [app/api/stock/price/route.ts](../app/api/stock/price/route.ts), [app/api/stock/daily/route.ts](../app/api/stock/daily/route.ts), [app/api/stock/search/route.ts](../app/api/stock/search/route.ts)
+- 독립 스크립트: [scripts/sync-stock-prices.mjs](../scripts/sync-stock-prices.mjs)
+- Vercel 설정: [vercel.json](../vercel.json)
 - DB 마이그레이션: `v015_add_stock_menu` (lib/auth-db.ts)
+- 상세 문서: [assets/stock/stock_project.md](assets/stock/stock_project.md), [assets/stock/stock_task.md](assets/stock/stock_task.md)
 
 ---
 

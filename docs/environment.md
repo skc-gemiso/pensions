@@ -29,7 +29,19 @@ pensions/
 │   ├── actions/
 │   │   ├── auth.ts                       로그인·로그아웃 Server Actions
 │   │   └── visitor.ts                    방문자 기록 Server Action
-│   ├── api/auth/[...nextauth]/route.ts   NextAuth 라우트 핸들러
+│   ├── api/
+│   │   ├── auth/[...nextauth]/route.ts   NextAuth 라우트 핸들러
+│   │   ├── cron/
+│   │   │   └── stock-sync/route.ts       Vercel Cron 주가 수집 엔드포인트 (CRON_SECRET 인증)
+│   │   └── stock/
+│   │       ├── price/route.ts            네이버 실시간 가격 프록시 (현재 미사용)
+│   │       ├── daily/route.ts            네이버 candle API 프록시 (현재 미사용)
+│   │       └── search/route.ts           네이버 자동완성 프록시 (현재 미사용)
+│   ├── assets/
+│   │   ├── page.tsx                      /assets/stock 리다이렉트
+│   │   └── stock/
+│   │       ├── page.tsx                  주식 투자 (포트폴리오·차트·거래내역)
+│   │       └── actions.ts               주식 CRUD + 네이버 주가 수집 Server Actions
 │   ├── pension/
 │   │   ├── page.tsx                      /pension/my 리다이렉트
 │   │   ├── my/page.tsx                   나의 연금 현황 대시보드
@@ -54,6 +66,9 @@ pensions/
 │   └── fmt.ts                            공유 숫자 유틸 — fmt(n, dec?) / cc(v)
 ├── auth.ts                               NextAuth v5 설정
 ├── middleware.ts (또는 proxy.ts)         라우트 보호 미들웨어
+├── scripts/
+│   └── sync-stock-prices.mjs             독립 실행 주가 수집 스크립트 (Node.js)
+├── vercel.json                           Vercel Cron 스케줄 설정
 └── .env.local                            환경 변수 (git 제외)
 ```
 
@@ -113,6 +128,40 @@ CREATE TABLE IF NOT EXISTS pension_sim_savings_fund (
 );
 ```
 
+#### `my_stock` 테이블 — 주식 투자 거래 원장
+
+```sql
+CREATE TABLE IF NOT EXISTS my_stock (
+  id         SERIAL,
+  stock_code VARCHAR(20)  NOT NULL,  -- 종목코드 (대문자)
+  s_date     VARCHAR(8)   NOT NULL,  -- 거래일 YYYYMMDD
+  cnt        INT          NOT NULL,  -- 1=매입, 2=매도
+  stock_type INT          NOT NULL DEFAULT 1,  -- 1=주식, 2=ETF
+  qty        NUMERIC      NOT NULL,
+  s_amt      NUMERIC      NOT NULL,
+  created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+```
+
+#### `f_stock_amt` 테이블 — 종목별 일별 주가
+
+```sql
+CREATE TABLE IF NOT EXISTS f_stock_amt (
+  stock_code VARCHAR(20)  NOT NULL,
+  s_date     DATE         NOT NULL,
+  stock_type VARCHAR(10),            -- "1"=주식, "2"=ETF
+  amt        NUMERIC,                -- 종가 (원)
+  finish_yn  VARCHAR(1),             -- 수집 완료 여부 ('Y')
+  created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (stock_code, s_date)
+);
+```
+
+> `my_stock`, `f_stock_amt` 테이블은 `ensureStockTables()` 로 런타임 자동 생성.
+> `t_stock_list` 는 별도 마스터 데이터 (사전 적재 필요).
+
 ---
 
 ## 환경 변수 (`.env.local`)
@@ -131,8 +180,42 @@ CREATE TABLE IF NOT EXISTS pension_sim_savings_fund (
 | `PENSION_SIM_DB_NAME` | Supabase DB명 | `postgres` |
 | `PENSION_SIM_DB_USER` | Supabase 사용자 | `postgres.PROJECT_REF` |
 | `PENSION_SIM_DB_PASSWORD` | Supabase 비밀번호 | 특수문자 포함 시 `"..."` |
+| `CRON_SECRET` | Vercel Cron 엔드포인트 인증 시크릿 | `Authorization: Bearer {CRON_SECRET}` 헤더 또는 `?secret=` 파라미터로 검증 |
 
 > **주의**: 특수문자(`#` 등) 포함 패스워드는 반드시 `"..."` 로 감싸야 dotenv 정상 파싱.
+
+---
+
+## Vercel 배포
+
+### Cron Job 설정 (`vercel.json`)
+
+```json
+{
+  "crons": [
+    {
+      "path": "/api/cron/stock-sync",
+      "schedule": "30 11 * * *"
+    }
+  ]
+}
+```
+
+- `30 11 * * *` = UTC 11:30 = **KST 20:30** (매일 장 마감 후)
+- Vercel이 자동으로 `Authorization: Bearer {CRON_SECRET}` 헤더를 주입하여 호출
+- 환경 변수 `CRON_SECRET` 을 Vercel 프로젝트 설정에 등록 필요
+- Hobby 플랜: 하루 1회 Cron 가능 / Pro 이상: 무제한
+
+### 배포 시 환경 변수 등록 목록
+
+Vercel 프로젝트 Settings > Environment Variables 에 아래 변수 등록:
+
+| 변수 | 비고 |
+|------|------|
+| `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | 일반 DB |
+| `NEXTAUTH_SECRET` / `NEXTAUTH_URL` | NextAuth |
+| `PENSION_SIM_DB_*` | Supabase 연결 |
+| `CRON_SECRET` | Cron 인증 시크릿 |
 
 ---
 
