@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import AppLayout from "@/components/AppLayout"
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -14,24 +14,27 @@ import {
 } from "./actions"
 
 type NaverPrice = { price: number; change: number; changeRate: number; name: string; volume: number }
+type StockSearchItem = { code: string; name: string; market: string }
 
 type FormState = {
   cnt: "1" | "2"
   stock_type: "1" | "2"
   stock_code: string
-  s_date: string
+  stock_name: string
+  s_date: string   // YYYY-MM-DD (input[type=date] 형식)
   qty: string
   s_amt: string
 }
 
-const today = new Date()
-const todayStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}`
+const today    = new Date()
+const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
 
 const EMPTY_FORM: FormState = {
   cnt: "1",
   stock_type: "1",
   stock_code: "",
-  s_date: todayStr,
+  stock_name: "",
+  s_date: todayISO,
   qty: "",
   s_amt: "",
 }
@@ -65,6 +68,12 @@ export default function StockPage() {
   const [submitting, setSubmitting]       = useState(false)
   const [formError, setFormError]         = useState("")
   const [activeTab, setActiveTab]         = useState<"portfolio" | "history">("portfolio")
+  // 종목 검색
+  const [stockSearch, setStockSearch]     = useState("")
+  const [stockResults, setStockResults]   = useState<StockSearchItem[]>([])
+  const [showStockDrop, setShowStockDrop] = useState(false)
+  const blurTimer   = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadHoldings = useCallback(async () => {
     const h = await getHoldings()
@@ -129,11 +138,36 @@ export default function StockPage() {
     }
   }
 
+  function handleStockSearch(value: string) {
+    setStockSearch(value)
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    if (!value.trim()) { setStockResults([]); return }
+    searchTimer.current = setTimeout(async () => {
+      const res = await fetch(`/api/stock/search?q=${encodeURIComponent(value)}`)
+      const data: StockSearchItem[] = await res.json()
+      setStockResults(data)
+      setShowStockDrop(true)
+    }, 280)
+  }
+
+  function selectStock(item: StockSearchItem) {
+    setForm((f) => ({ ...f, stock_code: item.code, stock_name: item.name }))
+    setStockSearch("")
+    setStockResults([])
+    setShowStockDrop(false)
+  }
+
+  function clearStock() {
+    setForm((f) => ({ ...f, stock_code: "", stock_name: "" }))
+    setStockSearch("")
+    setStockResults([])
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setFormError("")
-    if (!form.stock_code.trim()) { setFormError("종목코드를 입력하세요."); return }
-    if (form.s_date.length !== 8 || isNaN(Number(form.s_date))) { setFormError("일자 형식이 올바르지 않습니다 (YYYYMMDD)."); return }
+    if (!form.stock_code.trim()) { setFormError("종목을 선택하세요."); return }
+    if (!form.s_date) { setFormError("일자를 선택하세요."); return }
     const qty  = Number(form.qty)
     const sAmt = Number(form.s_amt)
     if (!qty || qty <= 0)   { setFormError("수량을 올바르게 입력하세요."); return }
@@ -143,7 +177,7 @@ export default function StockPage() {
     try {
       await addTransaction({
         stock_code: form.stock_code.trim().toUpperCase(),
-        s_date: form.s_date,
+        s_date: form.s_date.replace(/-/g, ""),   // YYYY-MM-DD → YYYYMMDD
         cnt: Number(form.cnt),
         stock_type: Number(form.stock_type),
         qty,
@@ -206,7 +240,7 @@ export default function StockPage() {
             <p className="text-xs text-gray-500 mt-0.5">실시간 평가 현황 및 거래 내역 관리</p>
           </div>
           <button
-            onClick={() => { setForm(EMPTY_FORM); setFormError(""); setShowModal(true) }}
+            onClick={() => { setForm(EMPTY_FORM); setFormError(""); setStockSearch(""); setStockResults([]); setShowModal(true) }}
             className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
           >
             + 매입/매도 내역 추가
@@ -587,27 +621,59 @@ export default function StockPage() {
 
                 {/* 일자 */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1.5">일자 (YYYYMMDD)</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">일자</label>
                   <input
-                    type="text"
-                    maxLength={8}
-                    placeholder="20260531"
+                    type="date"
                     value={form.s_date}
-                    onChange={(e) => setForm((f) => ({ ...f, s_date: e.target.value.replace(/\D/g, "") }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onChange={(e) => setForm((f) => ({ ...f, s_date: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
 
-                {/* 종목코드 */}
+                {/* 종목 검색 */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1.5">종목코드</label>
-                  <input
-                    type="text"
-                    placeholder="005930"
-                    value={form.stock_code}
-                    onChange={(e) => setForm((f) => ({ ...f, stock_code: e.target.value.toUpperCase() }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono"
-                  />
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">종목</label>
+
+                  {/* 선택된 종목 칩 */}
+                  {form.stock_code ? (
+                    <div className="flex items-center gap-2 px-3 py-2 border border-blue-300 bg-blue-50 rounded-lg">
+                      <span className="font-mono text-xs text-blue-700 font-semibold">{form.stock_code}</span>
+                      <span className="text-sm text-gray-800 flex-1">{form.stock_name}</span>
+                      <button
+                        type="button"
+                        onClick={clearStock}
+                        className="text-gray-400 hover:text-red-500 text-lg leading-none"
+                      >×</button>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={stockSearch}
+                        onChange={(e) => handleStockSearch(e.target.value)}
+                        onFocus={() => { if (stockResults.length > 0) setShowStockDrop(true) }}
+                        onBlur={() => { blurTimer.current = setTimeout(() => setShowStockDrop(false), 150) }}
+                        placeholder="종목명 또는 코드 검색..."
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                      {showStockDrop && stockResults.length > 0 && (
+                        <div className="absolute top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto w-full">
+                          {stockResults.map((item) => (
+                            <button
+                              key={item.code}
+                              type="button"
+                              onMouseDown={() => selectStock(item)}
+                              className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-gray-50 transition-colors"
+                            >
+                              <span className="font-mono text-xs text-blue-600 font-semibold w-16 shrink-0">{item.code}</span>
+                              <span className="text-sm text-gray-900 flex-1 truncate">{item.name}</span>
+                              <span className="text-xs text-gray-400 shrink-0">{item.market}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* 단가 / 수량 */}
