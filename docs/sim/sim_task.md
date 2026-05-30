@@ -8,8 +8,9 @@
 
 ```
 app/sim/
-├── page.tsx      클라이언트 컴포넌트 (UI + 계산 로직 전체)
-└── actions.ts    서버 액션 (DB CRUD + IP 기록)
+├── page.tsx           클라이언트 컴포넌트 (UI + 계산 로직 전체)
+├── Kodex200Panel.tsx  KODEX 200 주가 사이드 패널 컴포넌트
+└── actions.ts         서버 액션 (DB CRUD + IP 기록 + Kodex200 조회)
 ```
 
 ---
@@ -152,6 +153,37 @@ CREATE TABLE pension_sim_savings_fund (
 | `criteria` | 투자 기준 | ETF 정보, 계좌별 배당세, 투자 조건 |
 | `summary` | 화면 기능 요약 | 주요 기능 목록, 저장 흐름 |
 | `detail` | 화면 상세 안내 | 시뮬레이션 테이블 컬럼별 설명 |
+
+---
+
+## DB — `etf_kodex200`
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| `e_date` | VARCHAR | 기준일 (YYYYMMDD) |
+| `amt` | NUMERIC | 종가 (원) |
+| `e_amt` | NUMERIC | 전일 대비 증감 (원) |
+| `e_rate` | NUMERIC | 등락률 (bp, ÷100 = %) |
+| `e_trade` | NUMERIC | 거래량 |
+
+### `getKodex200Series(months?)` 서버 액션
+
+- `etf_kodex200` 테이블에서 기간 필터 후 ASC 정렬 반환
+- `e_date` YYYYMMDD → "YYYY-MM-DD" 변환 후 반환
+- `Kodex200Row` 타입: `{ date, amt, e_amt, e_rate, e_trade }`
+
+---
+
+## `Kodex200Panel` 컴포넌트
+
+`app/sim/Kodex200Panel.tsx`. 시뮬레이션 페이지 우측에 `xl:sticky xl:top-4`로 배치.
+
+| 기능 | 설명 |
+|------|------|
+| 요약 카드 | 현재가·전일대비·등락률 3개 카드 |
+| 기간 선택 | 1년 / 2년 / 전체 토글 버튼 |
+| 라인 차트 | 일별 종가 추이 + 기간 평균 기준선 |
+| 상세 테이블 | 날짜·종가·전일대비·등락률·거래량 (최신순 스크롤) |
 
 ---
 

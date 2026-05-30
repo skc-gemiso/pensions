@@ -212,6 +212,32 @@ export async function loadSimulations(tabId: string): Promise<SavedSim[]> {
   }))
 }
 
+export type Kodex200Row = {
+  date: string
+  amt: number
+  e_amt: number
+  e_rate: number   // bp 단위 (÷100 = %)
+  e_trade: number
+}
+
+export async function getKodex200Series(months?: number): Promise<Kodex200Row[]> {
+  const db = getPensionPool()
+  const { rows } = await db.query<{ e_date: string; amt: string; e_amt: string; e_rate: string; e_trade: string }>(
+    `SELECT e_date, amt, e_amt, e_rate, e_trade
+     FROM etf_kodex200
+     WHERE ($1::int IS NULL OR TO_DATE(e_date, 'YYYYMMDD') >= NOW() - ($1 || ' months')::interval)
+     ORDER BY e_date ASC`,
+    [months ?? null]
+  )
+  return rows.map((r) => ({
+    date: `${r.e_date.slice(0, 4)}-${r.e_date.slice(4, 6)}-${r.e_date.slice(6, 8)}`,
+    amt:     Number(r.amt),
+    e_amt:   Number(r.e_amt),
+    e_rate:  Number(r.e_rate),
+    e_trade: Number(r.e_trade),
+  }))
+}
+
 export async function deleteSimulation(id: number): Promise<void> {
   const session = await auth()
   if (!session?.user) throw new Error("Unauthorized")

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { useSession } from "next-auth/react"
 import AppLayout from "@/components/AppLayout"
+import { Kodex200Panel } from "./Kodex200Panel"
 import {
   saveSimulation,
   loadSimulations,
@@ -32,8 +33,9 @@ const IRP_NOTES = [
 type TabMeta = {
   id: string
   label: string
-  defaultInputs: InputValues
+  defaultInputs?: InputValues
   isIRP?: boolean
+  isKodex200?: boolean
 }
 
 const TABS: TabMeta[] = [
@@ -47,6 +49,11 @@ const TABS: TabMeta[] = [
     label: "IRP 수익율 확인",
     isIRP: true,
     defaultInputs: { initDeposit: 0, monthlyPmt: 200000, accumMonths: 120, holdMonths: 60, ccAnnualRate: 0.12, retirementAge: 55, birthdate: "2000-01-01", safeRate: 0.05 },
+  },
+  {
+    id: "kodex200",
+    label: "KODEX 200 주가",
+    isKodex200: true,
   },
 ]
 
@@ -1632,13 +1639,16 @@ export default function SavingsFundPage() {
 
   const [activeId, setActiveId]     = useState(TABS[0].id)
   const [inputs, setInputs]         = useState<Record<string, InputValues>>(
-    Object.fromEntries(TABS.map((t) => {
-      const ageMonths = birthdateToAgeMonths(t.defaultInputs.birthdate)
-      const holdMonths = ageMonths != null
-        ? calcHoldMonths(t.defaultInputs.retirementAge ?? 55, t.defaultInputs.accumMonths, ageMonths)
-        : t.defaultInputs.holdMonths
-      return [t.id, { ...t.defaultInputs, holdMonths }]
-    }))
+    Object.fromEntries(
+      TABS.filter((t) => t.defaultInputs != null).map((t) => {
+        const d = t.defaultInputs!
+        const ageMonths = birthdateToAgeMonths(d.birthdate)
+        const holdMonths = ageMonths != null
+          ? calcHoldMonths(d.retirementAge ?? 55, d.accumMonths, ageMonths)
+          : d.holdMonths
+        return [t.id, { ...d, holdMonths }]
+      })
+    )
   )
   const [editDraft, setEditDraft]     = useState<InputValues | null>(null)
   const [savedList, setSavedList]     = useState<SavedSim[]>([])
@@ -1668,10 +1678,11 @@ export default function SavingsFundPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status])
 
-  const tab      = TABS.find((t) => t.id === activeId)!
-  const curInput = inputs[activeId]
-  const isIRP = tab?.isIRP ?? false
-  const rows  = isIRP ? calculateIRPRows(curInput) : calculateRows(curInput)
+  const tab         = TABS.find((t) => t.id === activeId)!
+  const isKodex200Tab = tab?.isKodex200 ?? false
+  const curInput    = inputs[activeId] ?? inputs[TABS[0].id]
+  const isIRP       = tab?.isIRP ?? false
+  const rows        = isKodex200Tab ? [] : isIRP ? calculateIRPRows(curInput) : calculateRows(curInput)
 
   // IRP 안전자산 (30%) 미래 가치
   const safeAnnualRate  = curInput.safeRate ?? 0.05
@@ -1704,15 +1715,18 @@ export default function SavingsFundPage() {
   }, [activeId, fetchSaved, isLoggedIn])
 
   function handleTabChange(id: string) {
-    setInputs((prev) => {
-      if (prev[id] != null) return prev
-      const t = TABS.find((t) => t.id === id)!
-      const ageMonths = birthdateToAgeMonths(t.defaultInputs.birthdate)
-      const holdMonths = ageMonths != null
-        ? calcHoldMonths(t.defaultInputs.retirementAge ?? 55, t.defaultInputs.accumMonths, ageMonths)
-        : t.defaultInputs.holdMonths
-      return { ...prev, [id]: { ...t.defaultInputs, holdMonths } }
-    })
+    const t = TABS.find((t) => t.id === id)!
+    if (!t.isKodex200) {
+      setInputs((prev) => {
+        if (prev[id] != null) return prev
+        const d = t.defaultInputs!
+        const ageMonths = birthdateToAgeMonths(d.birthdate)
+        const holdMonths = ageMonths != null
+          ? calcHoldMonths(d.retirementAge ?? 55, d.accumMonths, ageMonths)
+          : d.holdMonths
+        return { ...prev, [id]: { ...d, holdMonths } }
+      })
+    }
     setActiveId(id)
     setEditDraft(null)
     setSaveMsg(null)
@@ -1885,6 +1899,11 @@ export default function SavingsFundPage() {
             </button>
           ))}
         </div>
+
+        {/* KODEX 200 주가 탭 */}
+        {isKodex200Tab && <Kodex200Panel />}
+
+        {!isKodex200Tab && (<>
 
         {/* 안내 메모 */}
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
@@ -2112,11 +2131,12 @@ export default function SavingsFundPage() {
               <button
                 onClick={() => {
                   setEditDraft(null)
-                  const ageMonths = birthdateToAgeMonths(tab.defaultInputs.birthdate)
+                  const d = tab.defaultInputs!
+                  const ageMonths = birthdateToAgeMonths(d.birthdate)
                   const holdMonths = ageMonths != null
-                    ? calcHoldMonths(tab.defaultInputs.retirementAge ?? 55, tab.defaultInputs.accumMonths, ageMonths)
-                    : tab.defaultInputs.holdMonths
-                  setInputs((prev) => ({ ...prev, [activeId]: { ...tab.defaultInputs, holdMonths } }))
+                    ? calcHoldMonths(d.retirementAge ?? 55, d.accumMonths, ageMonths)
+                    : d.holdMonths
+                  setInputs((prev) => ({ ...prev, [activeId]: { ...d, holdMonths } }))
                 }}
                 className="px-4 py-2 border border-gray-300 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition-colors"
               >
@@ -2294,6 +2314,8 @@ export default function SavingsFundPage() {
           </div>
           <DisclaimerModal />
         </div>
+
+        </>)}{/* end !isKodex200Tab */}
 
       </div>
     </AppLayout>
