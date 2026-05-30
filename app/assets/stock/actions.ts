@@ -172,37 +172,73 @@ export async function fetchAndSaveNaverPrices(stockCode: string, stockType: numb
   const db = getPensionPool()
   await ensureStockTables(db)
 
-  // Naver mobile candle API (server-side fetch, no CORS issue)
-  const res = await fetch(
-    `https://m.stock.naver.com/api/stock/${stockCode}/candle/day?count=500`,
-    {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Referer": "https://m.stock.naver.com",
-      },
-    }
-  )
-  if (!res.ok) throw new Error(`Naver API error: ${res.status}`)
+  // sise_day.naver HTML 스크래핑 — 10페이지씩 3배치 (≈ 300 거래일)
+  const allPrices: Array<{ date: string; close: number }> = []
 
-  const data = await res.json()
-  if (!Array.isArray(data)) throw new Error("Unexpected Naver API response")
+  for (let batchStart = 1; batchStart <= 30; batchStart += 10) {
+    const pages = Array.from({ length: 10 }, (_, i) => batchStart + i)
+    const batchResults = await Promise.all(pages.map((p) => _fetchSisePage(stockCode, p)))
+    const batchPrices  = batchResults.flat()
+    if (batchPrices.length === 0) break
+    allPrices.push(...batchPrices)
+  }
+
+  if (allPrices.length === 0) throw new Error("네이버 금융에서 주가를 가져올 수 없습니다. 종목코드를 확인하세요.")
+
+  const seen  = new Set<string>()
+  const unique = allPrices.filter((p) => { if (seen.has(p.date)) return false; seen.add(p.date); return true })
 
   let saved = 0
-  for (const d of data) {
-    const dateStr = String(d.localDate ?? "")
-    if (dateStr.length !== 8) continue
-    const isoDate = `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`
-    const close   = Number(String(d.closePrice ?? "0").replace(/,/g, ""))
-    if (!close) continue
-
+  for (const p of unique) {
     await db.query(
       `INSERT INTO f_stock_amt (stock_code, s_date, stock_type, amt, finish_yn)
        VALUES ($1, $2::date, $3, $4, 'Y')
        ON CONFLICT (stock_code, s_date) DO UPDATE
          SET amt = EXCLUDED.amt, stock_type = EXCLUDED.stock_type, updated_at = NOW()`,
-      [stockCode, isoDate, String(stockType), close]
+      [stockCode, p.date, String(stockType), p.close]
     )
     saved++
   }
   return saved
+}
+
+// sise_day.naver 1페이지 스크래핑 (EUC-KR 디코딩 + HTML 파싱)
+async function _fetchSisePage(code: string, page: number): Promise<Array<{ date: string; close: number }>> {
+  try {
+    const res = await fetch(
+      `https://finance.naver.com/item/sise_day.naver?code=${code}&page=${page}`,
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Referer": `https://finance.naver.com/item/main.naver?code=${code}`,
+          "Accept": "text/html,application/xhtml+xml",
+          "Accept-Language": "ko-KR,ko;q=0.9",
+        },
+      }
+    )
+    if (!res.ok) return []
+    const buf  = await res.arrayBuffer()
+    const html = new TextDecoder("euc-kr").decode(buf)
+    return _parseSiseDay(html)
+  } catch {
+    return []
+  }
+}
+
+// <tr> 블록에서 날짜 + 종가 추출
+// - 날짜: <span class="tah p10 gray03">YYYY.MM.DD</span>
+// - 종가: 해당 행의 첫 번째 <span class="tah p11">숫자,숫자</span>
+//         (등락 컬럼은 <em> 자식 태그 포함 → 단순 숫자 패턴 불일치)
+function _parseSiseDay(html: string): Array<{ date: string; close: number }> {
+  const result: Array<{ date: string; close: number }> = []
+  for (const seg of html.split(/<\/tr>/i)) {
+    const dateM = seg.match(/(\d{4})\.(\d{2})\.(\d{2})/)
+    if (!dateM) continue
+    const date  = `${dateM[1]}-${dateM[2]}-${dateM[3]}`
+    const priceM = seg.match(/<span class="tah p11">([\d,]+)<\/span>/)
+    if (!priceM) continue
+    const close = Number(priceM[1].replace(/,/g, ""))
+    if (close > 0) result.push({ date, close })
+  }
+  return result
 }
