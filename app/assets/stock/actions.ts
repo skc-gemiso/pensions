@@ -53,6 +53,7 @@ export type StockHolding = {
   total_buy_amount: number
   latest_price: number | null   // f_stock_amt 최신 종가
   latest_date:  string | null   // f_stock_amt 최신 기준일 (YYYY-MM-DD)
+  prev_price:   number | null   // f_stock_amt 전일 종가 (전일대비 계산용)
 }
 
 export type DailyPrice = {
@@ -81,7 +82,10 @@ export async function getHoldings(): Promise<StockHolding[]> {
          ORDER BY fa.s_date DESC LIMIT 1) AS latest_price,
       (SELECT TO_CHAR(fa.s_date, 'YYYY-MM-DD')
          FROM f_stock_amt fa WHERE fa.stock_code = ms.stock_code
-         ORDER BY fa.s_date DESC LIMIT 1) AS latest_date
+         ORDER BY fa.s_date DESC LIMIT 1) AS latest_date,
+      (SELECT fa.amt
+         FROM f_stock_amt fa WHERE fa.stock_code = ms.stock_code
+         ORDER BY fa.s_date DESC LIMIT 1 OFFSET 1) AS prev_price
     FROM my_stock ms
     GROUP BY ms.stock_code
     HAVING SUM(CASE WHEN ms.cnt = 1 THEN ms.qty ELSE -ms.qty END) > 0
@@ -97,9 +101,10 @@ export async function getHoldings(): Promise<StockHolding[]> {
       net_qty,
       avg_buy_price,
       total_buy_amount: Math.round(net_qty * avg_buy_price),
-      stock_name:    r.stock_name   ?? null,
-      latest_price:  r.latest_price != null ? Number(r.latest_price) : null,
-      latest_date:   r.latest_date  ?? null,
+      stock_name:   r.stock_name   ?? null,
+      latest_price: r.latest_price != null ? Number(r.latest_price) : null,
+      latest_date:  r.latest_date  ?? null,
+      prev_price:   r.prev_price   != null ? Number(r.prev_price)   : null,
     }
   })
 }

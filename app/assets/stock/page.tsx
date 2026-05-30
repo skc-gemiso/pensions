@@ -108,14 +108,19 @@ export default function StockPage() {
   }, [selectedCode, loadDailyPrices])
 
   async function handleFetchNaver() {
-    if (!selectedCode) return
-    const holding = holdings.find((h) => h.stock_code === selectedCode)
-    const stockType = holding?.stock_type ?? 1
+    if (holdings.length === 0) return
     setFetchingNaver(true)
     try {
-      const saved = await fetchAndSaveNaverPrices(selectedCode, stockType)
-      await loadDailyPrices(selectedCode)
-      alert(`${saved}건 저장 완료`)
+      let total = 0
+      for (const h of holdings) {
+        try {
+          const saved = await fetchAndSaveNaverPrices(h.stock_code, h.stock_type)
+          total += saved
+        } catch { /* 개별 실패 무시 */ }
+      }
+      await loadHoldings()
+      if (selectedCode) await loadDailyPrices(selectedCode)
+      alert(`${holdings.length}개 종목 최신화 완료 (${total}건 저장)`)
     } catch (e) {
       alert(`오류: ${e instanceof Error ? e.message : "알 수 없는 오류"}`)
     } finally {
@@ -197,12 +202,16 @@ export default function StockPage() {
   // f_stock_amt 최신 저장가 기반 포트폴리오 계산 (평가금액 큰 순 정렬)
   const portfolioRows = holdings
     .map((h) => {
-      const curPrice = h.latest_price
-      const evalAmt  = curPrice != null ? Math.round(curPrice * h.net_qty) : null
-      const pnl      = evalAmt != null ? evalAmt - h.total_buy_amount : null
-      const pnlRate  = (pnl != null && h.total_buy_amount > 0)
+      const curPrice        = h.latest_price
+      const evalAmt         = curPrice != null ? Math.round(curPrice * h.net_qty) : null
+      const pnl             = evalAmt != null ? evalAmt - h.total_buy_amount : null
+      const pnlRate         = (pnl != null && h.total_buy_amount > 0)
         ? (pnl / h.total_buy_amount) * 100 : null
-      return { ...h, curPrice, evalAmt, pnl, pnlRate }
+      const priceChange     = (curPrice != null && h.prev_price != null)
+        ? curPrice - h.prev_price : null
+      const priceChangeRate = (priceChange != null && h.prev_price != null && h.prev_price > 0)
+        ? (priceChange / h.prev_price) * 100 : null
+      return { ...h, curPrice, evalAmt, pnl, pnlRate, priceChange, priceChangeRate }
     })
     .sort((a, b) => (b.evalAmt ?? -1) - (a.evalAmt ?? -1))
 
@@ -295,7 +304,25 @@ export default function StockPage() {
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-gray-800">보유 종목</h2>
-                <p className="text-xs text-gray-400">저장된 최신 주가 기준</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleFetchNaver}
+                    disabled={fetchingNaver || holdings.length === 0}
+                    className="text-xs px-3 py-1.5 border border-blue-400 text-blue-600 rounded-lg hover:bg-blue-50 disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {fetchingNaver ? "가져오는 중..." : "네이버 주가 가져오기"}
+                  </button>
+                  {selectedCode && (
+                    <a
+                      href={`https://finance.naver.com/item/sise.naver?code=${selectedCode}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs px-3 py-1.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 whitespace-nowrap"
+                    >
+                      네이버 금융 →
+                    </a>
+                  )}
+                </div>
               </div>
               {portfolioRows.length === 0 ? (
                 <p className="text-center text-gray-400 py-10 text-sm">보유 종목이 없습니다.</p>
@@ -345,8 +372,13 @@ export default function StockPage() {
                           <td className="px-3 py-2 text-right text-gray-700">{fmt(r.avg_buy_price)}원</td>
                           <td className="px-3 py-2 text-right font-medium text-gray-900">
                             {r.curPrice != null ? `${fmt(r.curPrice)}원` : "-"}
-                            {r.latest_date && (
-                              <div className="text-xs text-gray-400">{r.latest_date}</div>
+                            {r.priceChange != null && (
+                              <div className={`text-xs ${cc(r.priceChange)}`}>
+                                {r.priceChange > 0 ? "+" : ""}{fmt(r.priceChange)}원
+                                {r.priceChangeRate != null && (
+                                  <span className="ml-1">({r.priceChangeRate > 0 ? "+" : ""}{fmt(r.priceChangeRate, 2)}%)</span>
+                                )}
+                              </div>
                             )}
                           </td>
                           <td className="px-3 py-2 text-right text-gray-700">{won(r.total_buy_amount)}</td>
@@ -370,30 +402,9 @@ export default function StockPage() {
             {/* 차트 패널 */}
             {selectedCode && (
               <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-4">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div>
-                    <h2 className="text-sm font-semibold text-gray-800">
-                      {holdings.find(h => h.stock_code === selectedCode)?.stock_name ?? selectedCode} 일별 주가
-                    </h2>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleFetchNaver}
-                      disabled={fetchingNaver}
-                      className="text-xs px-3 py-1.5 border border-blue-400 text-blue-600 rounded-lg hover:bg-blue-50 disabled:opacity-50 whitespace-nowrap"
-                    >
-                      {fetchingNaver ? "가져오는 중..." : "네이버 주가 가져오기"}
-                    </button>
-                    <a
-                      href={`https://finance.naver.com/item/sise.naver?code=${selectedCode}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs px-3 py-1.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 whitespace-nowrap"
-                    >
-                      네이버 금융 →
-                    </a>
-                  </div>
-                </div>
+                <h2 className="text-sm font-semibold text-gray-800">
+                  {holdings.find(h => h.stock_code === selectedCode)?.stock_name ?? selectedCode} 일별 주가
+                </h2>
 
                 {/* 기간 선택 */}
                 <div className="flex gap-1">
