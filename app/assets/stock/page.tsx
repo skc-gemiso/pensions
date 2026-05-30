@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import AppLayout from "@/components/AppLayout"
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -62,6 +62,7 @@ export default function StockPage() {
   const [fetchingNaver, setFetchingNaver] = useState(false)
   const [transactions, setTransactions]   = useState<StockTransaction[]>([])
   const [txLoading, setTxLoading]         = useState(false)
+  const [tooltip, setTooltip]             = useState<{ code: string; x: number; y: number } | null>(null)
   const [showModal, setShowModal]         = useState(false)
   const [form, setForm]                   = useState<FormState>(EMPTY_FORM)
   const [submitting, setSubmitting]       = useState(false)
@@ -193,15 +194,32 @@ export default function StockPage() {
     ? chartData.reduce((s, r) => s + r.amt, 0) / chartData.length
     : null
 
-  // f_stock_amt 최신 저장가 기반 포트폴리오 계산
-  const portfolioRows = holdings.map((h) => {
-    const curPrice = h.latest_price
-    const evalAmt  = curPrice != null ? Math.round(curPrice * h.net_qty) : null
-    const pnl      = evalAmt != null ? evalAmt - h.total_buy_amount : null
-    const pnlRate  = (pnl != null && h.total_buy_amount > 0)
-      ? (pnl / h.total_buy_amount) * 100 : null
-    return { ...h, curPrice, evalAmt, pnl, pnlRate }
-  })
+  // f_stock_amt 최신 저장가 기반 포트폴리오 계산 (평가금액 큰 순 정렬)
+  const portfolioRows = holdings
+    .map((h) => {
+      const curPrice = h.latest_price
+      const evalAmt  = curPrice != null ? Math.round(curPrice * h.net_qty) : null
+      const pnl      = evalAmt != null ? evalAmt - h.total_buy_amount : null
+      const pnlRate  = (pnl != null && h.total_buy_amount > 0)
+        ? (pnl / h.total_buy_amount) * 100 : null
+      return { ...h, curPrice, evalAmt, pnl, pnlRate }
+    })
+    .sort((a, b) => (b.evalAmt ?? -1) - (a.evalAmt ?? -1))
+
+  // 종목별 매입 내역 맵 (호버 툴팁용)
+  const txMap = useMemo(() => {
+    const map: Record<string, StockTransaction[]> = {}
+    for (const tx of transactions) {
+      if (tx.cnt !== 1) continue   // 매입만
+      if (!map[tx.stock_code]) map[tx.stock_code] = []
+      map[tx.stock_code].push(tx)
+    }
+    // 각 종목별로 날짜 역순 정렬
+    for (const code of Object.keys(map)) {
+      map[code].sort((a, b) => b.s_date.localeCompare(a.s_date))
+    }
+    return map
+  }, [transactions])
 
   const totalBuy   = portfolioRows.reduce((s, r) => s + r.total_buy_amount, 0)
   const totalEval  = portfolioRows.reduce((s, r) => s + (r.evalAmt ?? 0), 0)
@@ -303,6 +321,15 @@ export default function StockPage() {
                         <tr
                           key={r.stock_code}
                           onClick={() => setSelectedCode(selectedCode === r.stock_code ? null : r.stock_code)}
+                          onMouseEnter={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect()
+                            setTooltip({
+                              code: r.stock_code,
+                              x: Math.min(rect.left, window.innerWidth - 420),
+                              y: rect.bottom + 4,
+                            })
+                          }}
+                          onMouseLeave={() => setTooltip(null)}
                           className={`cursor-pointer transition-colors ${
                             selectedCode === r.stock_code ? "bg-blue-50" : "hover:bg-gray-50"
                           }`}
@@ -531,6 +558,55 @@ export default function StockPage() {
             )}
           </div>
         )}
+
+        {/* ── 보유 종목 호버 툴팁 ── */}
+        {tooltip && (() => {
+          const holding  = holdings.find(h => h.stock_code === tooltip.code)
+          const curPrice = holding?.latest_price ?? null
+          const buyTxs   = txMap[tooltip.code] ?? []
+          return (
+            <div
+              className="fixed z-40 bg-white border border-gray-200 rounded-xl shadow-2xl p-4 w-[400px] pointer-events-none"
+              style={{ top: tooltip.y, left: tooltip.x }}
+            >
+              <p className="text-xs font-semibold text-gray-700 mb-2">
+                {holding?.stock_name ?? tooltip.code} 매입 내역
+              </p>
+              {buyTxs.length === 0 ? (
+                <p className="text-xs text-gray-400">매입 내역 없음</p>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-gray-500 border-b border-gray-100">
+                      <th className="text-left pb-1">매입일</th>
+                      <th className="text-right pb-1">수량</th>
+                      <th className="text-right pb-1">매입가</th>
+                      <th className="text-right pb-1">현재가</th>
+                      <th className="text-right pb-1">수익률</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {buyTxs.map(tx => {
+                      const rate = (curPrice != null && tx.s_amt > 0)
+                        ? (curPrice - tx.s_amt) / tx.s_amt * 100 : null
+                      return (
+                        <tr key={tx.id} className="leading-6">
+                          <td className="text-gray-700 pr-2">{`${tx.s_date.slice(0,4)}-${tx.s_date.slice(4,6)}-${tx.s_date.slice(6,8)}`}</td>
+                          <td className="text-right text-gray-700">{fmt(tx.qty)}주</td>
+                          <td className="text-right text-gray-700">{fmt(tx.s_amt)}원</td>
+                          <td className="text-right text-gray-700">{curPrice != null ? `${fmt(curPrice)}원` : "-"}</td>
+                          <td className={`text-right font-semibold ${cc(rate)}`}>
+                            {rate != null ? `${rate > 0 ? "+" : ""}${fmt(rate, 2)}%` : "-"}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )
+        })()}
 
         {/* ── 매입/매도 추가 모달 ── */}
         {showModal && (

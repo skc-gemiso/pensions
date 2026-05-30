@@ -229,21 +229,43 @@ export async function fetchAndSaveNaverPrices(stockCode: string, stockType: numb
   const db = getPensionPool()
   await ensureStockTables(db)
 
-  // sise_day.naver HTML 스크래핑 — 10페이지씩 3배치 (≈ 300 거래일)
-  const allPrices: Array<{ date: string; close: number }> = []
+  // 오늘 데이터 삭제 → 당일 재수집
+  const todayStr = new Date().toISOString().slice(0, 10)
+  await db.query(
+    `DELETE FROM f_stock_amt WHERE stock_code = $1 AND s_date = $2::date`,
+    [stockCode, todayStr]
+  )
 
-  for (let batchStart = 1; batchStart <= 30; batchStart += 10) {
-    const pages = Array.from({ length: 10 }, (_, i) => batchStart + i)
-    const batchResults = await Promise.all(pages.map((p) => _fetchSisePage(stockCode, p)))
-    const batchPrices  = batchResults.flat()
+  // 삭제 후 최종 저장 일자 조회
+  const { rows: maxRows } = await db.query(
+    `SELECT TO_CHAR(MAX(s_date), 'YYYY-MM-DD') AS max_date FROM f_stock_amt WHERE stock_code = $1`,
+    [stockCode]
+  )
+  const maxDateStr: string | null = maxRows[0]?.max_date ?? null
+
+  // 기존 데이터 있으면 최근 6페이지만, 없으면 전체 30페이지 수집
+  const maxPage = maxDateStr ? 6 : 30
+  const allPrices: Array<{ date: string; close: number }> = []
+  let done = false
+
+  for (let batchStart = 1; batchStart <= maxPage && !done; batchStart += 3) {
+    const pages = Array.from({ length: 3 }, (_, i) => batchStart + i).filter(p => p <= maxPage)
+    const batchPrices = (await Promise.all(pages.map(p => _fetchSisePage(stockCode, p)))).flat()
     if (batchPrices.length === 0) break
-    allPrices.push(...batchPrices)
+
+    for (const p of batchPrices) {
+      if (maxDateStr && p.date <= maxDateStr) { done = true; break }
+      allPrices.push(p)
+    }
   }
 
-  if (allPrices.length === 0) throw new Error("네이버 금융에서 주가를 가져올 수 없습니다. 종목코드를 확인하세요.")
+  if (allPrices.length === 0) {
+    if (!maxDateStr) throw new Error("네이버 금융에서 주가를 가져올 수 없습니다. 종목코드를 확인하세요.")
+    return 0
+  }
 
-  const seen  = new Set<string>()
-  const unique = allPrices.filter((p) => { if (seen.has(p.date)) return false; seen.add(p.date); return true })
+  const seen   = new Set<string>()
+  const unique = allPrices.filter(p => { if (seen.has(p.date)) return false; seen.add(p.date); return true })
 
   let saved = 0
   for (const p of unique) {
