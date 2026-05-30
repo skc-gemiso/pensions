@@ -13,7 +13,6 @@ import {
   type StockHolding, type StockTransaction, type DailyPrice, type StockListItem,
 } from "./actions"
 
-type NaverPrice = { price: number; change: number; changeRate: number; name: string; volume: number }
 type StockSearchItem = StockListItem
 
 type FormState = {
@@ -54,8 +53,6 @@ function fmtDate(s: string) {
 
 export default function StockPage() {
   const [holdings, setHoldings]           = useState<StockHolding[]>([])
-  const [naverPrices, setNaverPrices]     = useState<Record<string, NaverPrice>>({})
-  const [pricesLoading, setPricesLoading] = useState(false)
   const [selectedCode, setSelectedCode]   = useState<string | null>(null)
   const [dailyPrices, setDailyPrices]     = useState<DailyPrice[]>([])
   const [chartLoading, setChartLoading]   = useState(false)
@@ -81,18 +78,6 @@ export default function StockPage() {
     return h
   }, [])
 
-  const loadNaverPrices = useCallback(async (codes: string[]) => {
-    if (codes.length === 0) return
-    setPricesLoading(true)
-    try {
-      const res = await fetch(`/api/stock/price?codes=${codes.join(",")}`)
-      const data: Record<string, NaverPrice> = await res.json()
-      setNaverPrices(data)
-    } finally {
-      setPricesLoading(false)
-    }
-  }, [])
-
   const loadDailyPrices = useCallback(async (code: string) => {
     setChartLoading(true)
     const prices = await getDailyPrices(code)
@@ -109,13 +94,10 @@ export default function StockPage() {
 
   useEffect(() => {
     loadHoldings().then((h) => {
-      if (h.length > 0) {
-        loadNaverPrices(h.map((x) => x.stock_code))
-        setSelectedCode(h[0].stock_code)
-      }
+      if (h.length > 0) setSelectedCode(h[0].stock_code)
     })
     loadTransactions()
-  }, [loadHoldings, loadNaverPrices, loadTransactions])
+  }, [loadHoldings, loadTransactions])
 
   useEffect(() => {
     if (selectedCode) loadDailyPrices(selectedCode)
@@ -183,8 +165,7 @@ export default function StockPage() {
       })
       setShowModal(false)
       setForm(EMPTY_FORM)
-      const h = await loadHoldings()
-      loadNaverPrices(h.map((x) => x.stock_code))
+      await loadHoldings()
       loadTransactions()
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "저장 실패")
@@ -196,8 +177,7 @@ export default function StockPage() {
   async function handleDelete(id: number) {
     if (!confirm("이 거래 내역을 삭제하시겠습니까?")) return
     await deleteTransaction(id)
-    const h = await loadHoldings()
-    loadNaverPrices(h.map((x) => x.stock_code))
+    await loadHoldings()
     loadTransactions()
   }
 
@@ -211,15 +191,14 @@ export default function StockPage() {
     ? chartData.reduce((s, r) => s + r.amt, 0) / chartData.length
     : null
 
-  // Portfolio with Naver prices merged
+  // f_stock_amt 최신 저장가 기반 포트폴리오 계산
   const portfolioRows = holdings.map((h) => {
-    const naver   = naverPrices[h.stock_code]
-    const curPrice = naver?.price ?? null
+    const curPrice = h.latest_price
     const evalAmt  = curPrice != null ? Math.round(curPrice * h.net_qty) : null
     const pnl      = evalAmt != null ? evalAmt - h.total_buy_amount : null
     const pnlRate  = (pnl != null && h.total_buy_amount > 0)
       ? (pnl / h.total_buy_amount) * 100 : null
-    return { ...h, naver, curPrice, evalAmt, pnl, pnlRate }
+    return { ...h, curPrice, evalAmt, pnl, pnlRate }
   })
 
   const totalBuy   = portfolioRows.reduce((s, r) => s + r.total_buy_amount, 0)
@@ -275,21 +254,17 @@ export default function StockPage() {
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
                   <p className="text-xs text-gray-500">총 평가금액</p>
                   <p className={`text-lg font-bold mt-1 ${cc(totalEval - totalBuy)}`}>
-                    {pricesLoading ? "..." : fmtKRW(totalEval)}
+                    {fmtKRW(totalEval)}
                   </p>
                 </div>
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
                   <p className="text-xs text-gray-500">총 평가손익 / 수익률</p>
                   <p className={`text-lg font-bold mt-1 ${cc(totalPnl)}`}>
-                    {pricesLoading ? "..." : (
-                      <>
-                        {totalPnl > 0 ? "+" : ""}{fmtKRW(totalPnl)}
-                        {totalRate != null && (
-                          <span className="text-sm ml-1">
-                            ({totalRate > 0 ? "+" : ""}{fmt(totalRate, 2)}%)
-                          </span>
-                        )}
-                      </>
+                    {totalPnl > 0 ? "+" : ""}{fmtKRW(totalPnl)}
+                    {totalRate != null && (
+                      <span className="text-sm ml-1">
+                        ({totalRate > 0 ? "+" : ""}{fmt(totalRate, 2)}%)
+                      </span>
                     )}
                   </p>
                 </div>
@@ -300,15 +275,7 @@ export default function StockPage() {
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-gray-800">보유 종목</h2>
-                <div className="flex items-center gap-2">
-                  {pricesLoading && <span className="text-xs text-gray-400">실시간 조회 중...</span>}
-                  <button
-                    onClick={() => loadNaverPrices(holdings.map((h) => h.stock_code))}
-                    className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50"
-                  >
-                    새로고침
-                  </button>
-                </div>
+                <p className="text-xs text-gray-400">저장된 최신 주가 기준</p>
               </div>
               {portfolioRows.length === 0 ? (
                 <p className="text-center text-gray-400 py-10 text-sm">보유 종목이 없습니다.</p>
@@ -340,19 +307,17 @@ export default function StockPage() {
                         >
                           <td className="px-3 py-2 font-mono text-xs text-gray-700">{r.stock_code}</td>
                           <td className="px-3 py-2 text-gray-900 font-medium whitespace-nowrap">
-                            {r.naver?.name ?? r.stock_code}
+                            {r.stock_name ?? r.stock_code}
                           </td>
                           <td className="px-3 py-2 text-gray-500 text-xs whitespace-nowrap">
                             {r.stock_type === 2 ? "ETF" : "주식"}
                           </td>
                           <td className="px-3 py-2 text-right text-gray-900">{fmt(r.net_qty)}주</td>
                           <td className="px-3 py-2 text-right text-gray-700">{fmt(r.avg_buy_price)}원</td>
-                          <td className={`px-3 py-2 text-right font-medium ${cc(r.naver?.change ?? null)}`}>
+                          <td className="px-3 py-2 text-right font-medium text-gray-900">
                             {r.curPrice != null ? `${fmt(r.curPrice)}원` : "-"}
-                            {r.naver && (
-                              <div className="text-xs">
-                                {r.naver.change > 0 ? "+" : ""}{fmt(r.naver.change)}
-                              </div>
+                            {r.latest_date && (
+                              <div className="text-xs text-gray-400">{r.latest_date}</div>
                             )}
                           </td>
                           <td className="px-3 py-2 text-right text-gray-700">{fmtKRW(r.total_buy_amount)}</td>
@@ -379,7 +344,7 @@ export default function StockPage() {
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div>
                     <h2 className="text-sm font-semibold text-gray-800">
-                      {naverPrices[selectedCode]?.name ?? selectedCode} 일별 주가
+                      {holdings.find(h => h.stock_code === selectedCode)?.stock_name ?? selectedCode} 일별 주가
                     </h2>
                   </div>
                   <div className="flex items-center gap-2">
@@ -540,7 +505,7 @@ export default function StockPage() {
                         <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{fmtDate(tx.s_date)}</td>
                         <td className="px-3 py-2 font-mono text-xs text-gray-700">{tx.stock_code}</td>
                         <td className="px-3 py-2 text-gray-900 whitespace-nowrap">
-                          {naverPrices[tx.stock_code]?.name ?? tx.stock_code}
+                          {holdings.find(h => h.stock_code === tx.stock_code)?.stock_name ?? tx.stock_code}
                         </td>
                         <td className={`px-3 py-2 text-right font-medium ${tx.cnt === 1 ? "text-red-600" : "text-blue-600"}`}>
                           {tx.cnt === 1 ? "매입" : "매도"}

@@ -46,10 +46,13 @@ export type StockTransaction = {
 
 export type StockHolding = {
   stock_code: string
+  stock_name: string | null
   stock_type: number
   net_qty: number
   avg_buy_price: number
   total_buy_amount: number
+  latest_price: number | null   // f_stock_amt 최신 종가
+  latest_date:  string | null   // f_stock_amt 최신 기준일 (YYYY-MM-DD)
 }
 
 export type DailyPrice = {
@@ -66,15 +69,23 @@ export async function getHoldings(): Promise<StockHolding[]> {
 
   const { rows } = await db.query(`
     SELECT
-      stock_code,
-      MAX(stock_type) AS stock_type,
-      SUM(CASE WHEN cnt = 1 THEN qty ELSE -qty END) AS net_qty,
-      SUM(CASE WHEN cnt = 1 THEN qty * s_amt ELSE 0 END)
-        / NULLIF(SUM(CASE WHEN cnt = 1 THEN qty ELSE 0 END), 0) AS avg_buy_price
-    FROM my_stock
-    GROUP BY stock_code
-    HAVING SUM(CASE WHEN cnt = 1 THEN qty ELSE -qty END) > 0
-    ORDER BY stock_code
+      ms.stock_code,
+      MAX(ms.stock_type) AS stock_type,
+      SUM(CASE WHEN ms.cnt = 1 THEN ms.qty ELSE -ms.qty END) AS net_qty,
+      SUM(CASE WHEN ms.cnt = 1 THEN ms.qty * ms.s_amt ELSE 0 END)
+        / NULLIF(SUM(CASE WHEN ms.cnt = 1 THEN ms.qty ELSE 0 END), 0) AS avg_buy_price,
+      (SELECT COALESCE(sl.stock_short_name, sl.stock_name)
+         FROM t_stock_list sl WHERE sl.stock_code = ms.stock_code) AS stock_name,
+      (SELECT fa.amt
+         FROM f_stock_amt fa WHERE fa.stock_code = ms.stock_code
+         ORDER BY fa.s_date DESC LIMIT 1) AS latest_price,
+      (SELECT TO_CHAR(fa.s_date, 'YYYY-MM-DD')
+         FROM f_stock_amt fa WHERE fa.stock_code = ms.stock_code
+         ORDER BY fa.s_date DESC LIMIT 1) AS latest_date
+    FROM my_stock ms
+    GROUP BY ms.stock_code
+    HAVING SUM(CASE WHEN ms.cnt = 1 THEN ms.qty ELSE -ms.qty END) > 0
+    ORDER BY ms.stock_code
   `)
 
   return rows.map((r) => {
@@ -86,6 +97,9 @@ export async function getHoldings(): Promise<StockHolding[]> {
       net_qty,
       avg_buy_price,
       total_buy_amount: Math.round(net_qty * avg_buy_price),
+      stock_name:    r.stock_name   ?? null,
+      latest_price:  r.latest_price != null ? Number(r.latest_price) : null,
+      latest_date:   r.latest_date  ?? null,
     }
   })
 }
