@@ -100,7 +100,10 @@ export default function StockPage() {
 
   useEffect(() => {
     loadHoldings().then((h) => {
-      if (h.length > 0) loadNaverPrices(h.map((x) => x.stock_code))
+      if (h.length > 0) {
+        loadNaverPrices(h.map((x) => x.stock_code))
+        setSelectedCode(h[0].stock_code)
+      }
     })
     loadTransactions()
   }, [loadHoldings, loadNaverPrices, loadTransactions])
@@ -346,7 +349,6 @@ export default function StockPage() {
                     <h2 className="text-sm font-semibold text-gray-800">
                       {naverPrices[selectedCode]?.name ?? selectedCode} 일별 주가
                     </h2>
-                    <p className="text-xs text-gray-500 mt-0.5">f_stock_amt 저장 데이터 기준</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
