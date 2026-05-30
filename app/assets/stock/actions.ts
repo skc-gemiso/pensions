@@ -6,7 +6,6 @@ import { getPensionPool } from "@/lib/pension-db"
 async function ensureStockTables(db: ReturnType<typeof getPensionPool>) {
   await db.query(`
     CREATE TABLE IF NOT EXISTS my_stock (
-      id         SERIAL PRIMARY KEY,
       stock_code VARCHAR(20)  NOT NULL,
       s_date     VARCHAR(8)   NOT NULL,
       cnt        INT          NOT NULL,
@@ -17,6 +16,9 @@ async function ensureStockTables(db: ReturnType<typeof getPensionPool>) {
       updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
     )
   `)
+  // 기존 테이블에 id 컬럼이 없는 경우 추가 (기존 행에도 순차 값 자동 부여)
+  await db.query(`ALTER TABLE my_stock ADD COLUMN IF NOT EXISTS id SERIAL`)
+
   await db.query(`
     CREATE TABLE IF NOT EXISTS f_stock_amt (
       stock_code VARCHAR(20)  NOT NULL,
