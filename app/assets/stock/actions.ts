@@ -150,6 +150,47 @@ export async function deleteTransaction(id: number): Promise<void> {
   await db.query(`DELETE FROM my_stock WHERE id = $1`, [id])
 }
 
+export type StockListItem = { code: string; name: string; market: string }
+
+// t_stock_list 검색 — 빈 쿼리 시 default_yn='Y' 인기 종목 반환
+export async function searchStockList(q: string): Promise<StockListItem[]> {
+  const session = await auth()
+  if (!session?.user) return []
+
+  const db = getPensionPool()
+
+  if (!q.trim()) {
+    const { rows } = await db.query(
+      `SELECT stock_code AS code,
+              COALESCE(stock_short_name, stock_name) AS name,
+              COALESCE(market_type, '') AS market
+       FROM t_stock_list
+       WHERE default_yn = 'Y'
+       ORDER BY listed_shares DESC NULLS LAST
+       LIMIT 20`
+    )
+    return rows.map((r) => ({ code: r.code, name: r.name, market: r.market }))
+  }
+
+  const { rows } = await db.query(
+    `SELECT stock_code AS code,
+            COALESCE(stock_short_name, stock_name) AS name,
+            COALESCE(market_type, '') AS market
+     FROM t_stock_list
+     WHERE stock_code ILIKE $1
+        OR stock_short_name ILIKE $1
+        OR stock_name ILIKE $1
+     ORDER BY
+       CASE WHEN stock_code = $2 THEN 0
+            WHEN stock_code ILIKE $3 THEN 1
+            ELSE 2 END,
+       listed_shares DESC NULLS LAST
+     LIMIT 20`,
+    [`%${q}%`, q.toUpperCase(), `${q.toUpperCase()}%`]
+  )
+  return rows.map((r) => ({ code: r.code, name: r.name, market: r.market }))
+}
+
 export async function getDailyPrices(stockCode: string): Promise<DailyPrice[]> {
   const session = await auth()
   if (!session?.user) throw new Error("Unauthorized")

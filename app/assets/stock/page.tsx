@@ -9,12 +9,12 @@ import {
 import { fmt, cc, fmtKRW } from "@/lib/fmt"
 import {
   getHoldings, getTransactions, addTransaction, deleteTransaction,
-  getDailyPrices, fetchAndSaveNaverPrices,
-  type StockHolding, type StockTransaction, type DailyPrice,
+  getDailyPrices, fetchAndSaveNaverPrices, searchStockList,
+  type StockHolding, type StockTransaction, type DailyPrice, type StockListItem,
 } from "./actions"
 
 type NaverPrice = { price: number; change: number; changeRate: number; name: string; volume: number }
-type StockSearchItem = { code: string; name: string; market: string }
+type StockSearchItem = StockListItem
 
 type FormState = {
   cnt: "1" | "2"
@@ -141,13 +141,11 @@ export default function StockPage() {
   function handleStockSearch(value: string) {
     setStockSearch(value)
     if (searchTimer.current) clearTimeout(searchTimer.current)
-    if (!value.trim()) { setStockResults([]); return }
     searchTimer.current = setTimeout(async () => {
-      const res = await fetch(`/api/stock/search?q=${encodeURIComponent(value)}`)
-      const data: StockSearchItem[] = await res.json()
+      const data = await searchStockList(value)
       setStockResults(data)
       setShowStockDrop(true)
-    }, 280)
+    }, 200)
   }
 
   function selectStock(item: StockSearchItem) {
@@ -651,7 +649,14 @@ export default function StockPage() {
                         type="text"
                         value={stockSearch}
                         onChange={(e) => handleStockSearch(e.target.value)}
-                        onFocus={() => { if (stockResults.length > 0) setShowStockDrop(true) }}
+                        onFocus={async () => {
+                          if (blurTimer.current) clearTimeout(blurTimer.current)
+                          if (stockResults.length === 0) {
+                            const data = await searchStockList("")
+                            setStockResults(data)
+                          }
+                          setShowStockDrop(true)
+                        }}
                         onBlur={() => { blurTimer.current = setTimeout(() => setShowStockDrop(false), 150) }}
                         placeholder="종목명 또는 코드 검색..."
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
