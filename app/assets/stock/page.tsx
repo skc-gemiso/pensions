@@ -6,7 +6,9 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
 } from "recharts"
-import { fmt, cc, fmtKRW } from "@/lib/fmt"
+import { fmt, cc } from "@/lib/fmt"
+
+const won = (n: number | null | undefined) => n == null ? "-" : `${fmt(n)}원`
 import {
   getHoldings, getTransactions, addTransaction, deleteTransaction,
   getDailyPrices, fetchAndSaveNaverPrices, searchStockList,
@@ -249,18 +251,18 @@ export default function StockPage() {
               <div className="grid grid-cols-3 gap-3">
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
                   <p className="text-xs text-gray-500">총 매입금액</p>
-                  <p className="text-lg font-bold text-gray-900 mt-1">{fmtKRW(totalBuy)}</p>
+                  <p className="text-lg font-bold text-gray-900 mt-1">{won(totalBuy)}</p>
                 </div>
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
                   <p className="text-xs text-gray-500">총 평가금액</p>
                   <p className={`text-lg font-bold mt-1 ${cc(totalEval - totalBuy)}`}>
-                    {fmtKRW(totalEval)}
+                    {won(totalEval)}
                   </p>
                 </div>
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
                   <p className="text-xs text-gray-500">총 평가손익 / 수익률</p>
                   <p className={`text-lg font-bold mt-1 ${cc(totalPnl)}`}>
-                    {totalPnl > 0 ? "+" : ""}{fmtKRW(totalPnl)}
+                    {totalPnl > 0 ? "+" : ""}{won(totalPnl)}
                     {totalRate != null && (
                       <span className="text-sm ml-1">
                         ({totalRate > 0 ? "+" : ""}{fmt(totalRate, 2)}%)
@@ -320,12 +322,12 @@ export default function StockPage() {
                               <div className="text-xs text-gray-400">{r.latest_date}</div>
                             )}
                           </td>
-                          <td className="px-3 py-2 text-right text-gray-700">{fmtKRW(r.total_buy_amount)}</td>
+                          <td className="px-3 py-2 text-right text-gray-700">{won(r.total_buy_amount)}</td>
                           <td className={`px-3 py-2 text-right font-medium ${cc(r.pnl)}`}>
-                            {r.evalAmt != null ? fmtKRW(r.evalAmt) : "-"}
+                            {r.evalAmt != null ? won(r.evalAmt) : "-"}
                           </td>
                           <td className={`px-3 py-2 text-right font-medium ${cc(r.pnl)}`}>
-                            {r.pnl != null ? `${r.pnl > 0 ? "+" : ""}${fmtKRW(r.pnl)}` : "-"}
+                            {r.pnl != null ? `${r.pnl > 0 ? "+" : ""}${won(r.pnl)}` : "-"}
                           </td>
                           <td className={`px-3 py-2 text-right font-medium whitespace-nowrap ${cc(r.pnlRate)}`}>
                             {r.pnlRate != null ? `${r.pnlRate > 0 ? "+" : ""}${fmt(r.pnlRate, 2)}%` : "-"}
@@ -512,7 +514,7 @@ export default function StockPage() {
                         </td>
                         <td className="px-3 py-2 text-right text-gray-900">{fmt(tx.qty)}주</td>
                         <td className="px-3 py-2 text-right text-gray-700">{fmt(tx.s_amt)}원</td>
-                        <td className="px-3 py-2 text-right text-gray-700">{fmtKRW(tx.qty * tx.s_amt)}</td>
+                        <td className="px-3 py-2 text-right text-gray-700">{won(tx.qty * tx.s_amt)}</td>
                         <td className="px-3 py-2 text-center">
                           <button
                             onClick={() => handleDelete(tx.id)}
@@ -675,7 +677,7 @@ export default function StockPage() {
                 {/* 금액 미리보기 */}
                 {form.qty && form.s_amt && (
                   <p className="text-xs text-gray-500">
-                    총 금액: <span className="font-semibold text-gray-800">{fmtKRW(Number(form.qty) * Number(form.s_amt))}</span>
+                    총 금액: <span className="font-semibold text-gray-800">{won(Number(form.qty) * Number(form.s_amt))}</span>
                   </p>
                 )}
 
