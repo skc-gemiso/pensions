@@ -11,8 +11,8 @@ import { fmt, cc } from "@/lib/fmt"
 const won = (n: number | null | undefined) => n == null ? "-" : `${fmt(n)}원`
 import {
   getHoldings, getTransactions, addTransaction, deleteTransaction,
-  getDailyPrices, fetchAndSaveNaverPrices, searchStockList,
-  type StockHolding, type StockTransaction, type DailyPrice, type StockListItem,
+  getDailyPrices, fetchAndSaveNaverPrices, searchStockList, getMarketIndices,
+  type StockHolding, type StockTransaction, type DailyPrice, type StockListItem, type MarketIndex,
 } from "./actions"
 
 type StockSearchItem = StockListItem
@@ -56,6 +56,7 @@ function fmtDate(s: string) {
 export default function StockPage() {
   const [holdings, setHoldings]           = useState<StockHolding[]>([])
   const [selectedCode, setSelectedCode]   = useState<string | null>(null)
+  const [marketIndices, setMarketIndices] = useState<{ kospi: MarketIndex | null; kosdaq: MarketIndex | null }>({ kospi: null, kosdaq: null })
   const [dailyPrices, setDailyPrices]     = useState<DailyPrice[]>([])
   const [chartLoading, setChartLoading]   = useState(false)
   const [chartDays, setChartDays]         = useState(365)
@@ -95,34 +96,54 @@ export default function StockPage() {
     setTxLoading(false)
   }, [])
 
+  const loadMarketIndices = useCallback(async () => {
+    const data = await getMarketIndices()
+    setMarketIndices(data)
+  }, [])
+
   useEffect(() => {
+    loadMarketIndices()
     loadHoldings().then((h) => {
-      if (h.length > 0) setSelectedCode(h[0].stock_code)
+      if (h.length > 0) {
+        const firstCode = h[0].stock_code
+        setSelectedCode(firstCode)
+        // 페이지 진입 시 자동 최신화 (silent — alert 없음)
+        handleFetchNaver(h, firstCode, true)
+      }
     })
     loadTransactions()
-  }, [loadHoldings, loadTransactions])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadHoldings, loadTransactions, loadMarketIndices])
 
   useEffect(() => {
     if (selectedCode) loadDailyPrices(selectedCode)
     else setDailyPrices([])
   }, [selectedCode, loadDailyPrices])
 
-  async function handleFetchNaver() {
-    if (holdings.length === 0) return
+  // holdingsList: 명시적으로 넘기면 state 대신 사용 (초기 로드 자동 실행 시)
+  // codeToLoad:   daily prices 로드할 종목코드 (state의 selectedCode 대신)
+  // silent:       true면 완료 alert 생략
+  async function handleFetchNaver(
+    holdingsList?: StockHolding[],
+    codeToLoad?: string | null,
+    silent = false
+  ) {
+    const list = holdingsList ?? holdings
+    if (list.length === 0) return
     setFetchingNaver(true)
     try {
       let total = 0
-      for (const h of holdings) {
-        try {
-          const saved = await fetchAndSaveNaverPrices(h.stock_code, h.stock_type)
-          total += saved
-        } catch { /* 개별 실패 무시 */ }
+      for (const h of list) {
+        try { total += await fetchAndSaveNaverPrices(h.stock_code, h.stock_type) }
+        catch { /* 개별 실패 무시 */ }
       }
       await loadHoldings()
-      if (selectedCode) await loadDailyPrices(selectedCode)
-      alert(`${holdings.length}개 종목 최신화 완료 (${total}건 저장)`)
+      const code = codeToLoad !== undefined ? codeToLoad : selectedCode
+      if (code) await loadDailyPrices(code)
+      await loadMarketIndices()
+      if (!silent) alert(`${list.length}개 종목 최신화 완료 (${total}건 저장)`)
     } catch (e) {
-      alert(`오류: ${e instanceof Error ? e.message : "알 수 없는 오류"}`)
+      if (!silent) alert(`오류: ${e instanceof Error ? e.message : "알 수 없는 오류"}`)
     } finally {
       setFetchingNaver(false)
     }
@@ -302,11 +323,36 @@ export default function StockPage() {
 
             {/* 포트폴리오 테이블 */}
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-gray-800">보유 종목</h2>
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-800">
+                    보유 종목
+                    {(marketIndices.kospi || marketIndices.kosdaq) && (
+                      <span className="ml-2 text-xs font-normal text-gray-500">
+                        {marketIndices.kospi && (
+                          <>
+                            코스피 : <span className="text-gray-800 font-medium">{fmt(marketIndices.kospi.price, 2)}</span>
+                            <span className={`ml-1 ${cc(marketIndices.kospi.changeRate)}`}>
+                              {marketIndices.kospi.changeRate > 0 ? "+" : ""}{fmt(marketIndices.kospi.changeRate, 2)}%
+                            </span>
+                          </>
+                        )}
+                        {marketIndices.kospi && marketIndices.kosdaq && <span className="mx-2">·</span>}
+                        {marketIndices.kosdaq && (
+                          <>
+                            코스닥 : <span className="text-gray-800 font-medium">{fmt(marketIndices.kosdaq.price, 2)}</span>
+                            <span className={`ml-1 ${cc(marketIndices.kosdaq.changeRate)}`}>
+                              {marketIndices.kosdaq.changeRate > 0 ? "+" : ""}{fmt(marketIndices.kosdaq.changeRate, 2)}%
+                            </span>
+                          </>
+                        )}
+                      </span>
+                    )}
+                  </h2>
+                </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={handleFetchNaver}
+                    onClick={() => handleFetchNaver()}
                     disabled={fetchingNaver || holdings.length === 0}
                     className="text-xs px-3 py-1.5 border border-blue-400 text-blue-600 rounded-lg hover:bg-blue-50 disabled:opacity-50 whitespace-nowrap"
                   >

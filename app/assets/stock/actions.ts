@@ -3,6 +3,34 @@
 import { auth } from "@/auth"
 import { getPensionPool } from "@/lib/pension-db"
 
+export type MarketIndex = {
+  name:       string
+  price:      number
+  change:     number
+  changeRate: number
+}
+
+export async function getMarketIndices(): Promise<{ kospi: MarketIndex | null; kosdaq: MarketIndex | null }> {
+  async function fetchIdx(code: string): Promise<MarketIndex | null> {
+    try {
+      const res = await fetch(
+        `https://m.stock.naver.com/api/index/${code}/basic`,
+        { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://m.stock.naver.com" }, next: { revalidate: 0 } }
+      )
+      if (!res.ok) return null
+      const d = await res.json()
+      return {
+        name:       String(d.indexName ?? code),
+        price:      Number(String(d.closePrice ?? "0").replace(/,/g, "")),
+        change:     Number(String(d.compareToPreviousClosePrice ?? "0").replace(/,/g, "")),
+        changeRate: Number(String(d.fluctuationsRatio ?? "0").replace(/,/g, "")),
+      }
+    } catch { return null }
+  }
+  const [kospi, kosdaq] = await Promise.all([fetchIdx("KOSPI"), fetchIdx("KOSDAQ")])
+  return { kospi, kosdaq }
+}
+
 async function ensureStockTables(db: ReturnType<typeof getPensionPool>) {
   await db.query(`
     CREATE TABLE IF NOT EXISTS my_stock (
