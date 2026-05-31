@@ -9,10 +9,14 @@ import { fmt, cc } from "@/lib/fmt"
 import { getKodex200Series, getCoveredCallSeries, type Kodex200Row, type CoveredCallRow } from "./actions"
 
 const PERIODS = [
-  { label: "1년",  months: 12 },
-  { label: "2년",  months: 24 },
-  { label: "전체", months: undefined },
+  { label: "3개월", months: 3  },
+  { label: "6개월", months: 6  },
+  { label: "1년",   months: 12 },
+  { label: "2년",   months: 24 },
+  { label: "전체",  months: undefined },
 ]
+
+const INVEST = 10_000_000  // 1,000만원 기준
 
 type ChartRow = { date: string; kodex: number | null; cc: number | null }
 
@@ -41,19 +45,23 @@ export function Kodex200Panel() {
   const firstK   = rows[0]
   const firstCC  = ccRows[0]
 
-  // 수익율 비교 (기간 내 기초→기말)
-  const kRet  = (firstK  && latestK  && firstK.amt  > 0) ? (latestK.amt  - firstK.amt)  / firstK.amt  * 100 : null
-  const ccRet = (firstCC && latestCC && firstCC.amt > 0) ? (latestCC.amt - firstCC.amt) / firstCC.amt * 100 : null
-
-  // 커버드콜 재투자 시나리오 (연 12% = 월 1% 복리, 가격 수익에 복리 곱)
+  // 1,000만원 기준 기말금액·수익금액·수익률
   const periodMonths = (firstCC && latestCC)
     ? (new Date(latestCC.date).getTime() - new Date(firstCC.date).getTime()) / (1000 * 60 * 60 * 24 * 30.4375)
     : 0
-  const divMultiplier   = Math.pow(1 + 0.12 / 12, periodMonths)
-  const ccRetWithDiv    = (firstCC && latestCC && firstCC.amt > 0)
-    ? ((latestCC.amt / firstCC.amt) * divMultiplier - 1) * 100 : null
-  const ccFinalWithDiv  = (firstCC && latestCC && firstCC.amt > 0)
-    ? Math.round(firstCC.amt * (latestCC.amt / firstCC.amt) * divMultiplier) : null
+  const divMultiplier = Math.pow(1 + 0.12 / 12, periodMonths)
+
+  const calcResult = (initAmt: number | undefined, finalAmt: number | undefined, extra = 1) => {
+    if (!initAmt || !finalAmt || initAmt <= 0) return null
+    const endVal  = Math.round(INVEST * (finalAmt / initAmt) * extra)
+    const profit  = endVal - INVEST
+    const retPct  = (endVal / INVEST - 1) * 100
+    return { endVal, profit, retPct }
+  }
+
+  const kResult     = calcResult(firstK?.amt,  latestK?.amt)
+  const ccResult    = calcResult(firstCC?.amt, latestCC?.amt)
+  const ccDivResult = calcResult(firstCC?.amt, latestCC?.amt, divMultiplier)
 
   // 차트 데이터
   const ccMap = new Map(ccRows.map((r) => [r.date, r]))
@@ -141,31 +149,38 @@ export function Kodex200Panel() {
 
         {/* 수익율 비교 */}
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs font-semibold text-gray-600 mb-3">수익율 비교 ({PERIODS.find(p => p.months === months)?.label ?? "전체"})</p>
+          <p className="text-xs font-semibold text-gray-600 mb-0.5">
+            수익율 비교 ({PERIODS.find(p => p.months === months)?.label ?? "전체"})
+          </p>
+          <p className="text-xs text-gray-400 mb-3">1,000만원 투자 기준 · 월복리 재투자</p>
           <table className="w-full text-xs">
             <thead>
               <tr className="text-gray-400 border-b border-gray-100">
                 <th className="pb-1.5 text-left font-medium"></th>
-                <th className="pb-1.5 text-right font-medium">기초가</th>
-                <th className="pb-1.5 text-right font-medium">기말가</th>
-                <th className="pb-1.5 text-right font-medium">상승률</th>
+                <th className="pb-1.5 text-right font-medium">기말금액</th>
+                <th className="pb-1.5 text-right font-medium">수익금액</th>
+                <th className="pb-1.5 text-right font-medium">수익률</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               <tr>
                 <td className="py-1.5 text-blue-600 font-medium">KODEX200</td>
-                <td className="py-1.5 text-right text-gray-700">{firstK  ? fmt(firstK.amt)  : "-"}</td>
-                <td className="py-1.5 text-right text-gray-700">{latestK ? fmt(latestK.amt) : "-"}</td>
-                <td className={`py-1.5 text-right font-semibold ${cc(kRet)}`}>
-                  {kRet != null ? `${sign(kRet)}${fmt(kRet, 2)}%` : "-"}
+                <td className="py-1.5 text-right text-gray-700">{kResult ? `${fmt(kResult.endVal)}원` : "-"}</td>
+                <td className={`py-1.5 text-right font-medium ${cc(kResult?.profit ?? null)}`}>
+                  {kResult ? `${sign(kResult.profit)}${fmt(kResult.profit)}원` : "-"}
+                </td>
+                <td className={`py-1.5 text-right font-semibold ${cc(kResult?.retPct ?? null)}`}>
+                  {kResult ? `${sign(kResult.retPct)}${fmt(kResult.retPct, 2)}%` : "-"}
                 </td>
               </tr>
               <tr>
                 <td className="py-1.5 text-amber-600 font-medium">커버드콜</td>
-                <td className="py-1.5 text-right text-gray-700">{firstCC  ? fmt(firstCC.amt)  : "-"}</td>
-                <td className="py-1.5 text-right text-gray-700">{latestCC ? fmt(latestCC.amt) : "-"}</td>
-                <td className={`py-1.5 text-right font-semibold ${cc(ccRet)}`}>
-                  {ccRet != null ? `${sign(ccRet)}${fmt(ccRet, 2)}%` : "-"}
+                <td className="py-1.5 text-right text-gray-700">{ccResult ? `${fmt(ccResult.endVal)}원` : "-"}</td>
+                <td className={`py-1.5 text-right font-medium ${cc(ccResult?.profit ?? null)}`}>
+                  {ccResult ? `${sign(ccResult.profit)}${fmt(ccResult.profit)}원` : "-"}
+                </td>
+                <td className={`py-1.5 text-right font-semibold ${cc(ccResult?.retPct ?? null)}`}>
+                  {ccResult ? `${sign(ccResult.retPct)}${fmt(ccResult.retPct, 2)}%` : "-"}
                 </td>
               </tr>
               <tr className="bg-amber-50">
@@ -173,10 +188,12 @@ export function Kodex200Panel() {
                   커버드콜<br />
                   <span className="text-gray-400 font-normal">(연12% 재투자)</span>
                 </td>
-                <td className="py-1.5 text-right text-gray-700">{firstCC  ? fmt(firstCC.amt)  : "-"}</td>
-                <td className="py-1.5 text-right text-gray-700">{ccFinalWithDiv != null ? fmt(ccFinalWithDiv) : "-"}</td>
-                <td className={`py-1.5 text-right font-semibold ${cc(ccRetWithDiv)}`}>
-                  {ccRetWithDiv != null ? `${sign(ccRetWithDiv)}${fmt(ccRetWithDiv, 2)}%` : "-"}
+                <td className="py-1.5 text-right text-gray-700">{ccDivResult ? `${fmt(ccDivResult.endVal)}원` : "-"}</td>
+                <td className={`py-1.5 text-right font-medium ${cc(ccDivResult?.profit ?? null)}`}>
+                  {ccDivResult ? `${sign(ccDivResult.profit)}${fmt(ccDivResult.profit)}원` : "-"}
+                </td>
+                <td className={`py-1.5 text-right font-semibold ${cc(ccDivResult?.retPct ?? null)}`}>
+                  {ccDivResult ? `${sign(ccDivResult.retPct)}${fmt(ccDivResult.retPct, 2)}%` : "-"}
                 </td>
               </tr>
             </tbody>
