@@ -238,8 +238,8 @@ function fmtDatetime(iso: string) {
 }
 
 function rateColor(v: string) {
-  if (v.startsWith("+")) return "text-blue-600"
-  if (v.startsWith("-")) return "text-red-500"
+  if (v.startsWith("+")) return "text-red-600"
+  if (v.startsWith("-")) return "text-blue-600"
   return "text-gray-700"
 }
 
