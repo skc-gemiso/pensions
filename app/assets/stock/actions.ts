@@ -119,12 +119,12 @@ export async function getHoldings(): Promise<StockHolding[]> {
       (SELECT fa.e_amt
          FROM t_stock_amt fa WHERE fa.stock_code = ms.stock_code
          ORDER BY fa.e_date DESC LIMIT 1) AS latest_price,
-      (SELECT TO_CHAR(fa.s_date, 'YYYY-MM-DD')
+      (SELECT TO_CHAR(fa.e_date, 'YYYY-MM-DD')
          FROM t_stock_amt fa WHERE fa.stock_code = ms.stock_code
          ORDER BY fa.e_date DESC LIMIT 1) AS latest_date,
       (SELECT fa.e_amt
          FROM t_stock_amt fa WHERE fa.stock_code = ms.stock_code
-         ORDER BY fa.s_date DESC LIMIT 1 OFFSET 1) AS prev_price
+         ORDER BY fa.e_date DESC LIMIT 1 OFFSET 1) AS prev_price
     FROM my_stock ms
     GROUP BY ms.stock_code
     HAVING SUM(CASE WHEN ms.cnt = 1 THEN ms.qty ELSE -ms.qty END) > 0
