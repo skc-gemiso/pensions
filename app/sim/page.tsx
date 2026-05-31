@@ -52,7 +52,7 @@ const TABS: TabMeta[] = [
   },
   {
     id: "kodex200",
-    label: "KODEX 200 주가",
+    label: "주가 비교",
     isKodex200: true,
   },
 ]
