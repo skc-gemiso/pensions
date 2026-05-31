@@ -182,7 +182,7 @@ export function Kodex200Panel() {
             </p>
           </div>
           <p className="text-xs text-gray-400 mb-3">
-            기초 금액 <span className="font-semibold text-gray-700">1,000만원</span> 투자 기준 · 월복리 재투자
+            기초 금액 <span className="font-semibold text-gray-700">1,000만원</span> 투자 기준
           </p>
           <table className="w-full text-xs">
             <thead>
