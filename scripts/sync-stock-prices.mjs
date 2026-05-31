@@ -44,10 +44,11 @@ async function fetchSisePage(code, page) {
       if (!close) continue
       const e_trade = numSpans[4] ? Number(numSpans[4][1].replace(/,/g, "")) : 0
       let e_amt = 0
-      const changeM = seg.match(/<span class="tah p11 (red|blue)[^"]*">\s*([\d,]+)\s*<\/span>/)
+      const emCls   = (seg.match(/<em class="([^"]*)"/)?.[1] ?? "")
+      const changeM = seg.match(/<span class="tah p11 [^"]*">\s*([\d,]+)\s*<\/span>/)
       if (changeM) {
-        const num = Number(changeM[2].replace(/,/g, ""))
-        e_amt = changeM[1] === "blue" ? -num : num
+        const num = Number(changeM[1].replace(/,/g, ""))
+        e_amt = emCls.includes("bu_pdn") ? -num : (emCls.includes("bu_pup") ? num : 0)
       }
       const prevClose = close - e_amt
       const e_rate    = prevClose > 0 ? Math.round(e_amt / prevClose * 10000) / 100 : 0

@@ -393,12 +393,13 @@ function _parseSiseDay(html: string): SiseRow[] {
     // 거래량: 5번째 순수 숫자 span (index 4)
     const e_trade = numSpans[4] ? Number(numSpans[4][1].replace(/,/g, "")) : 0
 
-    // 전일대비: <span class="tah p11 red02"> 양수 / blue02 음수
+    // 전일대비: em class="bu_pdn" 이면 음수, bu_pup 이면 양수
     let e_amt = 0
-    const changeM = seg.match(/<span class="tah p11 (red|blue)[^"]*">\s*([\d,]+)\s*<\/span>/)
+    const emCls   = (seg.match(/<em class="([^"]*)"/)?.[1] ?? "")
+    const changeM = seg.match(/<span class="tah p11 [^"]*">\s*([\d,]+)\s*<\/span>/)
     if (changeM) {
-      const num = Number(changeM[2].replace(/,/g, ""))
-      e_amt = changeM[1] === "blue" ? -num : num
+      const num = Number(changeM[1].replace(/,/g, ""))
+      e_amt = emCls.includes("bu_pdn") ? -num : (emCls.includes("bu_pup") ? num : 0)
     }
 
     // 등락률 계산: (e_amt / 전일종가) × 100, 소수점 2자리
