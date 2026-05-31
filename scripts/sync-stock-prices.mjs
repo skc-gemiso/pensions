@@ -1,5 +1,5 @@
 /**
- * 보유 종목 주가 자동 수집 스크립트
+ * t_stock_list default_yn='Y' 기준 주가 자동 수집 스크립트
  * Usage: node scripts/sync-stock-prices.mjs
  * 환경변수: PENSION_SIM_DB_HOST, PENSION_SIM_DB_PORT, PENSION_SIM_DB_NAME,
  *           PENSION_SIM_DB_USER, PENSION_SIM_DB_PASSWORD
@@ -35,13 +35,26 @@ async function fetchSisePage(code, page) {
     const html = new TextDecoder("euc-kr").decode(buf)
     const result = []
     for (const seg of html.split(/<\/tr>/i)) {
-      const dateM  = seg.match(/(\d{4})\.(\d{2})\.(\d{2})/)
+      const dateM = seg.match(/(\d{4})\.(\d{2})\.(\d{2})/)
       if (!dateM) continue
-      const date   = `${dateM[1]}-${dateM[2]}-${dateM[3]}`
-      const priceM = seg.match(/<span class="tah p11">([\d,]+)<\/span>/)
-      if (!priceM) continue
-      const close  = Number(priceM[1].replace(/,/g, ""))
-      if (close > 0) result.push({ date, close })
+      const date  = `${dateM[1]}-${dateM[2]}-${dateM[3]}`
+      const numSpans = [...seg.matchAll(/<span class="tah p11">([\d,]+)<\/span>/g)]
+      if (!numSpans[0]) continue
+      const close = Number(numSpans[0][1].replace(/,/g, ""))
+      if (!close) continue
+      const e_trade = numSpans[4] ? Number(numSpans[4][1].replace(/,/g, "")) : 0
+      let e_amt = 0
+      const emM = seg.match(/<em[^>]*>([\s\S]*?)<\/em>/i)
+      if (emM) {
+        const numM = emM[1].match(/([\d,]+)/)
+        if (numM) {
+          const num = Number(numM[1].replace(/,/g, ""))
+          e_amt = /dn\.gif|하락/.test(emM[1]) ? -num : num
+        }
+      }
+      const prevClose = close - e_amt
+      const e_rate    = prevClose > 0 ? Math.round(e_amt / prevClose * 10000) / 100 : 0
+      result.push({ date, close, e_amt, e_rate, e_trade })
     }
     return result
   } catch {
@@ -51,16 +64,10 @@ async function fetchSisePage(code, page) {
 
 async function syncStock(stockCode, stockType) {
   const todayStr = new Date().toISOString().slice(0, 10)
+  await pool.query(`DELETE FROM t_stock_amt WHERE stock_code = $1 AND s_date = $2::date`, [stockCode, todayStr])
 
-  // 오늘 데이터 삭제 (재수집)
-  await pool.query(
-    `DELETE FROM f_stock_amt WHERE stock_code = $1 AND s_date = $2::date`,
-    [stockCode, todayStr]
-  )
-
-  // 최종 저장 일자
   const { rows } = await pool.query(
-    `SELECT TO_CHAR(MAX(s_date), 'YYYY-MM-DD') AS max_date FROM f_stock_amt WHERE stock_code = $1`,
+    `SELECT TO_CHAR(MAX(s_date), 'YYYY-MM-DD') AS max_date FROM t_stock_amt WHERE stock_code = $1`,
     [stockCode]
   )
   const maxDateStr = rows[0]?.max_date ?? null
@@ -86,44 +93,46 @@ async function syncStock(stockCode, stockType) {
 
   for (const p of unique) {
     await pool.query(
-      `INSERT INTO f_stock_amt (stock_code, s_date, stock_type, amt, finish_yn)
-       VALUES ($1, $2::date, $3, $4, 'Y')
+      `INSERT INTO t_stock_amt (stock_code, s_date, stock_type, amt, e_amt, e_rate, e_trade, finish_yn)
+       VALUES ($1, $2::date, $3, $4, $5, $6, $7, 'Y')
        ON CONFLICT (stock_code, s_date) DO UPDATE
-         SET amt = EXCLUDED.amt, stock_type = EXCLUDED.stock_type, updated_at = NOW()`,
-      [stockCode, p.date, String(stockType), p.close]
+         SET amt = EXCLUDED.amt, e_amt = EXCLUDED.e_amt, e_rate = EXCLUDED.e_rate,
+             e_trade = EXCLUDED.e_trade, stock_type = EXCLUDED.stock_type, updated_at = NOW()`,
+      [stockCode, p.date, String(stockType), p.close, p.e_amt, p.e_rate, p.e_trade]
     )
   }
   return unique.length
 }
 
 async function main() {
-  console.log(`[sync-stock-prices] 시작: ${new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}`)
+  console.log(`[sync] 시작: ${new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}`)
 
-  // 보유 종목 조회 (잔고 > 0인 종목)
-  const { rows: holdings } = await pool.query(`
-    SELECT stock_code, MAX(stock_type) AS stock_type
-    FROM my_stock
-    GROUP BY stock_code
-    HAVING SUM(CASE WHEN cnt = 1 THEN qty ELSE -qty END) > 0
+  // 수집 대상: t_stock_list default_yn='Y'
+  const { rows: stocks } = await pool.query(`
+    SELECT stock_code,
+           CASE WHEN security_type ILIKE '%ETF%' THEN 2 ELSE 1 END AS stock_type
+    FROM t_stock_list
+    WHERE default_yn = 'Y'
+    ORDER BY listed_shares DESC NULLS LAST
   `)
 
-  if (holdings.length === 0) {
-    console.log("[sync-stock-prices] 보유 종목 없음")
+  if (stocks.length === 0) {
+    console.log("[sync] t_stock_list default_yn='Y' 데이터 없음")
     await pool.end()
     return
   }
 
-  console.log(`[sync-stock-prices] 보유 종목 ${holdings.length}개 수집 시작`)
-  for (const h of holdings) {
+  console.log(`[sync] 수집 대상 ${stocks.length}개`)
+  for (const s of stocks) {
     try {
-      const saved = await syncStock(h.stock_code, Number(h.stock_type))
-      console.log(`  ✓ ${h.stock_code}: ${saved}건 저장`)
+      const saved = await syncStock(s.stock_code, Number(s.stock_type))
+      console.log(`  ✓ ${s.stock_code}: ${saved}건 저장`)
     } catch (e) {
-      console.error(`  ✗ ${h.stock_code}: ${e.message}`)
+      console.error(`  ✗ ${s.stock_code}: ${e.message}`)
     }
   }
 
-  console.log(`[sync-stock-prices] 완료: ${new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}`)
+  console.log(`[sync] 완료: ${new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}`)
   await pool.end()
 }
 

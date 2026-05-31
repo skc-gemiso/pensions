@@ -11,7 +11,7 @@ import { fmt, cc } from "@/lib/fmt"
 const won = (n: number | null | undefined) => n == null ? "-" : `${fmt(n)}원`
 import {
   getHoldings, getTransactions, addTransaction, deleteTransaction,
-  getDailyPrices, fetchAndSaveNaverPrices, searchStockList, getMarketIndices,
+  getDailyPrices, fetchAndSaveNaverPrices, searchStockList, getMarketIndices, getDefaultStockList,
   type StockHolding, type StockTransaction, type DailyPrice, type StockListItem, type MarketIndex,
 } from "./actions"
 
@@ -108,7 +108,7 @@ export default function StockPage() {
         const firstCode = h[0].stock_code
         setSelectedCode(firstCode)
         // 페이지 진입 시 자동 최신화 (silent — alert 없음)
-        handleFetchNaver(h, firstCode, true)
+        handleFetchNaver(firstCode, true)
       }
     })
     loadTransactions()
@@ -120,28 +120,23 @@ export default function StockPage() {
     else setDailyPrices([])
   }, [selectedCode, loadDailyPrices])
 
-  // holdingsList: 명시적으로 넘기면 state 대신 사용 (초기 로드 자동 실행 시)
-  // codeToLoad:   daily prices 로드할 종목코드 (state의 selectedCode 대신)
-  // silent:       true면 완료 alert 생략
-  async function handleFetchNaver(
-    holdingsList?: StockHolding[],
-    codeToLoad?: string | null,
-    silent = false
-  ) {
-    const list = holdingsList ?? holdings
-    if (list.length === 0) return
+  // t_stock_list default_yn='Y' 기준 전체 수집
+  // codeToLoad: daily prices 로드할 종목코드 (state의 selectedCode 대신)
+  // silent: true면 완료 alert 생략
+  async function handleFetchNaver(codeToLoad?: string | null, silent = false) {
     setFetchingNaver(true)
     try {
+      const defaultStocks = await getDefaultStockList()
       let total = 0
-      for (const h of list) {
-        try { total += await fetchAndSaveNaverPrices(h.stock_code, h.stock_type) }
+      for (const s of defaultStocks) {
+        try { total += await fetchAndSaveNaverPrices(s.stock_code, s.stock_type) }
         catch { /* 개별 실패 무시 */ }
       }
       await loadHoldings()
       const code = codeToLoad !== undefined ? codeToLoad : selectedCode
       if (code) await loadDailyPrices(code)
       await loadMarketIndices()
-      if (!silent) alert(`${list.length}개 종목 최신화 완료 (${total}건 저장)`)
+      if (!silent) alert(`${defaultStocks.length}개 종목 최신화 완료 (${total}건 저장)`)
     } catch (e) {
       if (!silent) alert(`오류: ${e instanceof Error ? e.message : "알 수 없는 오류"}`)
     } finally {
@@ -215,12 +210,12 @@ export default function StockPage() {
   cutoff.setDate(cutoff.getDate() - chartDays)
   const chartData = dailyPrices
     .filter((p) => chartDays === 9999 || new Date(p.s_date) >= cutoff)
-    .map((p) => ({ date: p.s_date, amt: p.amt }))
+    .map((p) => ({ date: p.s_date, amt: p.amt, e_amt: p.e_amt, e_rate: p.e_rate, e_trade: p.e_trade }))
   const chartAvg = chartData.length > 0
     ? chartData.reduce((s, r) => s + r.amt, 0) / chartData.length
     : null
 
-  // f_stock_amt 최신 저장가 기반 포트폴리오 계산 (평가금액 큰 순 정렬)
+  // t_stock_amt 최신 저장가 기반 포트폴리오 계산 (평가금액 큰 순 정렬)
   const portfolioRows = holdings
     .map((h) => {
       const curPrice        = h.latest_price
@@ -519,7 +514,7 @@ export default function StockPage() {
                         <table className="w-full text-sm">
                           <thead className="bg-gray-50 sticky top-0">
                             <tr>
-                              {["날짜", "종가", "전일 대비", "등락률"].map((h) => (
+                              {["날짜", "종가", "전일 대비", "등락률", "거래량"].map((h) => (
                                 <th
                                   key={h}
                                   className={`px-3 py-2 text-xs font-semibold text-gray-700 ${h === "날짜" ? "text-left" : "text-right"}`}
@@ -531,9 +526,10 @@ export default function StockPage() {
                           </thead>
                           <tbody className="divide-y divide-gray-100">
                             {[...chartData].reverse().map((row, i, arr) => {
-                              const prevAmt = arr[i + 1]?.amt ?? null
-                              const change     = prevAmt != null ? row.amt - prevAmt : null
-                              const changeRate = (change != null && prevAmt) ? (change / prevAmt) * 100 : null
+                              // 저장된 값 우선, 없으면 연속행 계산
+                              const change     = row.e_amt   ?? (arr[i + 1] ? row.amt - arr[i + 1].amt : null)
+                              const changeRate = row.e_rate  ?? ((change != null && arr[i + 1]) ? (change / arr[i + 1].amt) * 100 : null)
+                              const volume     = row.e_trade ?? null
                               return (
                                 <tr key={row.date} className="hover:bg-gray-50">
                                   <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap">{row.date}</td>
@@ -543,6 +539,9 @@ export default function StockPage() {
                                   </td>
                                   <td className={`px-3 py-1.5 text-right font-medium ${cc(changeRate)}`}>
                                     {changeRate != null ? `${changeRate > 0 ? "+" : ""}${fmt(changeRate, 2)}%` : "-"}
+                                  </td>
+                                  <td className="px-3 py-1.5 text-right text-gray-600">
+                                    {volume != null ? fmt(volume) : "-"}
                                   </td>
                                 </tr>
                               )

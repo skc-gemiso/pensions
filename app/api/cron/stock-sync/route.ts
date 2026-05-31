@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getPensionPool } from "@/lib/pension-db"
 
-// Vercel Cron 또는 외부 호출 시 secret 검증
 function isAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET
   if (!secret) return false
@@ -11,7 +10,9 @@ function isAuthorized(req: NextRequest): boolean {
   )
 }
 
-async function fetchSisePage(code: string, page: number): Promise<Array<{ date: string; close: number }>> {
+type SiseRow = { date: string; close: number; e_amt: number; e_rate: number; e_trade: number }
+
+async function fetchSisePage(code: string, page: number): Promise<SiseRow[]> {
   try {
     const res = await fetch(
       `https://finance.naver.com/item/sise_day.naver?code=${code}&page=${page}`,
@@ -27,15 +28,28 @@ async function fetchSisePage(code: string, page: number): Promise<Array<{ date: 
     if (!res.ok) return []
     const buf  = await res.arrayBuffer()
     const html = new TextDecoder("euc-kr").decode(buf)
-    const result: Array<{ date: string; close: number }> = []
+    const result: SiseRow[] = []
     for (const seg of html.split(/<\/tr>/i)) {
-      const dateM  = seg.match(/(\d{4})\.(\d{2})\.(\d{2})/)
+      const dateM = seg.match(/(\d{4})\.(\d{2})\.(\d{2})/)
       if (!dateM) continue
-      const date   = `${dateM[1]}-${dateM[2]}-${dateM[3]}`
-      const priceM = seg.match(/<span class="tah p11">([\d,]+)<\/span>/)
-      if (!priceM) continue
-      const close  = Number(priceM[1].replace(/,/g, ""))
-      if (close > 0) result.push({ date, close })
+      const date  = `${dateM[1]}-${dateM[2]}-${dateM[3]}`
+      const numSpans = [...seg.matchAll(/<span class="tah p11">([\d,]+)<\/span>/g)]
+      if (!numSpans[0]) continue
+      const close = Number(numSpans[0][1].replace(/,/g, ""))
+      if (!close) continue
+      const e_trade = numSpans[4] ? Number(numSpans[4][1].replace(/,/g, "")) : 0
+      let e_amt = 0
+      const emM = seg.match(/<em[^>]*>([\s\S]*?)<\/em>/i)
+      if (emM) {
+        const numM = emM[1].match(/([\d,]+)/)
+        if (numM) {
+          const num = Number(numM[1].replace(/,/g, ""))
+          e_amt = /dn\.gif|하락/.test(emM[1]) ? -num : num
+        }
+      }
+      const prevClose = close - e_amt
+      const e_rate    = prevClose > 0 ? Math.round(e_amt / prevClose * 10000) / 100 : 0
+      result.push({ date, close, e_amt, e_rate, e_trade })
     }
     return result
   } catch {
@@ -45,17 +59,16 @@ async function fetchSisePage(code: string, page: number): Promise<Array<{ date: 
 
 async function syncStock(db: ReturnType<typeof getPensionPool>, stockCode: string, stockType: number) {
   const todayStr = new Date().toISOString().slice(0, 10)
-
-  await db.query(`DELETE FROM f_stock_amt WHERE stock_code = $1 AND s_date = $2::date`, [stockCode, todayStr])
+  await db.query(`DELETE FROM t_stock_amt WHERE stock_code = $1 AND s_date = $2::date`, [stockCode, todayStr])
 
   const { rows } = await db.query(
-    `SELECT TO_CHAR(MAX(s_date), 'YYYY-MM-DD') AS max_date FROM f_stock_amt WHERE stock_code = $1`,
+    `SELECT TO_CHAR(MAX(s_date), 'YYYY-MM-DD') AS max_date FROM t_stock_amt WHERE stock_code = $1`,
     [stockCode]
   )
   const maxDateStr: string | null = rows[0]?.max_date ?? null
 
   const maxPage = maxDateStr ? 6 : 30
-  const allPrices: Array<{ date: string; close: number }> = []
+  const allPrices: SiseRow[] = []
   let done = false
 
   for (let batchStart = 1; batchStart <= maxPage && !done; batchStart += 3) {
@@ -75,11 +88,12 @@ async function syncStock(db: ReturnType<typeof getPensionPool>, stockCode: strin
 
   for (const p of unique) {
     await db.query(
-      `INSERT INTO f_stock_amt (stock_code, s_date, stock_type, amt, finish_yn)
-       VALUES ($1, $2::date, $3, $4, 'Y')
+      `INSERT INTO t_stock_amt (stock_code, s_date, stock_type, amt, e_amt, e_rate, e_trade, finish_yn)
+       VALUES ($1, $2::date, $3, $4, $5, $6, $7, 'Y')
        ON CONFLICT (stock_code, s_date) DO UPDATE
-         SET amt = EXCLUDED.amt, stock_type = EXCLUDED.stock_type, updated_at = NOW()`,
-      [stockCode, p.date, String(stockType), p.close]
+         SET amt = EXCLUDED.amt, e_amt = EXCLUDED.e_amt, e_rate = EXCLUDED.e_rate,
+             e_trade = EXCLUDED.e_trade, stock_type = EXCLUDED.stock_type, updated_at = NOW()`,
+      [stockCode, p.date, String(stockType), p.close, p.e_amt, p.e_rate, p.e_trade]
     )
   }
   return unique.length
@@ -91,19 +105,21 @@ export async function GET(req: NextRequest) {
   }
 
   const db = getPensionPool()
-  const { rows: holdings } = await db.query(`
-    SELECT stock_code, MAX(stock_type) AS stock_type
-    FROM my_stock
-    GROUP BY stock_code
-    HAVING SUM(CASE WHEN cnt = 1 THEN qty ELSE -qty END) > 0
+  // 수집 대상: t_stock_list default_yn='Y' 전체
+  const { rows: stocks } = await db.query(`
+    SELECT stock_code,
+           CASE WHEN security_type ILIKE '%ETF%' THEN 2 ELSE 1 END AS stock_type
+    FROM t_stock_list
+    WHERE default_yn = 'Y'
+    ORDER BY listed_shares DESC NULLS LAST
   `)
 
   const results: Record<string, number | string> = {}
-  for (const h of holdings) {
+  for (const s of stocks) {
     try {
-      results[h.stock_code] = await syncStock(db, h.stock_code, Number(h.stock_type))
+      results[s.stock_code] = await syncStock(db, s.stock_code, Number(s.stock_type))
     } catch (e) {
-      results[h.stock_code] = `error: ${e instanceof Error ? e.message : "unknown"}`
+      results[s.stock_code] = `error: ${e instanceof Error ? e.message : "unknown"}`
     }
   }
 
