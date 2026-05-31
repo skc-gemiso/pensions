@@ -238,6 +238,25 @@ export async function getKodex200Series(months?: number): Promise<Kodex200Row[]>
   }))
 }
 
+export type CoveredCallRow = {
+  date: string
+  amt: number
+}
+
+// f_stock_amt 에서 498400 (KODEX 200타겟위클리커버드콜) 일별 주가 조회
+export async function getCoveredCallSeries(months?: number): Promise<CoveredCallRow[]> {
+  const db = getPensionPool()
+  const { rows } = await db.query<{ date: string; amt: string }>(
+    `SELECT TO_CHAR(s_date, 'YYYY-MM-DD') AS date, amt
+     FROM f_stock_amt
+     WHERE stock_code = '498400'
+       AND ($1::int IS NULL OR s_date >= (CURRENT_DATE - ($1 || ' months')::interval)::date)
+     ORDER BY s_date ASC`,
+    [months ?? null]
+  )
+  return rows.map((r) => ({ date: r.date, amt: Number(r.amt) }))
+}
+
 export async function deleteSimulation(id: number): Promise<void> {
   const session = await auth()
   if (!session?.user) throw new Error("Unauthorized")
