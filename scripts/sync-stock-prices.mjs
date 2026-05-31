@@ -64,10 +64,10 @@ async function fetchSisePage(code, page) {
 
 async function syncStock(stockCode, stockType) {
   const todayStr = new Date().toISOString().slice(0, 10)
-  await pool.query(`DELETE FROM t_stock_amt WHERE stock_code = $1 AND s_date = $2::date`, [stockCode, todayStr])
+  await pool.query(`DELETE FROM t_stock_amt WHERE stock_code = $1 AND e_date = $2::date`, [stockCode, todayStr])
 
   const { rows } = await pool.query(
-    `SELECT TO_CHAR(MAX(s_date), 'YYYY-MM-DD') AS max_date FROM t_stock_amt WHERE stock_code = $1`,
+    `SELECT TO_CHAR(MAX(e_date), 'YYYY-MM-DD') AS max_date FROM t_stock_amt WHERE stock_code = $1`,
     [stockCode]
   )
   const maxDateStr = rows[0]?.max_date ?? null
@@ -93,9 +93,9 @@ async function syncStock(stockCode, stockType) {
 
   for (const p of unique) {
     await pool.query(
-      `INSERT INTO t_stock_amt (stock_code, s_date, stock_type, e_amt, c_amt, e_rate, e_trade, finish_yn)
-       VALUES ($1, $2::date, $3, $4, $5, $6, $7, 'Y')
-       ON CONFLICT (stock_code, s_date) DO UPDATE
+      `INSERT INTO t_stock_amt (e_date, stock_code, stock_type, e_amt, c_amt, e_rate, e_trade, finish_yn)
+       VALUES ($2::date, $1, $3, $4, $5, $6, $7, 'Y')
+       ON CONFLICT (e_date, stock_code) DO UPDATE
          SET e_amt = EXCLUDED.e_amt, c_amt = EXCLUDED.c_amt, e_rate = EXCLUDED.e_rate,
              e_trade = EXCLUDED.e_trade, stock_type = EXCLUDED.stock_type, updated_at = NOW()`,
       [stockCode, p.date, String(stockType), p.close, p.e_amt, p.e_rate, p.e_trade]

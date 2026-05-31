@@ -247,11 +247,11 @@ export type CoveredCallRow = {
 export async function getCoveredCallSeries(months?: number): Promise<CoveredCallRow[]> {
   const db = getPensionPool()
   const { rows } = await db.query<{ date: string; amt: string }>(
-    `SELECT TO_CHAR(s_date, 'YYYY-MM-DD') AS date, e_amt AS amt
+    `SELECT TO_CHAR(e_date, 'YYYY-MM-DD') AS date, e_amt AS amt
      FROM t_stock_amt
      WHERE stock_code = '498400'
-       AND ($1::int IS NULL OR s_date >= (CURRENT_DATE - ($1 || ' months')::interval)::date)
-     ORDER BY s_date ASC`,
+       AND ($1::int IS NULL OR e_date >= (CURRENT_DATE - ($1 || ' months')::interval)::date)
+     ORDER BY e_date ASC`,
     [months ?? null]
   )
   return rows.map((r) => ({ date: r.date, amt: Number(r.amt) }))

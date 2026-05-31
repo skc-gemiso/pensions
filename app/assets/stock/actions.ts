@@ -49,14 +49,17 @@ async function ensureStockTables(db: ReturnType<typeof getPensionPool>) {
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS t_stock_amt (
+      e_date     DATE         NOT NULL,
       stock_code VARCHAR(20)  NOT NULL,
-      s_date     DATE         NOT NULL,
       stock_type VARCHAR(10),
-      amt        NUMERIC,
+      e_amt      NUMERIC,
+      c_amt      NUMERIC,
+      e_rate     NUMERIC,
+      e_trade    NUMERIC,
       finish_yn  VARCHAR(1),
       created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (stock_code, s_date)
+      PRIMARY KEY (e_date, stock_code)
     )
   `)
   // 기존 테이블에 없을 수 있는 컬럼 보장 (e_amt=종가, c_amt=전일대비)
@@ -115,10 +118,10 @@ export async function getHoldings(): Promise<StockHolding[]> {
          FROM t_stock_list sl WHERE sl.stock_code = ms.stock_code) AS stock_name,
       (SELECT fa.e_amt
          FROM t_stock_amt fa WHERE fa.stock_code = ms.stock_code
-         ORDER BY fa.s_date DESC LIMIT 1) AS latest_price,
+         ORDER BY fa.e_date DESC LIMIT 1) AS latest_price,
       (SELECT TO_CHAR(fa.s_date, 'YYYY-MM-DD')
          FROM t_stock_amt fa WHERE fa.stock_code = ms.stock_code
-         ORDER BY fa.s_date DESC LIMIT 1) AS latest_date,
+         ORDER BY fa.e_date DESC LIMIT 1) AS latest_date,
       (SELECT fa.e_amt
          FROM t_stock_amt fa WHERE fa.stock_code = ms.stock_code
          ORDER BY fa.s_date DESC LIMIT 1 OFFSET 1) AS prev_price
@@ -254,11 +257,11 @@ export async function getDailyPrices(stockCode: string): Promise<DailyPrice[]> {
   await ensureStockTables(db)
 
   const { rows } = await db.query(
-    `SELECT TO_CHAR(s_date, 'YYYY-MM-DD') AS s_date,
+    `SELECT TO_CHAR(e_date, 'YYYY-MM-DD') AS s_date,
             e_amt AS amt, c_amt, e_rate, e_trade
      FROM t_stock_amt
      WHERE stock_code = $1
-     ORDER BY s_date ASC`,
+     ORDER BY e_date ASC`,
     [stockCode]
   )
   return rows.map((r) => ({
@@ -280,13 +283,13 @@ export async function fetchAndSaveNaverPrices(stockCode: string, stockType: numb
   // 오늘 데이터 삭제 → 당일 재수집
   const todayStr = new Date().toISOString().slice(0, 10)
   await db.query(
-    `DELETE FROM t_stock_amt WHERE stock_code = $1 AND s_date = $2::date`,
+    `DELETE FROM t_stock_amt WHERE stock_code = $1 AND e_date = $2::date`,
     [stockCode, todayStr]
   )
 
   // 삭제 후 최종 저장 일자 조회
   const { rows: maxRows } = await db.query(
-    `SELECT TO_CHAR(MAX(s_date), 'YYYY-MM-DD') AS max_date FROM t_stock_amt WHERE stock_code = $1`,
+    `SELECT TO_CHAR(MAX(e_date), 'YYYY-MM-DD') AS max_date FROM t_stock_amt WHERE stock_code = $1`,
     [stockCode]
   )
   const maxDateStr: string | null = maxRows[0]?.max_date ?? null
@@ -318,9 +321,9 @@ export async function fetchAndSaveNaverPrices(stockCode: string, stockType: numb
   let saved = 0
   for (const p of unique) {
     await db.query(
-      `INSERT INTO t_stock_amt (stock_code, s_date, stock_type, e_amt, c_amt, e_rate, e_trade, finish_yn)
-       VALUES ($1, $2::date, $3, $4, $5, $6, $7, 'Y')
-       ON CONFLICT (stock_code, s_date) DO UPDATE
+      `INSERT INTO t_stock_amt (e_date, stock_code, stock_type, e_amt, c_amt, e_rate, e_trade, finish_yn)
+       VALUES ($2::date, $1, $3, $4, $5, $6, $7, 'Y')
+       ON CONFLICT (e_date, stock_code) DO UPDATE
          SET e_amt = EXCLUDED.e_amt, c_amt = EXCLUDED.c_amt, e_rate = EXCLUDED.e_rate,
              e_trade = EXCLUDED.e_trade, stock_type = EXCLUDED.stock_type, updated_at = NOW()`,
       [stockCode, p.date, String(stockType), p.close, p.e_amt, p.e_rate, p.e_trade]
