@@ -59,9 +59,11 @@ async function ensureStockTables(db: ReturnType<typeof getPensionPool>) {
       PRIMARY KEY (stock_code, s_date)
     )
   `)
-  await db.query(`ALTER TABLE t_stock_amt ADD COLUMN IF NOT EXISTS e_amt   NUMERIC`)
-  await db.query(`ALTER TABLE t_stock_amt ADD COLUMN IF NOT EXISTS e_rate  NUMERIC`)
-  await db.query(`ALTER TABLE t_stock_amt ADD COLUMN IF NOT EXISTS e_trade NUMERIC`)
+  // 기존 테이블에 없을 수 있는 컬럼 보장 (e_amt=종가, c_amt=전일대비)
+  await db.query(`ALTER TABLE t_stock_amt ADD COLUMN IF NOT EXISTS finish_yn VARCHAR(1)`)
+  await db.query(`ALTER TABLE t_stock_amt ADD COLUMN IF NOT EXISTS c_amt    NUMERIC`)
+  await db.query(`ALTER TABLE t_stock_amt ADD COLUMN IF NOT EXISTS e_rate   NUMERIC`)
+  await db.query(`ALTER TABLE t_stock_amt ADD COLUMN IF NOT EXISTS e_trade  NUMERIC`)
 }
 
 export type StockTransaction = {
@@ -88,9 +90,9 @@ export type StockHolding = {
 }
 
 export type DailyPrice = {
-  s_date:  string   // YYYY-MM-DD
-  amt:     number
-  e_amt:   number | null  // 전일대비 금액
+  s_date:  string         // YYYY-MM-DD
+  amt:     number         // 종가 (DB 컬럼: e_amt)
+  c_amt:   number | null  // 전일대비 금액 (DB 컬럼: c_amt)
   e_rate:  number | null  // 등락률 (%)
   e_trade: number | null  // 거래량
 }
@@ -111,13 +113,13 @@ export async function getHoldings(): Promise<StockHolding[]> {
         / NULLIF(SUM(CASE WHEN ms.cnt = 1 THEN ms.qty ELSE 0 END), 0) AS avg_buy_price,
       (SELECT COALESCE(sl.stock_short_name, sl.stock_name)
          FROM t_stock_list sl WHERE sl.stock_code = ms.stock_code) AS stock_name,
-      (SELECT fa.amt
+      (SELECT fa.e_amt
          FROM t_stock_amt fa WHERE fa.stock_code = ms.stock_code
          ORDER BY fa.s_date DESC LIMIT 1) AS latest_price,
       (SELECT TO_CHAR(fa.s_date, 'YYYY-MM-DD')
          FROM t_stock_amt fa WHERE fa.stock_code = ms.stock_code
          ORDER BY fa.s_date DESC LIMIT 1) AS latest_date,
-      (SELECT fa.amt
+      (SELECT fa.e_amt
          FROM t_stock_amt fa WHERE fa.stock_code = ms.stock_code
          ORDER BY fa.s_date DESC LIMIT 1 OFFSET 1) AS prev_price
     FROM my_stock ms
@@ -252,7 +254,8 @@ export async function getDailyPrices(stockCode: string): Promise<DailyPrice[]> {
   await ensureStockTables(db)
 
   const { rows } = await db.query(
-    `SELECT TO_CHAR(s_date, 'YYYY-MM-DD') AS s_date, amt, e_amt, e_rate, e_trade
+    `SELECT TO_CHAR(s_date, 'YYYY-MM-DD') AS s_date,
+            e_amt AS amt, c_amt, e_rate, e_trade
      FROM t_stock_amt
      WHERE stock_code = $1
      ORDER BY s_date ASC`,
@@ -261,7 +264,7 @@ export async function getDailyPrices(stockCode: string): Promise<DailyPrice[]> {
   return rows.map((r) => ({
     s_date:  r.s_date,
     amt:     Number(r.amt),
-    e_amt:   r.e_amt   != null ? Number(r.e_amt)   : null,
+    c_amt:   r.c_amt   != null ? Number(r.c_amt)   : null,
     e_rate:  r.e_rate  != null ? Number(r.e_rate)  : null,
     e_trade: r.e_trade != null ? Number(r.e_trade) : null,
   }))
@@ -315,10 +318,10 @@ export async function fetchAndSaveNaverPrices(stockCode: string, stockType: numb
   let saved = 0
   for (const p of unique) {
     await db.query(
-      `INSERT INTO t_stock_amt (stock_code, s_date, stock_type, amt, e_amt, e_rate, e_trade, finish_yn)
+      `INSERT INTO t_stock_amt (stock_code, s_date, stock_type, e_amt, c_amt, e_rate, e_trade, finish_yn)
        VALUES ($1, $2::date, $3, $4, $5, $6, $7, 'Y')
        ON CONFLICT (stock_code, s_date) DO UPDATE
-         SET amt = EXCLUDED.amt, e_amt = EXCLUDED.e_amt, e_rate = EXCLUDED.e_rate,
+         SET e_amt = EXCLUDED.e_amt, c_amt = EXCLUDED.c_amt, e_rate = EXCLUDED.e_rate,
              e_trade = EXCLUDED.e_trade, stock_type = EXCLUDED.stock_type, updated_at = NOW()`,
       [stockCode, p.date, String(stockType), p.close, p.e_amt, p.e_rate, p.e_trade]
     )

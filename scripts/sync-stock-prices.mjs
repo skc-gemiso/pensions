@@ -93,10 +93,10 @@ async function syncStock(stockCode, stockType) {
 
   for (const p of unique) {
     await pool.query(
-      `INSERT INTO t_stock_amt (stock_code, s_date, stock_type, amt, e_amt, e_rate, e_trade, finish_yn)
+      `INSERT INTO t_stock_amt (stock_code, s_date, stock_type, e_amt, c_amt, e_rate, e_trade, finish_yn)
        VALUES ($1, $2::date, $3, $4, $5, $6, $7, 'Y')
        ON CONFLICT (stock_code, s_date) DO UPDATE
-         SET amt = EXCLUDED.amt, e_amt = EXCLUDED.e_amt, e_rate = EXCLUDED.e_rate,
+         SET e_amt = EXCLUDED.e_amt, c_amt = EXCLUDED.c_amt, e_rate = EXCLUDED.e_rate,
              e_trade = EXCLUDED.e_trade, stock_type = EXCLUDED.stock_type, updated_at = NOW()`,
       [stockCode, p.date, String(stockType), p.close, p.e_amt, p.e_rate, p.e_trade]
     )

@@ -57,6 +57,14 @@ async function fetchSisePage(code: string, page: number): Promise<SiseRow[]> {
   }
 }
 
+async function ensureColumns(db: ReturnType<typeof getPensionPool>) {
+  await db.query(`ALTER TABLE t_stock_amt ADD COLUMN IF NOT EXISTS amt      NUMERIC`)
+  await db.query(`ALTER TABLE t_stock_amt ADD COLUMN IF NOT EXISTS finish_yn VARCHAR(1)`)
+  await db.query(`ALTER TABLE t_stock_amt ADD COLUMN IF NOT EXISTS e_amt    NUMERIC`)
+  await db.query(`ALTER TABLE t_stock_amt ADD COLUMN IF NOT EXISTS e_rate   NUMERIC`)
+  await db.query(`ALTER TABLE t_stock_amt ADD COLUMN IF NOT EXISTS e_trade  NUMERIC`)
+}
+
 async function syncStock(db: ReturnType<typeof getPensionPool>, stockCode: string, stockType: number) {
   const todayStr = new Date().toISOString().slice(0, 10)
   await db.query(`DELETE FROM t_stock_amt WHERE stock_code = $1 AND s_date = $2::date`, [stockCode, todayStr])
@@ -88,10 +96,10 @@ async function syncStock(db: ReturnType<typeof getPensionPool>, stockCode: strin
 
   for (const p of unique) {
     await db.query(
-      `INSERT INTO t_stock_amt (stock_code, s_date, stock_type, amt, e_amt, e_rate, e_trade, finish_yn)
+      `INSERT INTO t_stock_amt (stock_code, s_date, stock_type, e_amt, c_amt, e_rate, e_trade, finish_yn)
        VALUES ($1, $2::date, $3, $4, $5, $6, $7, 'Y')
        ON CONFLICT (stock_code, s_date) DO UPDATE
-         SET amt = EXCLUDED.amt, e_amt = EXCLUDED.e_amt, e_rate = EXCLUDED.e_rate,
+         SET e_amt = EXCLUDED.e_amt, c_amt = EXCLUDED.c_amt, e_rate = EXCLUDED.e_rate,
              e_trade = EXCLUDED.e_trade, stock_type = EXCLUDED.stock_type, updated_at = NOW()`,
       [stockCode, p.date, String(stockType), p.close, p.e_amt, p.e_rate, p.e_trade]
     )
@@ -105,6 +113,8 @@ export async function GET(req: NextRequest) {
   }
 
   const db = getPensionPool()
+  await ensureColumns(db)
+
   // 수집 대상: t_stock_list default_yn='Y' 전체
   const { rows: stocks } = await db.query(`
     SELECT stock_code,

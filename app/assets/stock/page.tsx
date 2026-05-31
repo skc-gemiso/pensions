@@ -210,7 +210,7 @@ export default function StockPage() {
   cutoff.setDate(cutoff.getDate() - chartDays)
   const chartData = dailyPrices
     .filter((p) => chartDays === 9999 || new Date(p.s_date) >= cutoff)
-    .map((p) => ({ date: p.s_date, amt: p.amt, e_amt: p.e_amt, e_rate: p.e_rate, e_trade: p.e_trade }))
+    .map((p) => ({ date: p.s_date, amt: p.amt, c_amt: p.c_amt, e_rate: p.e_rate, e_trade: p.e_trade }))
   const chartAvg = chartData.length > 0
     ? chartData.reduce((s, r) => s + r.amt, 0) / chartData.length
     : null
@@ -527,7 +527,7 @@ export default function StockPage() {
                           <tbody className="divide-y divide-gray-100">
                             {[...chartData].reverse().map((row, i, arr) => {
                               // 저장된 값 우선, 없으면 연속행 계산
-                              const change     = row.e_amt   ?? (arr[i + 1] ? row.amt - arr[i + 1].amt : null)
+                              const change     = row.c_amt   ?? (arr[i + 1] ? row.amt - arr[i + 1].amt : null)
                               const changeRate = row.e_rate  ?? ((change != null && arr[i + 1]) ? (change / arr[i + 1].amt) * 100 : null)
                               const volume     = row.e_trade ?? null
                               return (
