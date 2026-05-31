@@ -156,21 +156,32 @@ CREATE TABLE pension_sim_savings_fund (
 
 ---
 
-## DB — `etf_kodex200`
+## DB — `t_stock_amt` (Kodex200 데이터 소스)
+
+KODEX 200(069500) 주가 데이터는 `t_stock_amt` 테이블에서 `stock_code = '069500'` 조건으로 조회한다.
 
 | 컬럼 | 타입 | 설명 |
 |------|------|------|
-| `e_date` | VARCHAR | 기준일 (YYYYMMDD) |
-| `amt` | NUMERIC | 종가 (원) |
-| `e_amt` | NUMERIC | 전일 대비 증감 (원) |
-| `e_rate` | NUMERIC | 등락률 (bp, ÷100 = %) |
+| `e_date` | DATE | 기준일 (PK) |
+| `stock_code` | VARCHAR(20) | 종목코드 (PK) |
+| `e_amt` | NUMERIC | 종가 (원) |
+| `c_amt` | NUMERIC | 전일대비 금액 (원) |
+| `e_rate` | NUMERIC | 등락률 (%, 그대로 사용 — ÷100 불필요) |
 | `e_trade` | NUMERIC | 거래량 |
+| `finish_yn` | VARCHAR(1) | 수집 완료 여부 |
+| `stock_type` | VARCHAR(10) | 종목 구분 |
+| `created_at` | TIMESTAMPTZ | |
+| `updated_at` | TIMESTAMPTZ | |
+
+PRIMARY KEY: `(e_date, stock_code)`
 
 ### `getKodex200Series(months?)` 서버 액션
 
-- `etf_kodex200` 테이블에서 기간 필터 후 ASC 정렬 반환
-- `e_date` YYYYMMDD → "YYYY-MM-DD" 변환 후 반환
+- `t_stock_amt` 테이블에서 `stock_code = '069500'` 필터 후 기간 필터, ASC 정렬 반환
 - `Kodex200Row` 타입: `{ date, amt, e_amt, e_rate, e_trade }`
+  - `amt`: 종가 (`t_stock_amt.e_amt`)
+  - `e_amt`: 전일대비 금액 (`t_stock_amt.c_amt`)
+  - `e_rate`: 등락률 % 단위 (÷100 불필요, 이전 `etf_kodex200`은 bp 단위였음)
 
 ---
 

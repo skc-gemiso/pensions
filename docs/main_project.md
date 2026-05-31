@@ -20,7 +20,7 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 /sim                             연금투자 시뮬레이션 (ETF 비교)
 /magic                           복리의 마법 (복리 계산기)
 /assets                          자산 (admin 전용)
-└── /assets/stock                주식 투자 (my_stock / f_stock_amt)
+└── /assets/stock                주식 투자 (my_stock / t_stock_amt)
 /invest                                  투자 분석
 ├── 글로벌 ETF 분석 (etf-group)
 │   ├── /invest/etf                      글로벌 ETF 데이터 수집 (IEMG·EEM·EWY 보유 종목)
@@ -143,11 +143,11 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 
 | 기능 | 설명 |
 |------|------|
-| 포트폴리오 현황 | my_stock 잔고 기반 보유 종목 + f_stock_amt 최신 저장가로 평가금액·손익·수익률 표시 |
+| 포트폴리오 현황 | my_stock 잔고 기반 보유 종목 + t_stock_amt 최신 저장가로 평가금액·손익·수익률 표시 |
 | 코스피·코스닥 지수 | 보유 종목 테이블 헤더에 실시간 지수 현황 표시 |
-| 종목별 주가 차트 | 종목 클릭 시 f_stock_amt 일별 주가 라인 차트 (기간 필터: 1개월/3개월/6개월/1년/전체) |
+| 종목별 주가 차트 | 종목 클릭 시 t_stock_amt 일별 주가 라인 차트 (기간 필터: 1개월/3개월/6개월/1년/전체) |
 | 차트 하단 일자별 테이블 | 날짜·종가·전일대비·등락률 스크롤 테이블 |
-| 네이버 주가 가져오기 | sise_day.naver HTML 파싱으로 증분 수집 → f_stock_amt UPSERT |
+| 네이버 주가 가져오기 | sise_day.naver HTML 파싱으로 증분 수집 → t_stock_amt UPSERT |
 | 자동 수집 스케줄 | Vercel Cron 매일 20:30 KST (`/api/cron/stock-sync`) |
 | 매입/매도 내역 추가 | my_stock에 거래 내역 입력 (구분/일자 달력/t_stock_list 종목 검색/유형/단가/수량) |
 | 거래 내역 조회·삭제 | 전체 거래 내역 테이블 + 개별 삭제 |

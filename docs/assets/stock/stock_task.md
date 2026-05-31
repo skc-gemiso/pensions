@@ -23,24 +23,27 @@ ALTER TABLE my_stock ADD COLUMN IF NOT EXISTS id SERIAL;
 - 평균 매입가: `SUM(매입qty × s_amt) / SUM(매입qty)`
 - 잔고 > 0인 종목만 포트폴리오 표시
 
-### `f_stock_amt` — 종목별 일별 주가
+### `t_stock_amt` — 종목별 일별 주가
 
 ```sql
-CREATE TABLE IF NOT EXISTS f_stock_amt (
-  stock_code VARCHAR(20)  NOT NULL,
-  s_date     DATE         NOT NULL,
-  stock_type VARCHAR(10),              -- "1"=주식, "2"=ETF (문자열)
-  amt        NUMERIC,                  -- 종가 (원)
+CREATE TABLE IF NOT EXISTS t_stock_amt (
+  e_date     DATE         NOT NULL,    -- 기준일 (PK)
+  stock_code VARCHAR(20)  NOT NULL,    -- 종목코드 (PK)
+  e_amt      NUMERIC,                  -- 종가 (원)
+  c_amt      NUMERIC,                  -- 전일대비 금액 (원)
+  e_rate     NUMERIC,                  -- 등락률 (%)
+  e_trade    NUMERIC,                  -- 거래량
   finish_yn  VARCHAR(1),               -- 수집 완료 여부 ('Y')
+  stock_type VARCHAR(10),              -- 종목 구분
   created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (stock_code, s_date)
+  PRIMARY KEY (e_date, stock_code)
 );
 ```
 
-- `(stock_code, s_date)` UNIQUE → UPSERT 로직 사용
-- 최신 종가: `ORDER BY s_date DESC LIMIT 1`
-- 전일 종가: `ORDER BY s_date DESC LIMIT 1 OFFSET 1`
+- `(e_date, stock_code)` PRIMARY KEY → UPSERT `ON CONFLICT (e_date, stock_code)`
+- 최신 종가: `ORDER BY e_date DESC LIMIT 1`
+- 전일 종가: `ORDER BY e_date DESC LIMIT 1 OFFSET 1`
 
 ### `t_stock_list` — 종목 검색 마스터
 
@@ -65,8 +68,9 @@ CREATE TABLE IF NOT EXISTS f_stock_amt (
 | `addTransaction(data)` | 거래 내역 INSERT | 세션 필요 |
 | `deleteTransaction(id)` | 거래 내역 DELETE | 세션 필요 |
 | `searchStockList(q)` | 종목 검색 (`t_stock_list`) | 세션 필요 |
-| `getDailyPrices(stockCode)` | 일별 주가 조회 (`f_stock_amt`) | 세션 필요 |
-| `fetchAndSaveNaverPrices(stockCode, stockType)` | 네이버 `sise_day.naver` 수집 → `f_stock_amt` 저장, 저장 건수 반환 | 세션 필요 |
+| `getDailyPrices(stockCode)` | 일별 주가 조회 (`t_stock_amt`) | 세션 필요 |
+| `fetchAndSaveNaverPrices(stockCode, stockType)` | 네이버 `sise_day.naver` 수집 → `t_stock_amt` 저장, 저장 건수 반환 | 세션 필요 |
+| `getDefaultStockList()` | `t_stock_list`에서 `default_yn='Y'` 전체 목록 반환 | 없음 |
 
 ### 타입 정의
 
@@ -96,14 +100,14 @@ type StockHolding = {
   net_qty: number
   avg_buy_price: number
   total_buy_amount: number
-  latest_price: number | null   // f_stock_amt 최신 종가
-  latest_date:  string | null   // f_stock_amt 최신 기준일 (YYYY-MM-DD)
-  prev_price:   number | null   // f_stock_amt 전일 종가
+  latest_price: number | null   // t_stock_amt.e_amt 최신 종가
+  latest_date:  string | null   // t_stock_amt.e_date 최신 기준일 (YYYY-MM-DD)
+  prev_price:   number | null   // t_stock_amt.e_amt 전일 종가
 }
 
 type DailyPrice = {
-  s_date: string    // YYYY-MM-DD
-  amt: number
+  s_date: string    // YYYY-MM-DD (t_stock_amt.e_date)
+  amt: number       // t_stock_amt.e_amt 종가
 }
 
 type StockListItem = { code: string; name: string; market: string }
@@ -124,19 +128,21 @@ https://finance.naver.com/item/sise_day.naver?code={종목코드}&page={N}
 
 ### 수집 흐름 (`fetchAndSaveNaverPrices`)
 
-1. 오늘 날짜(`todayStr`) `f_stock_amt` 레코드 삭제 (당일 재수집)
-2. `MAX(s_date)` 조회 → `maxDateStr`
-3. `maxDateStr` 있으면 `maxPage = 6` (증분), 없으면 `maxPage = 30` (전체)
+1. 오늘 날짜(`todayStr`) `t_stock_amt` 레코드 삭제 (당일 재수집)
+2. `MAX(e_date)` 조회 → `maxDateStr`
+3. `maxDateStr` 있으면 `maxPage = 6` (증분), 없으면 마지막 페이지까지 전체 수집
 4. 3페이지씩 병렬 요청(배치) → `maxDateStr` 도달 시 수집 중단
 5. 중복 날짜 제거 (Set 기반)
-6. `f_stock_amt` UPSERT (`ON CONFLICT (stock_code, s_date) DO UPDATE`)
+6. `t_stock_amt` UPSERT (`ON CONFLICT (e_date, stock_code) DO UPDATE`)
+7. INSERT 컬럼: `(e_date, stock_code, e_amt, c_amt, e_rate, e_trade, finish_yn)` (stock_type 제외)
 
 ### HTML 파싱 (`_parseSiseDay`)
 
 - `</tr>` 기준으로 분할
 - 날짜 추출: `(\d{4})\.(\d{2})\.(\d{2})` → `YYYY-MM-DD` 변환
 - 종가 추출: `<span class="tah p11">([\d,]+)</span>` → 쉼표 제거 후 숫자 변환
-- (등락 컬럼은 `<em>` 자식 포함 → 패턴 불일치로 자동 제외)
+- 전일비(c_amt) 추출: `<em>` 태그 내 숫자, class `bu_pdn`=하락(음수), `bu_pup`=상승(양수)
+- 등락률(e_rate) 추출: 전일비 다음 `<span class="tah p11">` 값 → % 단위 (부호 별도 적용)
 
 ### 요청 헤더
 
@@ -154,7 +160,7 @@ Accept-Language: ko-KR,ko;q=0.9
 ### `GET /api/cron/stock-sync` — Vercel Cron 주가 수집 엔드포인트
 
 - 인증: `Authorization: Bearer {CRON_SECRET}` 헤더 또는 `?secret={CRON_SECRET}` 쿼리 파라미터
-- `my_stock` 에서 잔고 > 0인 종목 조회 후 `syncStock()` 순차 실행
+- `t_stock_list` 에서 `default_yn='Y'` 종목 전체 조회 후 `syncStock()` 순차 실행
 - 응답: `{ ok: true, synced: { [stockCode]: 저장건수|에러문자열 }, at: ISO타임스탬프 }`
 
 ### `GET /api/stock/price` — 네이버 실시간 가격 프록시 (현재 미사용)
@@ -251,7 +257,7 @@ ON CONFLICT DO NOTHING;
 ### 포트폴리오 계산 (`portfolioRows`)
 
 ```typescript
-const curPrice  = h.latest_price                           // f_stock_amt 최신값
+const curPrice  = h.latest_price                           // t_stock_amt 최신값
 const evalAmt   = curPrice != null ? Math.round(curPrice * h.net_qty) : null
 const pnl       = evalAmt != null ? evalAmt - h.total_buy_amount : null
 const pnlRate   = pnl / h.total_buy_amount * 100           // 수익률(%)

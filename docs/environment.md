@@ -144,22 +144,26 @@ CREATE TABLE IF NOT EXISTS my_stock (
 );
 ```
 
-#### `f_stock_amt` 테이블 — 종목별 일별 주가
+#### `t_stock_amt` 테이블 — 종목별 일별 주가
 
 ```sql
-CREATE TABLE IF NOT EXISTS f_stock_amt (
-  stock_code VARCHAR(20)  NOT NULL,
-  s_date     DATE         NOT NULL,
-  stock_type VARCHAR(10),            -- "1"=주식, "2"=ETF
-  amt        NUMERIC,                -- 종가 (원)
+CREATE TABLE IF NOT EXISTS t_stock_amt (
+  e_date     DATE         NOT NULL,  -- 기준일 (PK)
+  stock_code VARCHAR(20)  NOT NULL,  -- 종목코드 (PK)
+  e_amt      NUMERIC,                -- 종가 (원)
+  c_amt      NUMERIC,                -- 전일대비 금액 (원)
+  e_rate     NUMERIC,                -- 등락률 (%)
+  e_trade    NUMERIC,                -- 거래량
   finish_yn  VARCHAR(1),             -- 수집 완료 여부 ('Y')
+  stock_type VARCHAR(10),            -- 종목 구분
   created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (stock_code, s_date)
+  PRIMARY KEY (e_date, stock_code)
 );
 ```
 
-> `my_stock`, `f_stock_amt` 테이블은 `ensureStockTables()` 로 런타임 자동 생성.
+> `my_stock` 테이블은 `ensureStockTables()` 로 런타임 자동 생성.
+> `t_stock_amt` 는 실제 스키마 기준으로 사전 생성 필요 (e_date/stock_code PK, e_amt/c_amt/e_rate/e_trade 컬럼).
 > `t_stock_list` 는 별도 마스터 데이터 (사전 적재 필요).
 
 ---
