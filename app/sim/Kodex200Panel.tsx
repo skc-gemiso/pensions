@@ -16,11 +16,13 @@ const PERIODS = [
 
 type ChartRow = { date: string; kodex: number | null; cc: number | null }
 
+const sign = (n: number) => n > 0 ? "+" : ""
+
 export function Kodex200Panel() {
-  const [months, setMonths]     = useState<number | undefined>(12)
-  const [rows, setRows]         = useState<Kodex200Row[]>([])
-  const [ccRows, setCcRows]     = useState<CoveredCallRow[]>([])
-  const [loading, setLoading]   = useState(true)
+  const [months, setMonths]   = useState<number | undefined>(12)
+  const [rows, setRows]       = useState<Kodex200Row[]>([])
+  const [ccRows, setCcRows]   = useState<CoveredCallRow[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     setLoading(true)
@@ -36,95 +38,129 @@ export function Kodex200Panel() {
 
   const latestK  = rows[rows.length - 1]
   const latestCC = ccRows[ccRows.length - 1]
-  const prevCC   = ccRows[ccRows.length - 2]
+  const firstK   = rows[0]
+  const firstCC  = ccRows[0]
 
-  const ccChange     = (latestCC && prevCC) ? latestCC.amt - prevCC.amt : null
-  const ccChangeRate = (ccChange != null && prevCC?.amt) ? (ccChange / prevCC.amt) * 100 : null
+  // 수익율 비교 (기간 내 기초→기말)
+  const kRet   = (firstK  && latestK  && firstK.amt  > 0) ? (latestK.amt  - firstK.amt)  / firstK.amt  * 100 : null
+  const ccRet  = (firstCC && latestCC && firstCC.amt > 0) ? (latestCC.amt - firstCC.amt) / firstCC.amt * 100 : null
 
-  // 날짜 기준으로 두 시리즈 병합
-  const ccMap = new Map(ccRows.map((r) => [r.date, r.amt]))
+  // 차트 데이터
+  const ccMap = new Map(ccRows.map((r) => [r.date, r]))
   const chartData: ChartRow[] = rows.map((r) => ({
     date:  r.date,
     kodex: r.amt,
-    cc:    ccMap.get(r.date) ?? null,
+    cc:    ccMap.get(r.date)?.amt ?? null,
   }))
-
-  // 테이블: KODEX 200 기준 최신순, 커버드콜 날짜 일치 시 병합
   const tableData = [...rows].reverse()
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-bold text-gray-900 mb-0.5">KODEX 200 (069500) · KODEX 200타겟위클리커버드콜 (498400)</h2>
-      </div>
-
-      {/* 요약 카드 — KODEX 200 */}
-      <div>
-        <p className="text-xs font-semibold text-blue-600 mb-1.5">KODEX 200 (069500)</p>
-        <div className="grid grid-cols-3 gap-2">
-          <div className="bg-white rounded-xl border border-gray-200 p-3">
-            <p className="text-xs text-gray-500">현재가</p>
-            <p className="text-base font-bold text-gray-900 mt-0.5">{latestK ? fmt(latestK.amt) : "-"}</p>
-            <p className="text-xs text-gray-400">{latestK?.date ?? ""}</p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-3">
-            <p className="text-xs text-gray-500">전일 대비</p>
-            <p className={`text-base font-bold mt-0.5 ${cc(latestK?.e_amt ?? null)}`}>
-              {latestK ? `${latestK.e_amt > 0 ? "+" : ""}${fmt(latestK.e_amt)}` : "-"}
-            </p>
-            <p className="text-xs text-gray-400">원</p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-3">
-            <p className="text-xs text-gray-500">등락률</p>
-            <p className={`text-base font-bold mt-0.5 ${cc(latestK?.e_rate ?? null)}`}>
-              {latestK ? `${latestK.e_rate > 0 ? "+" : ""}${fmt(latestK.e_rate, 2)}%` : "-"}
-            </p>
-            <p className="text-xs text-gray-400">당일</p>
-          </div>
+      {/* 헤더 + 기간 선택 */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h2 className="text-lg font-bold text-gray-900">
+          KODEX 200 (069500) · KODEX 200타겟위클리커버드콜 (498400)
+        </h2>
+        <div className="flex gap-1">
+          {PERIODS.map((p) => (
+            <button
+              key={p.label}
+              onClick={() => setMonths(p.months)}
+              className={`px-3 py-1.5 text-sm rounded-lg border font-medium transition-colors ${
+                months === p.months
+                  ? "bg-blue-600 text-white border-blue-600"
+                  : "border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* 요약 카드 — 커버드콜 */}
-      <div>
-        <p className="text-xs font-semibold text-amber-600 mb-1.5">KODEX 200타겟위클리커버드콜 (498400)</p>
-        <div className="grid grid-cols-3 gap-2">
-          <div className="bg-white rounded-xl border border-gray-200 p-3">
-            <p className="text-xs text-gray-500">현재가</p>
-            <p className="text-base font-bold text-gray-900 mt-0.5">{latestCC ? fmt(latestCC.amt) : "-"}</p>
-            <p className="text-xs text-gray-400">{latestCC?.date ?? "데이터 없음"}</p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-3">
-            <p className="text-xs text-gray-500">전일 대비</p>
-            <p className={`text-base font-bold mt-0.5 ${cc(ccChange)}`}>
-              {ccChange != null ? `${ccChange > 0 ? "+" : ""}${fmt(ccChange)}` : "-"}
-            </p>
-            <p className="text-xs text-gray-400">원</p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-3">
-            <p className="text-xs text-gray-500">등락률</p>
-            <p className={`text-base font-bold mt-0.5 ${cc(ccChangeRate)}`}>
-              {ccChangeRate != null ? `${ccChangeRate > 0 ? "+" : ""}${fmt(ccChangeRate, 2)}%` : "-"}
-            </p>
-            <p className="text-xs text-gray-400">당일</p>
+      {/* 요약 카드 3개 */}
+      <div className="grid grid-cols-3 gap-3">
+
+        {/* KODEX 200 */}
+        <div className="bg-white rounded-xl border border-blue-200 p-4">
+          <p className="text-xs font-semibold text-blue-600 mb-3">KODEX 200 (069500)</p>
+          <div className="space-y-2">
+            <div className="flex justify-between items-baseline">
+              <span className="text-xs text-gray-500">현재가</span>
+              <span className="text-base font-bold text-gray-900">{latestK ? `${fmt(latestK.amt)}원` : "-"}</span>
+            </div>
+            <div className="flex justify-between items-baseline">
+              <span className="text-xs text-gray-500">전일 대비</span>
+              <span className={`text-sm font-semibold ${cc(latestK?.e_amt ?? null)}`}>
+                {latestK ? `${sign(latestK.e_amt)}${fmt(latestK.e_amt)}원` : "-"}
+              </span>
+            </div>
+            <div className="flex justify-between items-baseline">
+              <span className="text-xs text-gray-500">등락률</span>
+              <span className={`text-sm font-semibold ${cc(latestK?.e_rate ?? null)}`}>
+                {latestK ? `${sign(latestK.e_rate)}${fmt(latestK.e_rate, 2)}%` : "-"}
+              </span>
+            </div>
+            <p className="text-xs text-gray-400 text-right pt-1">{latestK?.date ?? ""}</p>
           </div>
         </div>
-      </div>
 
-      {/* 기간 선택 */}
-      <div className="flex gap-1">
-        {PERIODS.map((p) => (
-          <button
-            key={p.label}
-            onClick={() => setMonths(p.months)}
-            className={`px-3 py-1.5 text-sm rounded-lg border font-medium transition-colors ${
-              months === p.months
-                ? "bg-blue-600 text-white border-blue-600"
-                : "border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
+        {/* 커버드콜 */}
+        <div className="bg-white rounded-xl border border-amber-200 p-4">
+          <p className="text-xs font-semibold text-amber-600 mb-3">KODEX 200타겟위클리커버드콜 (498400)</p>
+          <div className="space-y-2">
+            <div className="flex justify-between items-baseline">
+              <span className="text-xs text-gray-500">현재가</span>
+              <span className="text-base font-bold text-gray-900">{latestCC ? `${fmt(latestCC.amt)}원` : "-"}</span>
+            </div>
+            <div className="flex justify-between items-baseline">
+              <span className="text-xs text-gray-500">전일 대비</span>
+              <span className={`text-sm font-semibold ${cc(latestCC?.e_amt ?? null)}`}>
+                {latestCC ? `${sign(latestCC.e_amt)}${fmt(latestCC.e_amt)}원` : "-"}
+              </span>
+            </div>
+            <div className="flex justify-between items-baseline">
+              <span className="text-xs text-gray-500">등락률</span>
+              <span className={`text-sm font-semibold ${cc(latestCC?.e_rate ?? null)}`}>
+                {latestCC ? `${sign(latestCC.e_rate)}${fmt(latestCC.e_rate, 2)}%` : "-"}
+              </span>
+            </div>
+            <p className="text-xs text-gray-400 text-right pt-1">{latestCC?.date ?? "데이터 없음"}</p>
+          </div>
+        </div>
+
+        {/* 수익율 비교 */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <p className="text-xs font-semibold text-gray-600 mb-3">수익율 비교 ({PERIODS.find(p => p.months === months)?.label ?? "전체"})</p>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-gray-400 border-b border-gray-100">
+                <th className="pb-1.5 text-left font-medium"></th>
+                <th className="pb-1.5 text-right font-medium">기초가</th>
+                <th className="pb-1.5 text-right font-medium">기말가</th>
+                <th className="pb-1.5 text-right font-medium">상승률</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              <tr>
+                <td className="py-1.5 text-blue-600 font-medium">KODEX200</td>
+                <td className="py-1.5 text-right text-gray-700">{firstK  ? fmt(firstK.amt)  : "-"}</td>
+                <td className="py-1.5 text-right text-gray-700">{latestK ? fmt(latestK.amt) : "-"}</td>
+                <td className={`py-1.5 text-right font-semibold ${cc(kRet)}`}>
+                  {kRet != null ? `${sign(kRet)}${fmt(kRet, 2)}%` : "-"}
+                </td>
+              </tr>
+              <tr>
+                <td className="py-1.5 text-amber-600 font-medium">커버드콜</td>
+                <td className="py-1.5 text-right text-gray-700">{firstCC  ? fmt(firstCC.amt)  : "-"}</td>
+                <td className="py-1.5 text-right text-gray-700">{latestCC ? fmt(latestCC.amt) : "-"}</td>
+                <td className={`py-1.5 text-right font-semibold ${cc(ccRet)}`}>
+                  {ccRet != null ? `${sign(ccRet)}${fmt(ccRet, 2)}%` : "-"}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {loading && <p className="text-center text-gray-400 py-4 text-sm">로딩 중...</p>}
@@ -142,21 +178,8 @@ export function Kodex200Panel() {
                   tickFormatter={(v) => v.slice(0, 7)}
                   interval="preserveStartEnd"
                 />
-                <YAxis
-                  yAxisId="left"
-                  tick={{ fontSize: 10, fill: "#374151" }}
-                  tickFormatter={(v) => Number(v).toLocaleString()}
-                  domain={["auto", "auto"]}
-                  width={68}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  tick={{ fontSize: 10, fill: "#d97706" }}
-                  tickFormatter={(v) => Number(v).toLocaleString()}
-                  domain={["auto", "auto"]}
-                  width={68}
-                />
+                <YAxis yAxisId="left"  tick={{ fontSize: 10, fill: "#374151" }} tickFormatter={(v) => Number(v).toLocaleString()} domain={["auto", "auto"]} width={68} />
+                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: "#d97706" }} tickFormatter={(v) => Number(v).toLocaleString()} domain={["auto", "auto"]} width={68} />
                 <Tooltip
                   formatter={(v: unknown, name: unknown) => [`${fmt(Number(v))} 원`, String(name ?? "")]}
                   labelFormatter={(l) => String(l)}
@@ -165,61 +188,42 @@ export function Kodex200Panel() {
                   itemStyle={{ fontSize: 12, padding: "1px 0" }}
                 />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Line
-                  yAxisId="left"
-                  type="monotone"
-                  dataKey="kodex"
-                  stroke="#2563eb"
-                  dot={false}
-                  strokeWidth={2}
-                  name="KODEX 200"
-                  connectNulls
-                />
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey="cc"
-                  stroke="#d97706"
-                  dot={false}
-                  strokeWidth={2}
-                  name="커버드콜 (498400)"
-                  connectNulls
-                />
+                <Line yAxisId="left"  type="monotone" dataKey="kodex" stroke="#2563eb" dot={false} strokeWidth={2} name="KODEX 200"        connectNulls />
+                <Line yAxisId="right" type="monotone" dataKey="cc"    stroke="#d97706" dot={false} strokeWidth={2} name="커버드콜 (498400)" connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </div>
 
-          {/* 테이블 */}
+          {/* 통합 테이블 */}
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="overflow-x-auto max-h-[576px] overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 sticky top-0">
                   <tr>
-                    <th className="px-3 py-2 text-xs font-semibold text-gray-700 text-left">날짜</th>
-                    <th className="px-3 py-2 text-xs font-semibold text-blue-700 text-right">KODEX200 종가</th>
-                    <th className="px-3 py-2 text-xs font-semibold text-blue-700 text-right">전일 대비</th>
-                    <th className="px-3 py-2 text-xs font-semibold text-blue-700 text-right">등락률</th>
-                    <th className="px-3 py-2 text-xs font-semibold text-amber-700 text-right">커버드콜 종가</th>
-                    <th className="px-3 py-2 text-xs font-semibold text-gray-700 text-right">거래량</th>
+                    <th rowSpan={2} className="px-3 py-2 text-xs font-semibold text-gray-700 text-left border-b border-r border-gray-200 align-middle">날짜</th>
+                    <th colSpan={3} className="px-3 py-1.5 text-xs font-semibold text-blue-700 text-center border-b border-r border-gray-200">KODEX 200 (069500)</th>
+                    <th colSpan={3} className="px-3 py-1.5 text-xs font-semibold text-amber-700 text-center border-b border-gray-200">커버드콜 (498400)</th>
+                  </tr>
+                  <tr>
+                    {(["종가", "전일대비", "등락률", "종가", "전일대비", "등락률"] as const).map((h, i) => (
+                      <th key={i} className={`px-3 py-1.5 text-xs font-semibold text-gray-600 text-right border-b border-gray-200 ${i === 2 ? "border-r" : ""}`}>
+                        {h}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {tableData.map((r) => {
-                    const ccAmt = ccMap.get(r.date) ?? null
+                    const ccRow = ccMap.get(r.date)
                     return (
                       <tr key={r.date} className="hover:bg-gray-50">
-                        <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap">{r.date}</td>
+                        <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap border-r border-gray-100">{r.date}</td>
                         <td className="px-3 py-1.5 text-right font-medium text-gray-900">{fmt(r.amt)}</td>
-                        <td className={`px-3 py-1.5 text-right font-medium ${cc(r.e_amt)}`}>
-                          {r.e_amt > 0 ? "+" : ""}{fmt(r.e_amt)}
-                        </td>
-                        <td className={`px-3 py-1.5 text-right font-medium ${cc(r.e_rate)}`}>
-                          {r.e_rate > 0 ? "+" : ""}{fmt(r.e_rate, 2)}%
-                        </td>
-                        <td className="px-3 py-1.5 text-right font-medium text-amber-700">
-                          {ccAmt != null ? fmt(ccAmt) : "-"}
-                        </td>
-                        <td className="px-3 py-1.5 text-right text-gray-600">{fmt(r.e_trade)}</td>
+                        <td className={`px-3 py-1.5 text-right font-medium ${cc(r.e_amt)}`}>{sign(r.e_amt)}{fmt(r.e_amt)}</td>
+                        <td className={`px-3 py-1.5 text-right font-medium border-r border-gray-100 ${cc(r.e_rate)}`}>{sign(r.e_rate)}{fmt(r.e_rate, 2)}%</td>
+                        <td className="px-3 py-1.5 text-right font-medium text-gray-900">{ccRow ? fmt(ccRow.amt) : "-"}</td>
+                        <td className={`px-3 py-1.5 text-right font-medium ${cc(ccRow?.e_amt ?? null)}`}>{ccRow ? `${sign(ccRow.e_amt)}${fmt(ccRow.e_amt)}` : "-"}</td>
+                        <td className={`px-3 py-1.5 text-right font-medium ${cc(ccRow?.e_rate ?? null)}`}>{ccRow ? `${sign(ccRow.e_rate)}${fmt(ccRow.e_rate, 2)}%` : "-"}</td>
                       </tr>
                     )
                   })}
