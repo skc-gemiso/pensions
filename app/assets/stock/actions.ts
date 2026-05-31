@@ -321,12 +321,12 @@ export async function fetchAndSaveNaverPrices(stockCode: string, stockType: numb
   let saved = 0
   for (const p of unique) {
     await db.query(
-      `INSERT INTO t_stock_amt (e_date, stock_code, stock_type, e_amt, c_amt, e_rate, e_trade, finish_yn)
-       VALUES ($2::date, $1, $3, $4, $5, $6, $7, 'Y')
+      `INSERT INTO t_stock_amt (e_date, stock_code, e_amt, c_amt, e_rate, e_trade, finish_yn)
+       VALUES ($1::date, $2, $3, $4, $5, $6, 'Y')
        ON CONFLICT (e_date, stock_code) DO UPDATE
          SET e_amt = EXCLUDED.e_amt, c_amt = EXCLUDED.c_amt, e_rate = EXCLUDED.e_rate,
-             e_trade = EXCLUDED.e_trade, stock_type = EXCLUDED.stock_type, updated_at = NOW()`,
-      [stockCode, p.date, String(stockType), p.close, p.e_amt, p.e_rate, p.e_trade]
+             e_trade = EXCLUDED.e_trade, updated_at = NOW()`,
+      [p.date, stockCode, p.close, p.e_amt, p.e_rate, p.e_trade]
     )
     saved++
   }
@@ -393,17 +393,12 @@ function _parseSiseDay(html: string): SiseRow[] {
     // 거래량: 5번째 순수 숫자 span (index 4)
     const e_trade = numSpans[4] ? Number(numSpans[4][1].replace(/,/g, "")) : 0
 
-    // 전일대비: <em> 태그 내 숫자 + 이미지로 부호 결정
+    // 전일대비: <span class="tah p11 red02"> 양수 / blue02 음수
     let e_amt = 0
-    const emM = seg.match(/<em[^>]*>([\s\S]*?)<\/em>/i)
-    if (emM) {
-      const em  = emM[1]
-      const numM = em.match(/([\d,]+)/)
-      if (numM) {
-        const num   = Number(numM[1].replace(/,/g, ""))
-        const isNeg = /dn\.gif|하락/.test(em)
-        e_amt = isNeg ? -num : num
-      }
+    const changeM = seg.match(/<span class="tah p11 (red|blue)[^"]*">\s*([\d,]+)\s*<\/span>/)
+    if (changeM) {
+      const num = Number(changeM[2].replace(/,/g, ""))
+      e_amt = changeM[1] === "blue" ? -num : num
     }
 
     // 등락률 계산: (e_amt / 전일종가) × 100, 소수점 2자리
