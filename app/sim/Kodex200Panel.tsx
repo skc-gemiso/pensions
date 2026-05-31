@@ -42,8 +42,18 @@ export function Kodex200Panel() {
   const firstCC  = ccRows[0]
 
   // 수익율 비교 (기간 내 기초→기말)
-  const kRet   = (firstK  && latestK  && firstK.amt  > 0) ? (latestK.amt  - firstK.amt)  / firstK.amt  * 100 : null
-  const ccRet  = (firstCC && latestCC && firstCC.amt > 0) ? (latestCC.amt - firstCC.amt) / firstCC.amt * 100 : null
+  const kRet  = (firstK  && latestK  && firstK.amt  > 0) ? (latestK.amt  - firstK.amt)  / firstK.amt  * 100 : null
+  const ccRet = (firstCC && latestCC && firstCC.amt > 0) ? (latestCC.amt - firstCC.amt) / firstCC.amt * 100 : null
+
+  // 커버드콜 재투자 시나리오 (연 12% = 월 1% 복리, 가격 수익에 복리 곱)
+  const periodMonths = (firstCC && latestCC)
+    ? (new Date(latestCC.date).getTime() - new Date(firstCC.date).getTime()) / (1000 * 60 * 60 * 24 * 30.4375)
+    : 0
+  const divMultiplier   = Math.pow(1 + 0.12 / 12, periodMonths)
+  const ccRetWithDiv    = (firstCC && latestCC && firstCC.amt > 0)
+    ? ((latestCC.amt / firstCC.amt) * divMultiplier - 1) * 100 : null
+  const ccFinalWithDiv  = (firstCC && latestCC && firstCC.amt > 0)
+    ? Math.round(firstCC.amt * (latestCC.amt / firstCC.amt) * divMultiplier) : null
 
   // 차트 데이터
   const ccMap = new Map(ccRows.map((r) => [r.date, r]))
@@ -156,6 +166,17 @@ export function Kodex200Panel() {
                 <td className="py-1.5 text-right text-gray-700">{latestCC ? fmt(latestCC.amt) : "-"}</td>
                 <td className={`py-1.5 text-right font-semibold ${cc(ccRet)}`}>
                   {ccRet != null ? `${sign(ccRet)}${fmt(ccRet, 2)}%` : "-"}
+                </td>
+              </tr>
+              <tr className="bg-amber-50">
+                <td className="py-1.5 text-amber-700 font-medium leading-tight">
+                  커버드콜<br />
+                  <span className="text-gray-400 font-normal">(연12% 재투자)</span>
+                </td>
+                <td className="py-1.5 text-right text-gray-700">{firstCC  ? fmt(firstCC.amt)  : "-"}</td>
+                <td className="py-1.5 text-right text-gray-700">{ccFinalWithDiv != null ? fmt(ccFinalWithDiv) : "-"}</td>
+                <td className={`py-1.5 text-right font-semibold ${cc(ccRetWithDiv)}`}>
+                  {ccRetWithDiv != null ? `${sign(ccRetWithDiv)}${fmt(ccRetWithDiv, 2)}%` : "-"}
                 </td>
               </tr>
             </tbody>
