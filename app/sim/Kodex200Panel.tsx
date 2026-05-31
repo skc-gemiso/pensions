@@ -96,11 +96,11 @@ export function Kodex200Panel() {
         </div>
       </div>
 
-      {/* 요약 카드 3개 */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* 요약 카드 3개 — 25% / 25% / 50% */}
+      <div className="grid grid-cols-4 gap-3">
 
-        {/* KODEX 200 */}
-        <div className="bg-white rounded-xl border border-blue-200 p-4">
+        {/* KODEX 200 (25%) */}
+        <div className="col-span-1 bg-white rounded-xl border border-blue-200 p-4">
           <p className="text-xs font-semibold text-blue-600 mb-3">KODEX 200 (069500)</p>
           <div className="space-y-2">
             <div className="flex justify-between items-baseline">
@@ -119,12 +119,24 @@ export function Kodex200Panel() {
                 {latestK ? `${sign(latestK.e_rate)}${fmt(latestK.e_rate, 2)}%` : "-"}
               </span>
             </div>
-            <p className="text-xs text-gray-400 text-right pt-1">{latestK?.date ?? ""}</p>
+            <div className="border-t border-gray-100 pt-2 mt-1 space-y-1">
+              <div className="flex justify-between items-baseline">
+                <span className="text-xs text-gray-400">기초 지수</span>
+                <span className="text-xs text-gray-700">{firstK ? `${fmt(firstK.amt)}원` : "-"}</span>
+              </div>
+              <div className="flex justify-between items-baseline">
+                <span className="text-xs text-gray-400">기간 수익률</span>
+                <span className={`text-xs font-medium ${cc(kResult?.retPct ?? null)}`}>
+                  {kResult ? `${sign(kResult.retPct)}${fmt(kResult.retPct, 2)}%` : "-"}
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-gray-400 text-right">{latestK?.date ?? ""}</p>
           </div>
         </div>
 
-        {/* 커버드콜 */}
-        <div className="bg-white rounded-xl border border-amber-200 p-4">
+        {/* 커버드콜 (25%) */}
+        <div className="col-span-1 bg-white rounded-xl border border-amber-200 p-4">
           <p className="text-xs font-semibold text-amber-600 mb-3">KODEX 200타겟위클리커버드콜 (498400)</p>
           <div className="space-y-2">
             <div className="flex justify-between items-baseline">
@@ -143,20 +155,41 @@ export function Kodex200Panel() {
                 {latestCC ? `${sign(latestCC.e_rate)}${fmt(latestCC.e_rate, 2)}%` : "-"}
               </span>
             </div>
-            <p className="text-xs text-gray-400 text-right pt-1">{latestCC?.date ?? "데이터 없음"}</p>
+            <div className="border-t border-gray-100 pt-2 mt-1 space-y-1">
+              <div className="flex justify-between items-baseline">
+                <span className="text-xs text-gray-400">기초 지수</span>
+                <span className="text-xs text-gray-700">{firstCC ? `${fmt(firstCC.amt)}원` : "-"}</span>
+              </div>
+              <div className="flex justify-between items-baseline">
+                <span className="text-xs text-gray-400">기간 수익률</span>
+                <span className={`text-xs font-medium ${cc(ccResult?.retPct ?? null)}`}>
+                  {ccResult ? `${sign(ccResult.retPct)}${fmt(ccResult.retPct, 2)}%` : "-"}
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-gray-400 text-right">{latestCC?.date ?? "데이터 없음"}</p>
           </div>
         </div>
 
-        {/* 수익율 비교 */}
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs font-semibold text-gray-600 mb-0.5">
-            수익율 비교 ({PERIODS.find(p => p.months === months)?.label ?? "전체"})
+        {/* 수익율 비교 (50%) */}
+        <div className="col-span-2 bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-baseline justify-between mb-0.5">
+            <p className="text-xs font-semibold text-gray-600">
+              수익율 비교 ({PERIODS.find(p => p.months === months)?.label ?? "전체"})
+            </p>
+            <p className="text-xs text-gray-400">
+              기초일 {firstK?.date ?? "-"} → 기말일 {latestK?.date ?? "-"}
+            </p>
+          </div>
+          <p className="text-xs text-gray-400 mb-3">
+            기초 금액 <span className="font-semibold text-gray-700">1,000만원</span> 투자 기준 · 월복리 재투자
           </p>
-          <p className="text-xs text-gray-400 mb-3">1,000만원 투자 기준 · 월복리 재투자</p>
           <table className="w-full text-xs">
             <thead>
               <tr className="text-gray-400 border-b border-gray-100">
                 <th className="pb-1.5 text-left font-medium"></th>
+                <th className="pb-1.5 text-right font-medium">기초 금액</th>
+                <th className="pb-1.5 text-right font-medium">기초 지수</th>
                 <th className="pb-1.5 text-right font-medium">기말금액</th>
                 <th className="pb-1.5 text-right font-medium">수익금액</th>
                 <th className="pb-1.5 text-right font-medium">수익률</th>
@@ -165,7 +198,9 @@ export function Kodex200Panel() {
             <tbody className="divide-y divide-gray-50">
               <tr>
                 <td className="py-1.5 text-blue-600 font-medium">KODEX200</td>
-                <td className="py-1.5 text-right text-gray-700">{kResult ? `${fmt(kResult.endVal)}원` : "-"}</td>
+                <td className="py-1.5 text-right text-gray-500">{fmt(INVEST)}원</td>
+                <td className="py-1.5 text-right text-gray-700">{firstK ? `${fmt(firstK.amt)}원` : "-"}</td>
+                <td className="py-1.5 text-right text-gray-900 font-medium">{kResult ? `${fmt(kResult.endVal)}원` : "-"}</td>
                 <td className={`py-1.5 text-right font-medium ${cc(kResult?.profit ?? null)}`}>
                   {kResult ? `${sign(kResult.profit)}${fmt(kResult.profit)}원` : "-"}
                 </td>
@@ -175,7 +210,9 @@ export function Kodex200Panel() {
               </tr>
               <tr>
                 <td className="py-1.5 text-amber-600 font-medium">커버드콜</td>
-                <td className="py-1.5 text-right text-gray-700">{ccResult ? `${fmt(ccResult.endVal)}원` : "-"}</td>
+                <td className="py-1.5 text-right text-gray-500">{fmt(INVEST)}원</td>
+                <td className="py-1.5 text-right text-gray-700">{firstCC ? `${fmt(firstCC.amt)}원` : "-"}</td>
+                <td className="py-1.5 text-right text-gray-900 font-medium">{ccResult ? `${fmt(ccResult.endVal)}원` : "-"}</td>
                 <td className={`py-1.5 text-right font-medium ${cc(ccResult?.profit ?? null)}`}>
                   {ccResult ? `${sign(ccResult.profit)}${fmt(ccResult.profit)}원` : "-"}
                 </td>
@@ -188,7 +225,9 @@ export function Kodex200Panel() {
                   커버드콜<br />
                   <span className="text-gray-400 font-normal">(연12% 재투자)</span>
                 </td>
-                <td className="py-1.5 text-right text-gray-700">{ccDivResult ? `${fmt(ccDivResult.endVal)}원` : "-"}</td>
+                <td className="py-1.5 text-right text-gray-500">{fmt(INVEST)}원</td>
+                <td className="py-1.5 text-right text-gray-700">{firstCC ? `${fmt(firstCC.amt)}원` : "-"}</td>
+                <td className="py-1.5 text-right text-gray-900 font-medium">{ccDivResult ? `${fmt(ccDivResult.endVal)}원` : "-"}</td>
                 <td className={`py-1.5 text-right font-medium ${cc(ccDivResult?.profit ?? null)}`}>
                   {ccDivResult ? `${sign(ccDivResult.profit)}${fmt(ccDivResult.profit)}원` : "-"}
                 </td>
