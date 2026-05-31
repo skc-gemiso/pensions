@@ -214,23 +214,25 @@ export async function loadSimulations(tabId: string): Promise<SavedSim[]> {
 
 export type Kodex200Row = {
   date: string
-  amt: number
-  e_amt: number
-  e_rate: number   // bp 단위 (÷100 = %)
+  amt: number     // 종가 (t_stock_amt.e_amt)
+  e_amt: number   // 전일대비 금액 (t_stock_amt.c_amt)
+  e_rate: number  // 등락률 % 단위 (÷100 불필요)
   e_trade: number
 }
 
 export async function getKodex200Series(months?: number): Promise<Kodex200Row[]> {
   const db = getPensionPool()
-  const { rows } = await db.query<{ e_date: string; amt: string; e_amt: string; e_rate: string; e_trade: string }>(
-    `SELECT e_date, amt, e_amt, e_rate, e_trade
-     FROM etf_kodex200
-     WHERE ($1::int IS NULL OR TO_DATE(e_date, 'YYYYMMDD') >= NOW() - ($1 || ' months')::interval)
+  const { rows } = await db.query(
+    `SELECT TO_CHAR(e_date, 'YYYY-MM-DD') AS date,
+            e_amt AS amt, c_amt AS e_amt, e_rate, e_trade
+     FROM t_stock_amt
+     WHERE stock_code = '069500'
+       AND ($1::int IS NULL OR e_date >= (CURRENT_DATE - ($1 || ' months')::interval)::date)
      ORDER BY e_date ASC`,
     [months ?? null]
   )
   return rows.map((r) => ({
-    date: `${r.e_date.slice(0, 4)}-${r.e_date.slice(4, 6)}-${r.e_date.slice(6, 8)}`,
+    date:    r.date,
     amt:     Number(r.amt),
     e_amt:   Number(r.e_amt),
     e_rate:  Number(r.e_rate),

@@ -55,13 +55,12 @@ export function Kodex200Panel() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-bold text-gray-900 mb-0.5">KODEX 200 / 커버드콜 주가</h2>
-        <p className="text-xs text-gray-500">KODEX 200 (069500) · KODEX 200타겟위클리커버드콜 (498400)</p>
+        <h2 className="text-lg font-bold text-gray-900 mb-0.5">KODEX 200 (069500) · KODEX 200타겟위클리커버드콜 (498400)</h2>
       </div>
 
       {/* 요약 카드 — KODEX 200 */}
       <div>
-        <p className="text-xs font-semibold text-blue-600 mb-1.5">KODEX 200</p>
+        <p className="text-xs font-semibold text-blue-600 mb-1.5">KODEX 200 (069500)</p>
         <div className="grid grid-cols-3 gap-2">
           <div className="bg-white rounded-xl border border-gray-200 p-3">
             <p className="text-xs text-gray-500">현재가</p>
@@ -78,7 +77,7 @@ export function Kodex200Panel() {
           <div className="bg-white rounded-xl border border-gray-200 p-3">
             <p className="text-xs text-gray-500">등락률</p>
             <p className={`text-base font-bold mt-0.5 ${cc(latestK?.e_rate ?? null)}`}>
-              {latestK ? `${latestK.e_rate > 0 ? "+" : ""}${fmt(latestK.e_rate / 100, 2)}%` : "-"}
+              {latestK ? `${latestK.e_rate > 0 ? "+" : ""}${fmt(latestK.e_rate, 2)}%` : "-"}
             </p>
             <p className="text-xs text-gray-400">당일</p>
           </div>
@@ -215,7 +214,7 @@ export function Kodex200Panel() {
                           {r.e_amt > 0 ? "+" : ""}{fmt(r.e_amt)}
                         </td>
                         <td className={`px-3 py-1.5 text-right font-medium ${cc(r.e_rate)}`}>
-                          {r.e_rate > 0 ? "+" : ""}{fmt(r.e_rate / 100, 2)}%
+                          {r.e_rate > 0 ? "+" : ""}{fmt(r.e_rate, 2)}%
                         </td>
                         <td className="px-3 py-1.5 text-right font-medium text-amber-700">
                           {ccAmt != null ? fmt(ccAmt) : "-"}
