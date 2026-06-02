@@ -174,15 +174,16 @@ export default function StockPage() {
     if (!form.s_date) { setFormError("일자를 선택하세요."); return }
     const qty  = Number(form.qty)
     const sAmt = Number(form.s_amt)
-    if (!qty || qty <= 0)   { setFormError("수량을 올바르게 입력하세요."); return }
-    if (!sAmt || sAmt <= 0) { setFormError("단가를 올바르게 입력하세요."); return }
+    if (!qty || qty === 0)    { setFormError("수량을 입력하세요. (매입: 양수, 매도: 음수)"); return }
+    if (!sAmt || sAmt <= 0)   { setFormError("단가를 올바르게 입력하세요."); return }
+    const cnt = qty > 0 ? 1 : 2   // qty 부호로 매입/매도 자동 결정
 
     setSubmitting(true)
     try {
       await addTransaction({
         stock_code: form.stock_code.trim().toUpperCase(),
         s_date: form.s_date.replace(/-/g, ""),   // YYYY-MM-DD → YYYYMMDD
-        cnt: Number(form.cnt),
+        cnt,
         stock_type: Number(form.stock_type),
         qty,
         s_amt: sAmt,
@@ -235,7 +236,7 @@ export default function StockPage() {
   const txMap = useMemo(() => {
     const map: Record<string, StockTransaction[]> = {}
     for (const tx of transactions) {
-      if (tx.cnt !== 1) continue   // 매입만
+      if (tx.qty <= 0) continue   // 매입(양수)만
       if (!map[tx.stock_code]) map[tx.stock_code] = []
       map[tx.stock_code].push(tx)
     }
@@ -592,8 +593,8 @@ export default function StockPage() {
                         <td className="px-3 py-2 text-gray-900 whitespace-nowrap">
                           {holdings.find(h => h.stock_code === tx.stock_code)?.stock_name ?? tx.stock_code}
                         </td>
-                        <td className={`px-3 py-2 text-right font-medium ${tx.cnt === 1 ? "text-red-600" : "text-blue-600"}`}>
-                          {tx.cnt === 1 ? "매입" : "매도"}
+                        <td className={`px-3 py-2 text-right font-medium ${tx.qty > 0 ? "text-red-600" : "text-blue-600"}`}>
+                          {tx.qty > 0 ? "매입" : "매도"}
                         </td>
                         <td className="px-3 py-2 text-right text-gray-900">{fmt(tx.qty)}주</td>
                         <td className="px-3 py-2 text-right text-gray-700">{fmt(tx.s_amt)}원</td>
@@ -674,25 +675,10 @@ export default function StockPage() {
               </div>
               <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
 
-                {/* 구분 */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1.5">구분</label>
-                  <div className="flex gap-2">
-                    {(["1", "2"] as const).map((v) => (
-                      <button
-                        key={v}
-                        type="button"
-                        onClick={() => setForm((f) => ({ ...f, cnt: v }))}
-                        className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-colors ${
-                          form.cnt === v
-                            ? v === "1" ? "bg-red-500 text-white border-red-500" : "bg-blue-500 text-white border-blue-500"
-                            : "border-gray-300 text-gray-700 hover:bg-gray-50"
-                        }`}
-                      >
-                        {v === "1" ? "매입" : "매도"}
-                      </button>
-                    ))}
-                  </div>
+                {/* 구분 안내 */}
+                <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500">
+                  수량 <span className="font-semibold text-red-600">양수(+)</span> = 매입 &nbsp;·&nbsp;
+                  수량 <span className="font-semibold text-blue-600">음수(-)</span> = 매도
                 </div>
 
                 {/* 종목 구분 */}
@@ -794,11 +780,10 @@ export default function StockPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1.5">수량 (주)</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5">수량 (주, 매도 시 음수)</label>
                     <input
                       type="number"
-                      min={1}
-                      placeholder="10"
+                      placeholder="10 또는 -10"
                       value={form.qty}
                       onChange={(e) => setForm((f) => ({ ...f, qty: e.target.value }))}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"

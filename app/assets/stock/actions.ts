@@ -111,9 +111,9 @@ export async function getHoldings(): Promise<StockHolding[]> {
     SELECT
       ms.stock_code,
       MAX(ms.stock_type) AS stock_type,
-      SUM(CASE WHEN ms.cnt = 1 THEN ms.qty ELSE -ms.qty END) AS net_qty,
-      SUM(CASE WHEN ms.cnt = 1 THEN ms.qty * ms.s_amt ELSE 0 END)
-        / NULLIF(SUM(CASE WHEN ms.cnt = 1 THEN ms.qty ELSE 0 END), 0) AS avg_buy_price,
+      SUM(ms.qty) AS net_qty,
+      SUM(CASE WHEN ms.qty > 0 THEN ms.qty * ms.s_amt ELSE 0 END)
+        / NULLIF(SUM(CASE WHEN ms.qty > 0 THEN ms.qty ELSE 0 END), 0) AS avg_buy_price,
       (SELECT COALESCE(sl.stock_short_name, sl.stock_name)
          FROM t_stock_list sl WHERE sl.stock_code = ms.stock_code) AS stock_name,
       (SELECT fa.e_amt
@@ -127,7 +127,7 @@ export async function getHoldings(): Promise<StockHolding[]> {
          ORDER BY fa.e_date DESC LIMIT 1 OFFSET 1) AS prev_price
     FROM my_stock ms
     GROUP BY ms.stock_code
-    HAVING SUM(CASE WHEN ms.cnt = 1 THEN ms.qty ELSE -ms.qty END) > 0
+    HAVING SUM(ms.qty) > 0
     ORDER BY ms.stock_code
   `)
 
