@@ -2008,7 +2008,7 @@ export default function SavingsFundPage() {
             <h3 className="font-semibold text-blue-900 text-sm mb-4">입력 값 수정</h3>
             <div className={`grid gap-4 ${isIRP ? "grid-cols-4" : "grid-cols-3"}`}>
               <label className="flex flex-col gap-1">
-                <span className="text-xs text-gray-600">생년월일</span>
+                <span className="text-xs font-medium text-gray-700">생년월일</span>
                 <input
                   type="date"
                   min="1940-01-01"
@@ -2025,7 +2025,7 @@ export default function SavingsFundPage() {
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-xs text-gray-600">초기 입금 (원) : 지금까지 투자된 금액으로 입력 가능</span>
+                <span className="text-xs font-medium text-gray-700">초기 입금 (원) : 지금까지 투자된 금액으로 입력 가능</span>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -2038,7 +2038,7 @@ export default function SavingsFundPage() {
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-xs text-gray-600">월 납입금 (원)</span>
+                <span className="text-xs font-medium text-gray-700">월 납입금 (원)</span>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -2051,7 +2051,7 @@ export default function SavingsFundPage() {
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-xs text-gray-600">적립 기간 (개월)</span>
+                <span className="text-xs font-medium text-gray-700">적립 기간 (개월)</span>
                 <input
                   type="number"
                   min={1}
@@ -2068,7 +2068,7 @@ export default function SavingsFundPage() {
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-xs text-gray-600">연금 수령 나이 (만)</span>
+                <span className="text-xs font-medium text-gray-700">연금 수령 나이 (만)</span>
                 <input
                   type="number"
                   min={55}
@@ -2085,7 +2085,7 @@ export default function SavingsFundPage() {
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-xs text-gray-600">커버드콜 배당률 (% / 연)</span>
+                <span className="text-xs font-medium text-gray-700">커버드콜 배당률 (% / 연)</span>
                 <input
                   type="number"
                   min={0}
@@ -2098,7 +2098,7 @@ export default function SavingsFundPage() {
               </label>
               {isIRP && (
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs text-gray-600">안전자산 수익율 (% / 연)</span>
+                  <span className="text-xs font-medium text-gray-700">안전자산 수익율 (% / 연)</span>
                   <input
                     type="number"
                     min={0}
