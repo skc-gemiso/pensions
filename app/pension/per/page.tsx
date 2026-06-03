@@ -27,15 +27,15 @@ export default function PersonalPensionPage() {
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 mb-8">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-500 mb-1">연금저축펀드 평가액</p>
+            <p className="text-xs font-medium text-gray-700 mb-1">연금저축펀드 평가액</p>
             <p className="text-xl font-bold text-gray-900">- 원</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-500 mb-1">IRP 평가액</p>
+            <p className="text-xs font-medium text-gray-700 mb-1">IRP 평가액</p>
             <p className="text-xl font-bold text-gray-900">- 원</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-500 mb-1">ISA 평가액</p>
+            <p className="text-xs font-medium text-gray-700 mb-1">ISA 평가액</p>
             <p className="text-xl font-bold text-gray-900">- 원</p>
           </div>
         </div>

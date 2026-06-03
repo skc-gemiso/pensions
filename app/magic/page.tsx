@@ -65,7 +65,7 @@ export default function CompoundMagicPage() {
 
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">초기 투자금</label>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">초기 투자금</label>
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
@@ -79,7 +79,7 @@ export default function CompoundMagicPage() {
                 </div>
 
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">월 납입액</label>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">월 납입액</label>
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
@@ -93,7 +93,7 @@ export default function CompoundMagicPage() {
                 </div>
 
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">연 수익률</label>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">연 수익률</label>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
@@ -109,7 +109,7 @@ export default function CompoundMagicPage() {
                 </div>
 
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">투자 기간</label>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">투자 기간</label>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
@@ -128,15 +128,15 @@ export default function CompoundMagicPage() {
 
             <div className="bg-blue-50 rounded-xl border border-blue-200 p-4 space-y-3">
               <div>
-                <p className="text-xs text-gray-500">최종 평가액</p>
+                <p className="text-xs font-medium text-gray-600">최종 평가액</p>
                 <p className="text-2xl font-bold text-blue-700">{formatKRW(finalBalance)}원</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">총 납입액</p>
+                <p className="text-xs font-medium text-gray-600">총 납입액</p>
                 <p className="text-lg font-semibold text-gray-700">{formatKRW(finalContrib)}원</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">수익 (복리 효과)</p>
+                <p className="text-xs font-medium text-gray-600">수익 (복리 효과)</p>
                 <p className="text-lg font-semibold text-green-600">{formatKRW(totalReturn)}원</p>
               </div>
             </div>

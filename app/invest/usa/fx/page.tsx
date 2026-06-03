@@ -114,21 +114,21 @@ export default function FxPage() {
 
       <div className="grid grid-cols-3 gap-3 mb-5">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-500">최근 환율</p>
+          <p className="text-xs font-medium text-gray-600">최근 환율</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">
             {latest ? fmt(latest.rate, 2) : "-"}
           </p>
           <p className="text-xs text-gray-400 mt-0.5">{latest?.date ?? ""}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-500">전일 대비</p>
+          <p className="text-xs font-medium text-gray-600">전일 대비</p>
           <p className={`text-2xl font-bold mt-1 ${cc(diff)}`}>
             {diff == null ? "-" : `${diff > 0 ? "+" : ""}${fmt(diff, 2)}`}
           </p>
           <p className="text-xs text-gray-400 mt-0.5">원</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-500">기간 평균</p>
+          <p className="text-xs font-medium text-gray-600">기간 평균</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{avg != null ? fmt(avg, 2) : "-"}</p>
           <p className="text-xs text-gray-400 mt-0.5">원</p>
         </div>

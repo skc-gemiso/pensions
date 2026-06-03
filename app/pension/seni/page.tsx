@@ -11,15 +11,15 @@ export default function SeniorPensionPage() {
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 mb-6">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-500 mb-1">수급 개시 연령</p>
+            <p className="text-xs font-medium text-gray-700 mb-1">수급 개시 연령</p>
             <p className="text-xl font-bold text-gray-900">만 65세</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-500 mb-1">최소 가입 기간</p>
+            <p className="text-xs font-medium text-gray-700 mb-1">최소 가입 기간</p>
             <p className="text-xl font-bold text-gray-900">10년</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-500 mb-1">예상 월 수령액</p>
+            <p className="text-xs font-medium text-gray-700 mb-1">예상 월 수령액</p>
             <p className="text-xl font-bold text-orange-600">- 원</p>
           </div>
         </div>

@@ -198,7 +198,7 @@ export default function NationalPensionPage() {
             <form onSubmit={handleSubmit} className="px-5 py-4 bg-blue-50 border-b border-blue-100">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">확인 시점</label>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">확인 시점</label>
                   <input
                     type="text"
                     placeholder="YYYY.MM.DD"
@@ -209,7 +209,7 @@ export default function NationalPensionPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">총 납부액</label>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">총 납부액</label>
                   <input
                     type="text"
                     inputMode="numeric"
@@ -221,7 +221,7 @@ export default function NationalPensionPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">월 수령 세전</label>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">월 수령 세전</label>
                   <input
                     type="text"
                     inputMode="numeric"
@@ -232,7 +232,7 @@ export default function NationalPensionPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">월 수령 세후</label>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">월 수령 세후</label>
                   <input
                     type="text"
                     inputMode="numeric"

@@ -104,17 +104,17 @@ export function Kodex200Panel() {
           <p className="text-xs font-semibold text-blue-600 mb-3">KODEX 200 (069500)</p>
           <div className="space-y-2">
             <div className="flex justify-between items-baseline">
-              <span className="text-xs text-gray-500">현재가</span>
+              <span className="text-xs font-medium text-gray-600">현재가</span>
               <span className="text-base font-bold text-gray-900">{latestK ? `${fmt(latestK.amt)}원` : "-"}</span>
             </div>
             <div className="flex justify-between items-baseline">
-              <span className="text-xs text-gray-500">전일 대비</span>
+              <span className="text-xs font-medium text-gray-600">전일 대비</span>
               <span className={`text-sm font-semibold ${cc(latestK?.e_amt ?? null)}`}>
                 {latestK ? `${sign(latestK.e_amt)}${fmt(latestK.e_amt)}원` : "-"}
               </span>
             </div>
             <div className="flex justify-between items-baseline">
-              <span className="text-xs text-gray-500">등락률</span>
+              <span className="text-xs font-medium text-gray-600">등락률</span>
               <span className={`text-sm font-semibold ${cc(latestK?.e_rate ?? null)}`}>
                 {latestK ? `${sign(latestK.e_rate)}${fmt(latestK.e_rate, 2)}%` : "-"}
               </span>
@@ -140,17 +140,17 @@ export function Kodex200Panel() {
           <p className="text-xs font-semibold text-amber-600 mb-3">KODEX 200타겟위클리커버드콜 (498400)</p>
           <div className="space-y-2">
             <div className="flex justify-between items-baseline">
-              <span className="text-xs text-gray-500">현재가</span>
+              <span className="text-xs font-medium text-gray-600">현재가</span>
               <span className="text-base font-bold text-gray-900">{latestCC ? `${fmt(latestCC.amt)}원` : "-"}</span>
             </div>
             <div className="flex justify-between items-baseline">
-              <span className="text-xs text-gray-500">전일 대비</span>
+              <span className="text-xs font-medium text-gray-600">전일 대비</span>
               <span className={`text-sm font-semibold ${cc(latestCC?.e_amt ?? null)}`}>
                 {latestCC ? `${sign(latestCC.e_amt)}${fmt(latestCC.e_amt)}원` : "-"}
               </span>
             </div>
             <div className="flex justify-between items-baseline">
-              <span className="text-xs text-gray-500">등락률</span>
+              <span className="text-xs font-medium text-gray-600">등락률</span>
               <span className={`text-sm font-semibold ${cc(latestCC?.e_rate ?? null)}`}>
                 {latestCC ? `${sign(latestCC.e_rate)}${fmt(latestCC.e_rate, 2)}%` : "-"}
               </span>
