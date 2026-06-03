@@ -312,7 +312,7 @@ export async function fetchAndSaveNaverPrices(stockCode: string, stockType: numb
 
   if (allPrices.length === 0) {
     if (!maxDateStr) throw new Error("네이버 금융에서 주가를 가져올 수 없습니다. 종목코드를 확인하세요.")
-    return 0
+    // 오늘 sise_day 데이터가 없더라도 실시간 API로 당일 저장 시도
   }
 
   const seen   = new Set<string>()
@@ -330,6 +330,33 @@ export async function fetchAndSaveNaverPrices(stockCode: string, stockType: numb
     )
     saved++
   }
+
+  // 당일 after-market 최종가: 실시간 API로 덮어쓰기 (시간외 단일가 반영)
+  try {
+    const rtRes = await fetch(
+      `https://m.stock.naver.com/api/stock/${stockCode}/basic`,
+      { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://m.stock.naver.com" } }
+    )
+    if (rtRes.ok) {
+      const d = await rtRes.json()
+      const rtClose  = Number(String(d.closePrice ?? "0").replace(/,/g, ""))
+      const rtChange = Number(String(d.compareToPreviousClosePrice ?? "0").replace(/,/g, ""))
+      const rtRate   = Number(String(d.fluctuationsRatio ?? "0").replace(/,/g, ""))
+      const rtVolume = Number(String(d.accumulatedTradingVolume ?? "0").replace(/,/g, ""))
+      if (rtClose > 0) {
+        await db.query(
+          `INSERT INTO t_stock_amt (e_date, stock_code, e_amt, c_amt, e_rate, e_trade, finish_yn)
+           VALUES ($1::date, $2, $3, $4, $5, $6, 'Y')
+           ON CONFLICT (e_date, stock_code) DO UPDATE
+             SET e_amt = EXCLUDED.e_amt, c_amt = EXCLUDED.c_amt, e_rate = EXCLUDED.e_rate,
+                 e_trade = EXCLUDED.e_trade, finish_yn = 'Y', updated_at = NOW()`,
+          [todayStr, stockCode, rtClose, rtChange, rtRate, rtVolume]
+        )
+        if (!seen.has(todayStr)) saved++
+      }
+    }
+  } catch { /* 실시간 API 실패 시 sise_day 결과만 사용 */ }
+
   return saved
 }
 

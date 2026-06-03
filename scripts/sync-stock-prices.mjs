@@ -99,7 +99,33 @@ async function syncStock(stockCode, stockType) {
       [p.date, stockCode, p.close, p.e_amt, p.e_rate, p.e_trade]
     )
   }
-  return unique.length
+
+  // 당일 after-market 최종가 덮어쓰기
+  try {
+    const rtRes = await fetch(
+      `https://m.stock.naver.com/api/stock/${stockCode}/basic`,
+      { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://m.stock.naver.com' } }
+    )
+    if (rtRes.ok) {
+      const d = await rtRes.json()
+      const rtClose  = Number(String(d.closePrice ?? '0').replace(/,/g, ''))
+      const rtChange = Number(String(d.compareToPreviousClosePrice ?? '0').replace(/,/g, ''))
+      const rtRate   = Number(String(d.fluctuationsRatio ?? '0').replace(/,/g, ''))
+      const rtVolume = Number(String(d.accumulatedTradingVolume ?? '0').replace(/,/g, ''))
+      if (rtClose > 0) {
+        await pool.query(
+          `INSERT INTO t_stock_amt (e_date, stock_code, e_amt, c_amt, e_rate, e_trade, finish_yn)
+           VALUES ($1::date, $2, $3, $4, $5, $6, 'Y')
+           ON CONFLICT (e_date, stock_code) DO UPDATE
+             SET e_amt = EXCLUDED.e_amt, c_amt = EXCLUDED.c_amt, e_rate = EXCLUDED.e_rate,
+                 e_trade = EXCLUDED.e_trade, finish_yn = 'Y', updated_at = NOW()`,
+          [todayStr, stockCode, rtClose, rtChange, rtRate, rtVolume]
+        )
+      }
+    }
+  } catch {}
+
+  return unique.length || 1
 }
 
 async function main() {
