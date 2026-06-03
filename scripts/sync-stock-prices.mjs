@@ -126,6 +126,11 @@ async function fetchNxtPrice(code) {
     )
     if (!res.ok) return null
     const html = new TextDecoder('euc-kr').decode(await res.arrayBuffer())
+    // 기준일 확인 — 폐장일이면 null 반환
+    const dateM = html.match(/class="date"[^>]*>(\d{4})\.(\d{2})\.(\d{2})/)
+    if (!dateM) return null
+    const pageDate = `${dateM[1]}-${dateM[2]}-${dateM[3]}`
+    if (pageDate !== new Date().toISOString().slice(0, 10)) return null
     const nxtM = html.match(/id="rate_info_nxt"([\s\S]{0,2000})/)
     if (!nxtM) return null
     const section = nxtM[1]

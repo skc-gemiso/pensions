@@ -429,9 +429,7 @@ function _parseSiseDay(html: string): SiseRow[] {
 }
 
 // NXT(넥스트레이드) 현재가 파싱 — sise.naver blind DL 섹션 이용
-// <dd>오늘의시세 362,500 포인트</dd>
-// <dd>13,500 포인트 상승</dd>
-// <dd>3.87% 플러스</dd>
+// 페이지 기준일이 오늘과 다르면(폐장일 등) null 반환 → sise_day 결과 유지
 async function _fetchNxtPrice(code: string): Promise<{ close: number; change: number; rate: number; volume: number } | null> {
   try {
     const res = await fetch(
@@ -447,6 +445,13 @@ async function _fetchNxtPrice(code: string): Promise<{ close: number; change: nu
     if (!res.ok) return null
     const html = new TextDecoder("euc-kr").decode(await res.arrayBuffer())
 
+    // 기준일 확인: class="date">YYYY.MM.DD
+    const dateM = html.match(/class="date"[^>]*>(\d{4})\.(\d{2})\.(\d{2})/)
+    if (!dateM) return null
+    const pageDate = `${dateM[1]}-${dateM[2]}-${dateM[3]}`
+    const todayStr = new Date().toISOString().slice(0, 10)
+    if (pageDate !== todayStr) return null   // 폐장일·휴일: 오늘 데이터 없음
+
     // rate_info_nxt 섹션 추출
     const nxtM = html.match(/id="rate_info_nxt"([\s\S]{0,2000})/)
     if (!nxtM) return null
@@ -458,22 +463,21 @@ async function _fetchNxtPrice(code: string): Promise<{ close: number; change: nu
     const rateM   = section.match(/([\d.]+)% (플러스|마이너스|제로)/)
     if (!closeM) return null
 
-    const close  = Number(closeM[1].replace(/,/g, ""))
-    const chgAbs = changeM ? Number(changeM[1].replace(/,/g, "")) : 0
-    const dir    = changeM?.[2] ?? "보합"
-    const change = dir === "상승" ? chgAbs : dir === "하락" ? -chgAbs : 0
+    const close   = Number(closeM[1].replace(/,/g, ""))
+    const chgAbs  = changeM ? Number(changeM[1].replace(/,/g, "")) : 0
+    const dir     = changeM?.[2] ?? "보합"
+    const change  = dir === "상승" ? chgAbs : dir === "하락" ? -chgAbs : 0
     const rateAbs = rateM ? Number(rateM[1]) : 0
-    const rate   = rateM?.[2] === "플러스" ? rateAbs : rateM?.[2] === "마이너스" ? -rateAbs : 0
+    const rate    = rateM?.[2] === "플러스" ? rateAbs : rateM?.[2] === "마이너스" ? -rateAbs : 0
 
     // 거래량: NXT sise_day에서 조회
+    let volume = 0
     const dayRes = await fetch(
       `https://finance.naver.com/item/sise_day.naver?code=${code}&market=nxt&page=1`,
       { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com", "Accept-Language": "ko-KR,ko;q=0.9" } }
     )
-    let volume = 0
     if (dayRes.ok) {
       const dayHtml = new TextDecoder("euc-kr").decode(await dayRes.arrayBuffer())
-      const todayStr = new Date().toISOString().slice(0, 10)
       const rows = _parseSiseDay(dayHtml)
       const todayRow = rows.find(r => r.date === todayStr)
       if (todayRow) volume = todayRow.e_trade
