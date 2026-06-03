@@ -63,7 +63,7 @@ export default function CompoundMagicPage() {
                       type="number"
                       value={initialAmount}
                       onChange={(e) => setInitialAmount(Number(e.target.value))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       step={1_000_000}
                     />
                     <span className="text-xs text-gray-400 whitespace-nowrap">원</span>
@@ -77,7 +77,7 @@ export default function CompoundMagicPage() {
                       type="number"
                       value={monthlyContrib}
                       onChange={(e) => setMonthlyContrib(Number(e.target.value))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       step={100_000}
                     />
                     <span className="text-xs text-gray-400 whitespace-nowrap">원</span>
@@ -91,7 +91,7 @@ export default function CompoundMagicPage() {
                       type="number"
                       value={annualRate}
                       onChange={(e) => setAnnualRate(Number(e.target.value))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       step={0.5}
                       min={0}
                       max={30}
@@ -107,7 +107,7 @@ export default function CompoundMagicPage() {
                       type="number"
                       value={years}
                       onChange={(e) => setYears(Number(e.target.value))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       step={1}
                       min={1}
                       max={50}
