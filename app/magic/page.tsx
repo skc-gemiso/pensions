@@ -179,7 +179,7 @@ export default function CompoundMagicPage() {
                 <Line
                   type="monotone"
                   dataKey="totalContrib"
-                  stroke="#d1d5db"
+                  stroke="#f97316"
                   strokeWidth={2}
                   strokeDasharray="4 4"
                   dot={false}
