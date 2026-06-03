@@ -58,7 +58,7 @@ export default function CompoundMagicPage() {
           <p className="text-gray-500 text-sm">장기 복리 투자 시뮬레이션</p>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 mb-6">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-4 mb-6">
           <div className="lg:col-span-1 space-y-4">
             <div className="bg-white rounded-xl border border-gray-200 p-4">
               <h2 className="font-semibold text-gray-900 mb-4 text-sm">시뮬레이션 설정</h2>
@@ -142,7 +142,7 @@ export default function CompoundMagicPage() {
             </div>
           </div>
 
-          <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-4">
+          <div className="lg:col-span-3 bg-white rounded-xl border border-gray-200 p-4">
             <h2 className="font-semibold text-gray-900 mb-4 text-sm">자산 성장 추이</h2>
             <ResponsiveContainer width="100%" height={360}>
               <LineChart data={chartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
