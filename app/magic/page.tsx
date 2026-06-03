@@ -10,6 +10,14 @@ function formatKRW(value: number) {
   return `${value.toLocaleString("ko-KR")}`
 }
 
+function fmtInput(n: number): string {
+  return n === 0 ? "" : n.toLocaleString("ko-KR")
+}
+function parseInput(s: string): number {
+  const n = Number(s.replace(/,/g, "").replace(/[^0-9]/g, ""))
+  return isNaN(n) ? 0 : n
+}
+
 export default function CompoundMagicPage() {
   const [initialAmount, setInitialAmount] = useState(10_000_000)
   const [monthlyContrib, setMonthlyContrib] = useState(300_000)
@@ -60,11 +68,11 @@ export default function CompoundMagicPage() {
                   <label className="text-xs text-gray-500 block mb-1">초기 투자금</label>
                   <div className="flex items-center gap-2">
                     <input
-                      type="number"
-                      value={initialAmount}
-                      onChange={(e) => setInitialAmount(Number(e.target.value))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      step={1_000_000}
+                      type="text"
+                      inputMode="numeric"
+                      value={fmtInput(initialAmount)}
+                      onChange={(e) => setInitialAmount(parseInput(e.target.value))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-right"
                     />
                     <span className="text-xs text-gray-400 whitespace-nowrap">원</span>
                   </div>
@@ -74,11 +82,11 @@ export default function CompoundMagicPage() {
                   <label className="text-xs text-gray-500 block mb-1">월 납입액</label>
                   <div className="flex items-center gap-2">
                     <input
-                      type="number"
-                      value={monthlyContrib}
-                      onChange={(e) => setMonthlyContrib(Number(e.target.value))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      step={100_000}
+                      type="text"
+                      inputMode="numeric"
+                      value={fmtInput(monthlyContrib)}
+                      onChange={(e) => setMonthlyContrib(parseInput(e.target.value))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-right"
                     />
                     <span className="text-xs text-gray-400 whitespace-nowrap">원</span>
                   </div>
@@ -91,7 +99,7 @@ export default function CompoundMagicPage() {
                       type="number"
                       value={annualRate}
                       onChange={(e) => setAnnualRate(Number(e.target.value))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-right"
                       step={0.5}
                       min={0}
                       max={30}
@@ -107,7 +115,7 @@ export default function CompoundMagicPage() {
                       type="number"
                       value={years}
                       onChange={(e) => setYears(Number(e.target.value))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-right"
                       step={1}
                       min={1}
                       max={50}
