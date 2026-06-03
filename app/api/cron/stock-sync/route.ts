@@ -101,32 +101,64 @@ async function syncStock(db: ReturnType<typeof getPensionPool>, stockCode: strin
     )
   }
 
-  // 당일 after-market 최종가 덮어쓰기
+  // 당일 after-market 최종가: NXT sise.naver 파싱으로 덮어쓰기
   try {
-    const rtRes = await fetch(
-      `https://m.stock.naver.com/api/stock/${stockCode}/basic`,
-      { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://m.stock.naver.com" } }
-    )
-    if (rtRes.ok) {
-      const d = await rtRes.json()
-      const rtClose  = Number(String(d.closePrice ?? "0").replace(/,/g, ""))
-      const rtChange = Number(String(d.compareToPreviousClosePrice ?? "0").replace(/,/g, ""))
-      const rtRate   = Number(String(d.fluctuationsRatio ?? "0").replace(/,/g, ""))
-      const rtVolume = Number(String(d.accumulatedTradingVolume ?? "0").replace(/,/g, ""))
-      if (rtClose > 0) {
-        await db.query(
-          `INSERT INTO t_stock_amt (e_date, stock_code, e_amt, c_amt, e_rate, e_trade, finish_yn)
-           VALUES ($1::date, $2, $3, $4, $5, $6, 'Y')
-           ON CONFLICT (e_date, stock_code) DO UPDATE
-             SET e_amt = EXCLUDED.e_amt, c_amt = EXCLUDED.c_amt, e_rate = EXCLUDED.e_rate,
-                 e_trade = EXCLUDED.e_trade, finish_yn = 'Y', updated_at = NOW()`,
-          [todayStr, stockCode, rtClose, rtChange, rtRate, rtVolume]
-        )
-      }
+    const nxt = await fetchNxtPrice(stockCode)
+    if (nxt && nxt.close > 0) {
+      await db.query(
+        `INSERT INTO t_stock_amt (e_date, stock_code, e_amt, c_amt, e_rate, e_trade, finish_yn)
+         VALUES ($1::date, $2, $3, $4, $5, $6, 'Y')
+         ON CONFLICT (e_date, stock_code) DO UPDATE
+           SET e_amt = EXCLUDED.e_amt, c_amt = EXCLUDED.c_amt, e_rate = EXCLUDED.e_rate,
+               e_trade = EXCLUDED.e_trade, finish_yn = 'Y', updated_at = NOW()`,
+        [todayStr, stockCode, nxt.close, nxt.change, nxt.rate, nxt.volume]
+      )
     }
-  } catch { /* ignore */ }
+  } catch { /* NXT 실패 시 sise_day 결과만 사용 */ }
 
   return unique.length || 1
+}
+
+async function fetchNxtPrice(code: string): Promise<{ close: number; change: number; rate: number; volume: number } | null> {
+  try {
+    const res = await fetch(
+      `https://finance.naver.com/item/sise.naver?code=${code}`,
+      { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com", "Accept-Language": "ko-KR,ko;q=0.9" } }
+    )
+    if (!res.ok) return null
+    const html = new TextDecoder("euc-kr").decode(await res.arrayBuffer())
+    const nxtM = html.match(/id="rate_info_nxt"([\s\S]{0,2000})/)
+    if (!nxtM) return null
+    const section = nxtM[1]
+    const closeM  = section.match(/오늘의시세 ([\d,]+) 포인트/)
+    const changeM = section.match(/([\d,]+) 포인트 (상승|하락|보합)/)
+    const rateM   = section.match(/([\d.]+)% (플러스|마이너스|제로)/)
+    if (!closeM) return null
+    const close  = Number(closeM[1].replace(/,/g, ""))
+    const chgAbs = changeM ? Number(changeM[1].replace(/,/g, "")) : 0
+    const dir    = changeM?.[2] ?? "보합"
+    const change = dir === "상승" ? chgAbs : dir === "하락" ? -chgAbs : 0
+    const rateAbs = rateM ? Number(rateM[1]) : 0
+    const rate   = rateM?.[2] === "플러스" ? rateAbs : rateM?.[2] === "마이너스" ? -rateAbs : 0
+    // 거래량: NXT sise_day
+    let volume = 0
+    const todayStr = new Date().toISOString().slice(0, 10)
+    const dayRes = await fetch(
+      `https://finance.naver.com/item/sise_day.naver?code=${code}&market=nxt&page=1`,
+      { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com", "Accept-Language": "ko-KR,ko;q=0.9" }, next: { revalidate: 0 } }
+    )
+    if (dayRes.ok) {
+      const dayHtml = new TextDecoder("euc-kr").decode(await dayRes.arrayBuffer())
+      for (const seg of dayHtml.split(/<\/tr>/i)) {
+        const dM = seg.match(/(\d{4})\.(\d{2})\.(\d{2})/)
+        if (!dM || `${dM[1]}-${dM[2]}-${dM[3]}` !== todayStr) continue
+        const ns = [...seg.matchAll(/<span class="tah p11">([\d,]+)<\/span>/g)]
+        if (ns[4]) volume = Number(ns[4][1].replace(/,/g, ""))
+        break
+      }
+    }
+    return { close, change, rate, volume }
+  } catch { return null }
 }
 
 export async function GET(req: NextRequest) {
