@@ -688,6 +688,10 @@ export default function StockPage() {
           const annualRate = avgRate * 12
           const latest     = divHistory[0]
           const maxAmt     = Math.max(...divHistory.map(r=>r.dist_amt), 1)
+          const holding498 = holdings.find(h => h.stock_code === "498400")
+          const netQty     = holding498?.net_qty ?? 0
+          const monthlyDiv = (latest && netQty > 0) ? Math.round(netQty * latest.dist_amt) : null
+          const monthlyTax = (latest && netQty > 0) ? Math.round(netQty * latest.tax_base_amt) : null
           return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
@@ -707,22 +711,49 @@ export default function StockPage() {
                 </div>
                 {/* 요약 카드 */}
                 {divHistory.length > 0 && (
-                  <div className="grid grid-cols-3 gap-3 px-5 py-4 bg-amber-50 border-b border-amber-100">
-                    <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
-                      <p className="text-xs text-gray-500 mb-0.5">최근 분배율</p>
-                      <p className="text-xl font-bold text-amber-600">{latest?.dist_rate.toFixed(2)}%</p>
-                      <p className="text-xs text-gray-400">{latest?.ref_date}</p>
+                  <div className="px-5 py-4 bg-amber-50 border-b border-amber-100 space-y-3">
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
+                        <p className="text-xs text-gray-500 mb-0.5">최근 분배율</p>
+                        <p className="text-xl font-bold text-amber-600">{latest?.dist_rate.toFixed(2)}%</p>
+                        <p className="text-xs text-gray-400">{latest?.ref_date}</p>
+                      </div>
+                      <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
+                        <p className="text-xs text-gray-500 mb-0.5">월평균 분배율</p>
+                        <p className="text-xl font-bold text-orange-600">{avgRate.toFixed(2)}%</p>
+                        <p className="text-xs text-gray-400">최근 {divHistory.length}회 평균</p>
+                      </div>
+                      <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
+                        <p className="text-xs text-gray-500 mb-0.5">연환산 수익률</p>
+                        <p className="text-xl font-bold text-red-600">{annualRate.toFixed(2)}%</p>
+                        <p className="text-xs text-gray-400">월평균 × 12</p>
+                      </div>
                     </div>
-                    <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
-                      <p className="text-xs text-gray-500 mb-0.5">월평균 분배율</p>
-                      <p className="text-xl font-bold text-orange-600">{avgRate.toFixed(2)}%</p>
-                      <p className="text-xs text-gray-400">최근 {divHistory.length}회 평균</p>
-                    </div>
-                    <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
-                      <p className="text-xs text-gray-500 mb-0.5">연환산 수익률</p>
-                      <p className="text-xl font-bold text-red-600">{annualRate.toFixed(2)}%</p>
-                      <p className="text-xs text-gray-400">월평균 × 12</p>
-                    </div>
+                    {/* 잔고 기반 분배금 카드 */}
+                    {netQty > 0 && monthlyDiv != null && (
+                      <div className="bg-white rounded-xl p-3 border border-orange-300">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs font-semibold text-orange-700">내 잔고 기준 이번 달 분배금</p>
+                          <span className="text-xs text-gray-400">{latest?.ref_date} 분배금 기준</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3 text-center">
+                          <div>
+                            <p className="text-xs text-gray-500 mb-0.5">보유 잔고</p>
+                            <p className="text-base font-bold text-gray-800">{fmt(netQty)}주</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-0.5">예상 분배금</p>
+                            <p className="text-base font-bold text-orange-600">{fmt(monthlyDiv)}원</p>
+                            <p className="text-xs text-gray-400">{fmt(latest?.dist_amt ?? 0)}원/주</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-0.5">과세표준액</p>
+                            <p className="text-base font-bold text-gray-700">{fmt(monthlyTax ?? 0)}원</p>
+                            <p className="text-xs text-gray-400">{fmt(latest?.tax_base_amt ?? 0)}원/주</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
                 {/* 테이블 */}

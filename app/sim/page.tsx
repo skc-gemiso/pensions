@@ -1962,22 +1962,47 @@ export default function SavingsFundPage() {
 
                 {/* 요약 카드 3개 */}
                 {divHistory.length > 0 && (
-                  <div className="grid grid-cols-3 gap-3 px-5 py-4 bg-amber-50 border-b border-amber-100">
-                    <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
-                      <p className="text-xs text-gray-500 mb-0.5">최근 분배율</p>
-                      <p className="text-xl font-bold text-amber-600">{latest?.dist_rate.toFixed(2)}%</p>
-                      <p className="text-xs text-gray-400">{latest?.ref_date}</p>
+                  <div className="px-5 py-4 bg-amber-50 border-b border-amber-100 space-y-3">
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
+                        <p className="text-xs text-gray-500 mb-0.5">최근 분배율</p>
+                        <p className="text-xl font-bold text-amber-600">{latest?.dist_rate.toFixed(2)}%</p>
+                        <p className="text-xs text-gray-400">{latest?.ref_date}</p>
+                      </div>
+                      <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
+                        <p className="text-xs text-gray-500 mb-0.5">월평균 분배율</p>
+                        <p className="text-xl font-bold text-orange-600">{avgRate.toFixed(2)}%</p>
+                        <p className="text-xs text-gray-400">최근 {divHistory.length}회 평균</p>
+                      </div>
+                      <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
+                        <p className="text-xs text-gray-500 mb-0.5">연환산 수익률</p>
+                        <p className="text-xl font-bold text-red-600">{annualRate.toFixed(2)}%</p>
+                        <p className="text-xs text-gray-400">월평균 × 12</p>
+                      </div>
                     </div>
-                    <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
-                      <p className="text-xs text-gray-500 mb-0.5">월평균 분배율</p>
-                      <p className="text-xl font-bold text-orange-600">{avgRate.toFixed(2)}%</p>
-                      <p className="text-xs text-gray-400">최근 {divHistory.length}회 평균</p>
-                    </div>
-                    <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
-                      <p className="text-xs text-gray-500 mb-0.5">연환산 수익률</p>
-                      <p className="text-xl font-bold text-red-600">{annualRate.toFixed(2)}%</p>
-                      <p className="text-xs text-gray-400">월평균 × 12</p>
-                    </div>
+                    {/* 최신 분배금 주당 현황 카드 */}
+                    {latest && (
+                      <div className="bg-white rounded-xl p-3 border border-orange-300">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs font-semibold text-orange-700">최신 분배금 현황 (주당)</p>
+                          <span className="text-xs text-gray-400">{latest.ref_date} → 지급 {latest.pay_date}</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3 text-center">
+                          <div>
+                            <p className="text-xs text-gray-500 mb-0.5">분배율</p>
+                            <p className="text-base font-bold text-amber-600">{latest.dist_rate.toFixed(2)}%</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-0.5">주당 분배금</p>
+                            <p className="text-base font-bold text-orange-600">{latest.dist_amt.toLocaleString()}원</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-0.5">주당 과세표준액</p>
+                            <p className="text-base font-bold text-gray-700">{latest.tax_base_amt.toLocaleString()}원</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
