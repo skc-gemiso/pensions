@@ -14,6 +14,7 @@ import {
   getDailyPrices, fetchAndSaveNaverPrices, searchStockList, getMarketIndices, getDefaultStockList,
   type StockHolding, type StockTransaction, type DailyPrice, type StockListItem, type MarketIndex,
 } from "./actions"
+import { getEtfDividendHistory, type EtfDividendRow } from "@/app/sim/actions"
 
 type StockSearchItem = StockListItem
 
@@ -61,6 +62,8 @@ export default function StockPage() {
   const [chartLoading, setChartLoading]   = useState(false)
   const [chartDays, setChartDays]         = useState(365)
   const [fetchingNaver, setFetchingNaver] = useState(false)
+  const [showDivModal, setShowDivModal]   = useState(false)
+  const [divHistory, setDivHistory]       = useState<EtfDividendRow[]>([])
   const [transactions, setTransactions]   = useState<StockTransaction[]>([])
   const [txLoading, setTxLoading]         = useState(false)
   const [tooltip, setTooltip]             = useState<{ code: string; x: number; y: number } | null>(null)
@@ -347,6 +350,20 @@ export default function StockPage() {
                   </h2>
                 </div>
                 <div className="flex items-center gap-2">
+                  {selectedCode === "498400" && (
+                    <button
+                      onClick={async () => {
+                        if (divHistory.length === 0) {
+                          const data = await getEtfDividendHistory("498400")
+                          setDivHistory(data)
+                        }
+                        setShowDivModal(true)
+                      }}
+                      className="text-xs px-3 py-1.5 border border-amber-400 text-amber-700 bg-amber-50 rounded-lg hover:bg-amber-100 whitespace-nowrap font-medium"
+                    >
+                      배당 수익율 조회
+                    </button>
+                  )}
                   <button
                     onClick={() => handleFetchNaver()}
                     disabled={fetchingNaver || holdings.length === 0}
@@ -661,6 +678,101 @@ export default function StockPage() {
                   </tbody>
                 </table>
               )}
+            </div>
+          )
+        })()}
+
+        {/* ── 배당 수익율 팝업 ── */}
+        {showDivModal && (() => {
+          const avgRate    = divHistory.length > 0 ? divHistory.reduce((s,r)=>s+r.dist_rate,0)/divHistory.length : 0
+          const annualRate = avgRate * 12
+          const latest     = divHistory[0]
+          const maxAmt     = Math.max(...divHistory.map(r=>r.dist_amt), 1)
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+                {/* 헤더 */}
+                <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-5">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="bg-white/20 text-white text-xs font-bold px-2 py-0.5 rounded">ETF</span>
+                        <span className="text-white/80 text-xs font-mono">498400</span>
+                      </div>
+                      <h2 className="text-white font-bold text-base leading-tight">KODEX 200타겟위클리커버드콜</h2>
+                      <p className="text-amber-100 text-xs mt-0.5">분배금 지급 이력 · 지급기준일 기준 최신순</p>
+                    </div>
+                    <button onClick={() => setShowDivModal(false)} className="text-white/70 hover:text-white text-2xl leading-none mt-0.5">×</button>
+                  </div>
+                </div>
+                {/* 요약 카드 */}
+                {divHistory.length > 0 && (
+                  <div className="grid grid-cols-3 gap-3 px-5 py-4 bg-amber-50 border-b border-amber-100">
+                    <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
+                      <p className="text-xs text-gray-500 mb-0.5">최근 분배율</p>
+                      <p className="text-xl font-bold text-amber-600">{latest?.dist_rate.toFixed(2)}%</p>
+                      <p className="text-xs text-gray-400">{latest?.ref_date}</p>
+                    </div>
+                    <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
+                      <p className="text-xs text-gray-500 mb-0.5">월평균 분배율</p>
+                      <p className="text-xl font-bold text-orange-600">{avgRate.toFixed(2)}%</p>
+                      <p className="text-xs text-gray-400">최근 {divHistory.length}회 평균</p>
+                    </div>
+                    <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
+                      <p className="text-xs text-gray-500 mb-0.5">연환산 수익률</p>
+                      <p className="text-xl font-bold text-red-600">{annualRate.toFixed(2)}%</p>
+                      <p className="text-xs text-gray-400">월평균 × 12</p>
+                    </div>
+                  </div>
+                )}
+                {/* 테이블 */}
+                <div className="overflow-y-auto flex-1">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 sticky top-0 border-b border-gray-200">
+                      <tr>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-left">지급기준일</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-left">실지급일</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-amber-700 text-right">분배율</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-right">분배금액</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-gray-400 text-right">과세표준액</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {divHistory.map((r, i) => (
+                        <tr key={r.ref_date} className={`hover:bg-amber-50 transition-colors ${i === 0 ? "bg-amber-50/50" : ""}`}>
+                          <td className="px-4 py-2 text-gray-800 font-medium whitespace-nowrap">
+                            {i === 0 && <span className="inline-block bg-amber-400 text-white text-[10px] font-bold px-1.5 py-0.5 rounded mr-1.5 align-middle">최신</span>}
+                            {r.ref_date}
+                          </td>
+                          <td className="px-4 py-2 text-gray-500 whitespace-nowrap">{r.pay_date}</td>
+                          <td className="px-4 py-2 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <div className="w-16 bg-gray-100 rounded-full h-1.5 hidden sm:block">
+                                <div className="bg-amber-400 h-1.5 rounded-full" style={{ width: `${Math.min(r.dist_rate/2.5*100,100)}%` }} />
+                              </div>
+                              <span className="font-bold text-amber-700">{r.dist_rate.toFixed(2)}%</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-2 text-right font-semibold text-gray-900">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <div className="w-12 bg-gray-100 rounded-full h-1.5 hidden sm:block">
+                                <div className="bg-orange-300 h-1.5 rounded-full" style={{ width: `${Math.round(r.dist_amt/maxAmt*100)}%` }} />
+                              </div>
+                              {r.dist_amt.toLocaleString()}원
+                            </div>
+                          </td>
+                          <td className="px-4 py-2 text-right text-gray-400 text-xs">{r.tax_base_amt.toLocaleString()}원</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {/* 푸터 */}
+                <div className="px-5 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+                  <p className="text-xs text-gray-400">※ 분배금은 운용 성과에 따라 변동될 수 있습니다.</p>
+                  <button onClick={() => setShowDivModal(false)} className="text-xs px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-lg transition-colors">닫기</button>
+                </div>
+              </div>
             </div>
           )
         })()}
