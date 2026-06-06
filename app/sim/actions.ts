@@ -284,3 +284,31 @@ export async function deleteSimulation(id: number): Promise<void> {
     )
   }
 }
+
+export type EtfDividendRow = {
+  ref_date:     string   // YYYY-MM-DD 지급기준일
+  pay_date:     string   // YYYY-MM-DD 실지급일
+  dist_rate:    number   // 분배율(%)
+  dist_amt:     number   // 분배금액(원)
+  tax_base_amt: number   // 주당 과세 표준액(원)
+}
+
+export async function getEtfDividendHistory(stockCode: string): Promise<EtfDividendRow[]> {
+  const db = getPensionPool()
+  const { rows } = await db.query(
+    `SELECT TO_CHAR(ref_date,'YYYY-MM-DD') AS ref_date,
+            TO_CHAR(pay_date,'YYYY-MM-DD')  AS pay_date,
+            dist_rate, dist_amt, tax_base_amt
+     FROM t_etf_dividend
+     WHERE stock_code = $1
+     ORDER BY ref_date DESC`,
+    [stockCode]
+  )
+  return rows.map(r => ({
+    ref_date:     r.ref_date,
+    pay_date:     r.pay_date,
+    dist_rate:    Number(r.dist_rate),
+    dist_amt:     Number(r.dist_amt),
+    tax_base_amt: Number(r.tax_base_amt),
+  }))
+}

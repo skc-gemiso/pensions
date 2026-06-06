@@ -10,9 +10,11 @@ import {
   loadSimulations,
   deleteSimulation,
   checkAndRecordIpUsage,
+  getEtfDividendHistory,
   type InputValues,
   type ComputedRow,
   type SavedSim,
+  type EtfDividendRow,
 } from "./actions"
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
@@ -1659,6 +1661,8 @@ export default function SavingsFundPage() {
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [saveDraft, setSaveDraft]     = useState({ title: "", memo: "" })
   const [ipBlocked, setIpBlocked]     = useState(false)
+  const [showDivModal, setShowDivModal] = useState(false)
+  const [divHistory, setDivHistory]     = useState<EtfDividendRow[]>([])
 
   // role이 결정되면 첫 번째 visible 탭으로 맞춤
   useEffect(() => {
@@ -1909,12 +1913,75 @@ export default function SavingsFundPage() {
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
           <ul className="space-y-0.5">
             {(isIRP ? IRP_NOTES : NOTES).map((n) => (
-              <li key={n} className="text-xs text-amber-800 flex gap-1.5">
-                <span>※</span><span>{n}</span>
+              <li key={n} className="text-xs text-amber-800 flex gap-1.5 items-center">
+                <span className="shrink-0">※</span>
+                <span className="flex-1">{n}</span>
+                {n.includes("타겟위클리커버드콜") && (
+                  <button
+                    onClick={async () => {
+                      if (divHistory.length === 0) {
+                        const data = await getEtfDividendHistory("498400")
+                        setDivHistory(data)
+                      }
+                      setShowDivModal(true)
+                    }}
+                    className="shrink-0 text-xs px-2 py-0.5 bg-amber-200 hover:bg-amber-300 text-amber-900 font-medium rounded transition-colors whitespace-nowrap"
+                  >
+                    배당 수익율 조회
+                  </button>
+                )}
               </li>
             ))}
           </ul>
         </div>
+
+        {/* 배당 수익율 팝업 */}
+        {showDivModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl max-h-[80vh] flex flex-col">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">KODEX 200타겟위클리커버드콜 (498400) 분배금 현황</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">지급기준일 기준 최신순</p>
+                </div>
+                <button onClick={() => setShowDivModal(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+              </div>
+              <div className="overflow-y-auto flex-1">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      {["지급기준일","실지급일","분배율(%)","분배금액(원)","과세표준액(원)"].map(h => (
+                        <th key={h} className="px-3 py-2 text-xs font-semibold text-gray-700 text-right first:text-left whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {divHistory.map(r => (
+                      <tr key={r.ref_date} className="hover:bg-gray-50">
+                        <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap">{r.ref_date}</td>
+                        <td className="px-3 py-1.5 text-right text-gray-700 whitespace-nowrap">{r.pay_date}</td>
+                        <td className="px-3 py-1.5 text-right font-medium text-blue-700">{r.dist_rate.toFixed(2)}%</td>
+                        <td className="px-3 py-1.5 text-right font-medium text-gray-900">{r.dist_amt.toLocaleString()}</td>
+                        <td className="px-3 py-1.5 text-right text-gray-600">{r.tax_base_amt.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {divHistory.length > 0 && (
+                  <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-500">
+                    평균 분배율: <span className="font-semibold text-gray-700">
+                      {(divHistory.reduce((s,r)=>s+r.dist_rate,0)/divHistory.length).toFixed(2)}%
+                    </span>
+                    &nbsp;·&nbsp; 연환산: <span className="font-semibold text-blue-700">
+                      {((divHistory.reduce((s,r)=>s+r.dist_rate,0)/divHistory.length)*12).toFixed(2)}%
+                    </span>
+                    &nbsp;·&nbsp; 총 {divHistory.length}건
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 입력 값 */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
