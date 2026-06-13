@@ -44,8 +44,18 @@ async function ensureStockTables(db: ReturnType<typeof getPensionPool>) {
       updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
     )
   `)
-  // 기존 테이블에 id 컬럼이 없는 경우 추가 (기존 행에도 순차 값 자동 부여)
+  // id 컬럼 및 PRIMARY KEY 보장
   await db.query(`ALTER TABLE my_stock ADD COLUMN IF NOT EXISTS id SERIAL`)
+  await db.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE table_name = 'my_stock' AND constraint_type = 'PRIMARY KEY'
+      ) THEN
+        ALTER TABLE my_stock ADD PRIMARY KEY (id);
+      END IF;
+    END $$
+  `)
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS t_stock_amt (
@@ -69,8 +79,64 @@ async function ensureStockTables(db: ReturnType<typeof getPensionPool>) {
   await db.query(`ALTER TABLE t_stock_amt ADD COLUMN IF NOT EXISTS e_trade  NUMERIC`)
 }
 
+export type Account = {
+  account_no: string
+  account_nm: string
+}
+
+export type AccountInfo = {
+  id: number
+  account_no: string
+  account_nm: string | null
+  trade_date: string   // YYYYMMDD
+  in_out: string       // I=입금, O=출금
+  amt: number
+  memo: string | null
+}
+
+export async function getAccounts(): Promise<Account[]> {
+  const session = await auth()
+  if (!session?.user) throw new Error("Unauthorized")
+
+  const db = getPensionPool()
+  const { rows } = await db.query(
+    `SELECT account_no, account_nm FROM my_account ORDER BY account_no`
+  )
+  return rows.map((r) => ({ account_no: r.account_no, account_nm: r.account_nm }))
+}
+
+export async function getAccountInfo(): Promise<AccountInfo[]> {
+  const session = await auth()
+  if (!session?.user) throw new Error("Unauthorized")
+
+  const db = getPensionPool()
+  const { rows } = await db.query(`
+    SELECT
+      ai.id,
+      ai.account_no,
+      ma.account_nm,
+      ai.trade_date,
+      ai.in_out,
+      ai.amt,
+      ai.memo
+    FROM my_account_info ai
+    LEFT JOIN my_account ma ON ma.account_no = ai.account_no
+    ORDER BY ai.trade_date DESC, ai.id DESC
+  `)
+  return rows.map((r) => ({
+    id:         r.id,
+    account_no: r.account_no,
+    account_nm: r.account_nm ?? null,
+    trade_date: r.trade_date,
+    in_out:     r.in_out,
+    amt:        Number(r.amt),
+    memo:       r.memo ?? null,
+  }))
+}
+
 export type StockTransaction = {
   id: number
+  account_no: string
   stock_code: string
   s_date: string    // YYYYMMDD
   cnt: number       // 1=매입, 2=매도
@@ -81,6 +147,8 @@ export type StockTransaction = {
 }
 
 export type StockHolding = {
+  account_no: string
+  account_nm: string | null
   stock_code: string
   stock_name: string | null
   stock_type: number
@@ -100,7 +168,7 @@ export type DailyPrice = {
   e_trade: number | null  // 거래량
 }
 
-export async function getHoldings(): Promise<StockHolding[]> {
+export async function getHoldings(accountNo?: string): Promise<StockHolding[]> {
   const session = await auth()
   if (!session?.user) throw new Error("Unauthorized")
 
@@ -109,6 +177,8 @@ export async function getHoldings(): Promise<StockHolding[]> {
 
   const { rows } = await db.query(`
     SELECT
+      ms.account_no,
+      ma.account_nm,
       ms.stock_code,
       MAX(ms.stock_type) AS stock_type,
       SUM(ms.qty) AS net_qty,
@@ -126,20 +196,25 @@ export async function getHoldings(): Promise<StockHolding[]> {
          FROM t_stock_amt fa WHERE fa.stock_code = ms.stock_code
          ORDER BY fa.e_date DESC LIMIT 1 OFFSET 1) AS prev_price
     FROM my_stock ms
-    GROUP BY ms.stock_code
+    LEFT JOIN my_account ma ON ma.account_no = ms.account_no
+    WHERE ($1::varchar IS NULL OR ms.account_no = $1)
+    GROUP BY ms.account_no, ma.account_nm, ms.stock_code
     HAVING SUM(ms.qty) > 0
-    ORDER BY ms.stock_code
-  `)
+    ORDER BY ms.account_no, ms.stock_code
+  `, [accountNo ?? null])
 
   return rows.map((r) => {
     const net_qty       = Number(r.net_qty)
-    const avg_buy_price = Number(r.avg_buy_price)
+    const raw_avg       = Number(r.avg_buy_price)
+    const avg_buy_price = Math.floor(raw_avg)
     return {
-      stock_code:       r.stock_code,
-      stock_type:       Number(r.stock_type),
+      account_no:   r.account_no,
+      account_nm:   r.account_nm ?? null,
+      stock_code:   r.stock_code,
+      stock_type:   Number(r.stock_type),
       net_qty,
       avg_buy_price,
-      total_buy_amount: Math.round(net_qty * avg_buy_price),
+      total_buy_amount: Math.round(net_qty * raw_avg),
       stock_name:   r.stock_name   ?? null,
       latest_price: r.latest_price != null ? Number(r.latest_price) : null,
       latest_date:  r.latest_date  ?? null,
@@ -148,27 +223,25 @@ export async function getHoldings(): Promise<StockHolding[]> {
   })
 }
 
-export async function getTransactions(stockCode?: string): Promise<StockTransaction[]> {
+export async function getTransactions(stockCode?: string, accountNo?: string): Promise<StockTransaction[]> {
   const session = await auth()
   if (!session?.user) throw new Error("Unauthorized")
 
   const db = getPensionPool()
   await ensureStockTables(db)
 
-  const { rows } = stockCode
-    ? await db.query(
-        `SELECT id, stock_code, s_date, cnt, stock_type, qty, s_amt, created_at
-         FROM my_stock WHERE stock_code = $1
-         ORDER BY s_date DESC, id DESC`,
-        [stockCode]
-      )
-    : await db.query(
-        `SELECT id, stock_code, s_date, cnt, stock_type, qty, s_amt, created_at
-         FROM my_stock ORDER BY s_date DESC, id DESC`
-      )
+  const { rows } = await db.query(
+    `SELECT id, account_no, stock_code, s_date, cnt, stock_type, qty, s_amt, created_at
+     FROM my_stock
+     WHERE ($1::varchar IS NULL OR stock_code = $1)
+       AND ($2::varchar IS NULL OR account_no  = $2)
+     ORDER BY s_date DESC, id DESC`,
+    [stockCode ?? null, accountNo ?? null]
+  )
 
   return rows.map((r) => ({
     id:         r.id,
+    account_no:  r.account_no  ?? "",
     stock_code: r.stock_code,
     s_date:     r.s_date,
     cnt:        Number(r.cnt),
@@ -180,6 +253,7 @@ export async function getTransactions(stockCode?: string): Promise<StockTransact
 }
 
 export async function addTransaction(data: {
+  account_no: string
   stock_code: string
   s_date: string
   cnt: number
@@ -194,9 +268,40 @@ export async function addTransaction(data: {
   await ensureStockTables(db)
 
   await db.query(
-    `INSERT INTO my_stock (stock_code, s_date, cnt, stock_type, qty, s_amt)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [data.stock_code.trim().toUpperCase(), data.s_date, data.cnt, data.stock_type, data.qty, data.s_amt]
+    `INSERT INTO my_stock (account_no, stock_code, s_date, cnt, stock_type, qty, s_amt)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [data.account_no, data.stock_code.trim().toUpperCase(), data.s_date, data.cnt, data.stock_type, data.qty, data.s_amt]
+  )
+
+  // 매입 → 출금, 매도 → 입금 자동 생성
+  const inOut  = data.qty > 0 ? "O" : "I"
+  const amt    = Math.abs(data.qty) * data.s_amt
+  const memo   = data.qty > 0
+    ? `매입: ${data.stock_code.trim().toUpperCase()}`
+    : `매도: ${data.stock_code.trim().toUpperCase()}`
+
+  await db.query(
+    `INSERT INTO my_account_info (account_no, trade_date, in_out, amt, memo)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [data.account_no, data.s_date, inOut, amt, memo]
+  )
+}
+
+export async function addAccountInfo(data: {
+  account_no: string
+  trade_date: string
+  in_out: string
+  amt: number
+  memo: string
+}): Promise<void> {
+  const session = await auth()
+  if (!session?.user) throw new Error("Unauthorized")
+
+  const db = getPensionPool()
+  await db.query(
+    `INSERT INTO my_account_info (account_no, trade_date, in_out, amt, memo)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [data.account_no, data.trade_date, data.in_out, data.amt, data.memo]
   )
 }
 
@@ -208,7 +313,7 @@ export async function deleteTransaction(id: number): Promise<void> {
   await db.query(`DELETE FROM my_stock WHERE id = $1`, [id])
 }
 
-export type StockListItem = { code: string; name: string; market: string }
+export type StockListItem = { code: string; name: string; market: string; stock_type: number }
 
 // t_stock_list 검색 — 빈 쿼리 시 default_yn='Y' 인기 종목 반환
 export async function searchStockList(q: string): Promise<StockListItem[]> {
@@ -217,23 +322,28 @@ export async function searchStockList(q: string): Promise<StockListItem[]> {
 
   const db = getPensionPool()
 
+  const toStockType = (secType: string | null) =>
+    secType && secType.toUpperCase().includes("ETF") ? 2 : 1
+
   if (!q.trim()) {
     const { rows } = await db.query(
       `SELECT stock_code AS code,
               COALESCE(stock_short_name, stock_name) AS name,
-              COALESCE(market_type, '') AS market
+              COALESCE(market_type, '') AS market,
+              security_type
        FROM t_stock_list
        WHERE default_yn = 'Y'
        ORDER BY listed_shares DESC NULLS LAST
        LIMIT 20`
     )
-    return rows.map((r) => ({ code: r.code, name: r.name, market: r.market }))
+    return rows.map((r) => ({ code: r.code, name: r.name, market: r.market, stock_type: toStockType(r.security_type) }))
   }
 
   const { rows } = await db.query(
     `SELECT stock_code AS code,
             COALESCE(stock_short_name, stock_name) AS name,
-            COALESCE(market_type, '') AS market
+            COALESCE(market_type, '') AS market,
+            security_type
      FROM t_stock_list
      WHERE stock_code ILIKE $1
         OR stock_short_name ILIKE $1
@@ -246,7 +356,7 @@ export async function searchStockList(q: string): Promise<StockListItem[]> {
      LIMIT 20`,
     [`%${q}%`, q.toUpperCase(), `${q.toUpperCase()}%`]
   )
-  return rows.map((r) => ({ code: r.code, name: r.name, market: r.market }))
+  return rows.map((r) => ({ code: r.code, name: r.name, market: r.market, stock_type: toStockType(r.security_type) }))
 }
 
 export async function getDailyPrices(stockCode: string): Promise<DailyPrice[]> {

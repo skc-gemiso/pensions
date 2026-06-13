@@ -41,9 +41,26 @@ function buildNavTree(menus: MenuRow[]): NavItem[] {
   })
 }
 
+// 고정 정보 — 변경 시 이 블록만 수정
+const OWNER_NAME  = "신기철"
+const OWNER_BIRTH = new Date("1974-06-04")
+
 function fmtTime(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0")
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function fmtLiveClock(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+function calcAge(birth: Date, now: Date): { years: number; months: number } {
+  let years  = now.getFullYear() - birth.getFullYear()
+  let months = now.getMonth()    - birth.getMonth()
+  if (now.getDate() < birth.getDate()) months--
+  if (months < 0) { years--; months += 12 }
+  return { years, months }
 }
 
 function fmtCountdown(s: number): string {
@@ -88,6 +105,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const [mountTime, setMountTime] = useState("")
   useEffect(() => { setMountTime(fmtTime(new Date())) }, [])
+
+  const [liveClock, setLiveClock] = useState("")
+  useEffect(() => {
+    const tick = () => setLiveClock(fmtLiveClock(new Date()))
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const ownerAge = (status === "authenticated" && user?.name === OWNER_NAME)
+    ? calcAge(OWNER_BIRTH, new Date())
+    : null
   const [visitorIp, setVisitorIp] = useState<string>("")
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -287,13 +316,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   {initials}
                 </div>
                 <div className="leading-tight">
-                  <p className="text-white text-sm font-medium">{user?.name ?? ""}</p>
+                  <p className="text-white text-sm font-medium flex items-center gap-1.5">
+                    <span>{user?.name ?? ""}</span>
+                    {ownerAge && (
+                      <span className="text-yellow-200 text-xs font-normal">
+                        {ownerAge.years}년 {ownerAge.months}개월
+                      </span>
+                    )}
+                  </p>
                   {mountTime && (
-                    <p className="text-blue-200 text-xs flex items-center gap-1">
+                    <p className="text-blue-200 text-xs flex items-center gap-1.5">
                       <svg viewBox="0 0 16 16" className="w-3 h-3 flex-shrink-0" fill="currentColor">
                         <path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-3.5a.75.75 0 0 1 .75.75v3.19l1.9 1.9a.75.75 0 0 1-1.06 1.06l-2.13-2.13A.75.75 0 0 1 7.25 9V5.25A.75.75 0 0 1 8 4.5Z"/>
                       </svg>
                       {mountTime} 접속
+                      {liveClock && (
+                        <span className="font-mono tabular-nums text-white/70">| {liveClock}</span>
+                      )}
                     </p>
                   )}
                   {sessionSeconds !== null && sessionSeconds <= SESSION_WARN_SEC && sessionSeconds > 0 && (
@@ -430,9 +469,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <div className="mx-3 mb-3 pt-2 border-t border-white/20">
                 <div className="flex items-center justify-between px-3 py-2">
                   <div>
-                    <p className="text-white text-sm font-medium">{user?.name ?? ""}</p>
+                    <p className="text-white text-sm font-medium flex items-center gap-1.5">
+                      <span>{user?.name ?? ""}</span>
+                      {ownerAge && (
+                        <span className="text-yellow-200 text-xs font-normal">
+                          {ownerAge.years}년 {ownerAge.months}개월
+                        </span>
+                      )}
+                    </p>
                     {mountTime && (
-                      <p className="text-blue-200 text-xs">{mountTime} 접속</p>
+                      <p className="text-blue-200 text-xs flex items-center gap-1.5">
+                        {mountTime} 접속
+                        {liveClock && (
+                          <span className="font-mono tabular-nums text-white/70">| {liveClock}</span>
+                        )}
+                      </p>
                     )}
                   </div>
                   <form action={logout}>

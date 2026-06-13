@@ -10,15 +10,17 @@ import { fmt, cc } from "@/lib/fmt"
 
 const won = (n: number | null | undefined) => n == null ? "-" : `${fmt(n)}원`
 import {
-  getHoldings, getTransactions, addTransaction, deleteTransaction,
+  getAccounts, getHoldings, getTransactions, addTransaction, deleteTransaction,
   getDailyPrices, fetchAndSaveNaverPrices, searchStockList, getMarketIndices, getDefaultStockList,
-  type StockHolding, type StockTransaction, type DailyPrice, type StockListItem, type MarketIndex,
+  getAccountInfo, addAccountInfo,
+  type Account, type StockHolding, type StockTransaction, type DailyPrice, type StockListItem, type MarketIndex, type AccountInfo,
 } from "./actions"
 import { getEtfDividendHistory, type EtfDividendRow } from "@/app/sim/actions"
 
 type StockSearchItem = StockListItem
 
 type FormState = {
+  account_no: string
   cnt: "1" | "2"
   stock_type: "1" | "2"
   stock_code: string
@@ -32,6 +34,7 @@ const today    = new Date()
 const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
 
 const EMPTY_FORM: FormState = {
+  account_no: "",
   cnt: "1",
   stock_type: "1",
   stock_code: "",
@@ -55,9 +58,10 @@ function fmtDate(s: string) {
 }
 
 export default function StockPage() {
-  const [holdings, setHoldings]           = useState<StockHolding[]>([])
-  const [selectedCode, setSelectedCode]   = useState<string | null>(null)
-  const [marketIndices, setMarketIndices] = useState<{ kospi: MarketIndex | null; kosdaq: MarketIndex | null }>({ kospi: null, kosdaq: null })
+  const [accounts, setAccounts]               = useState<Account[]>([])
+  const [holdings, setHoldings]               = useState<StockHolding[]>([])
+  const [selectedCode, setSelectedCode]       = useState<string | null>(null)
+  const [marketIndices, setMarketIndices]     = useState<{ kospi: MarketIndex | null; kosdaq: MarketIndex | null }>({ kospi: null, kosdaq: null })
   const [dailyPrices, setDailyPrices]     = useState<DailyPrice[]>([])
   const [chartLoading, setChartLoading]   = useState(false)
   const [chartDays, setChartDays]         = useState(365)
@@ -66,12 +70,18 @@ export default function StockPage() {
   const [divHistory, setDivHistory]       = useState<EtfDividendRow[]>([])
   const [transactions, setTransactions]   = useState<StockTransaction[]>([])
   const [txLoading, setTxLoading]         = useState(false)
-  const [tooltip, setTooltip]             = useState<{ code: string; x: number; y: number } | null>(null)
+  const [tooltip, setTooltip]             = useState<{ code: string; account_no: string; x: number; y: number } | null>(null)
   const [showModal, setShowModal]         = useState(false)
   const [form, setForm]                   = useState<FormState>(EMPTY_FORM)
   const [submitting, setSubmitting]       = useState(false)
   const [formError, setFormError]         = useState("")
-  const [activeTab, setActiveTab]         = useState<"portfolio" | "history">("portfolio")
+  const [activeTab, setActiveTab]         = useState<"portfolio" | "history" | "account">("portfolio")
+  const [accountInfo, setAccountInfo]     = useState<AccountInfo[]>([])
+  const [acInfoLoading, setAcInfoLoading] = useState(false)
+  const [showAcModal, setShowAcModal]     = useState(false)
+  const [acForm, setAcForm]               = useState({ account_no: "", trade_date: todayISO, in_out: "I" as "I" | "O", amt: "", memo: "" })
+  const [acFormError, setAcFormError]     = useState("")
+  const [acSubmitting, setAcSubmitting]   = useState(false)
   // 종목 검색
   const [stockSearch, setStockSearch]     = useState("")
   const [stockResults, setStockResults]   = useState<StockSearchItem[]>([])
@@ -104,19 +114,20 @@ export default function StockPage() {
     setMarketIndices(data)
   }, [])
 
+  // 초기 로드
   useEffect(() => {
     loadMarketIndices()
+    getAccounts().then(setAccounts)
     loadHoldings().then((h) => {
       if (h.length > 0) {
         const firstCode = h[0].stock_code
         setSelectedCode(firstCode)
-        // 페이지 진입 시 자동 최신화 (silent — alert 없음)
         handleFetchNaver(firstCode, true)
       }
     })
     loadTransactions()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadHoldings, loadTransactions, loadMarketIndices])
+  }, [])
 
   useEffect(() => {
     if (selectedCode) loadDailyPrices(selectedCode)
@@ -158,7 +169,7 @@ export default function StockPage() {
   }
 
   function selectStock(item: StockSearchItem) {
-    setForm((f) => ({ ...f, stock_code: item.code, stock_name: item.name }))
+    setForm((f) => ({ ...f, stock_code: item.code, stock_name: item.name, stock_type: String(item.stock_type) as "1" | "2" }))
     setStockSearch("")
     setStockResults([])
     setShowStockDrop(false)
@@ -184,6 +195,7 @@ export default function StockPage() {
     setSubmitting(true)
     try {
       await addTransaction({
+        account_no: form.account_no || accounts[0]?.account_no || "",
         stock_code: form.stock_code.trim().toUpperCase(),
         s_date: form.s_date.replace(/-/g, ""),   // YYYY-MM-DD → YYYYMMDD
         cnt,
@@ -195,6 +207,7 @@ export default function StockPage() {
       setForm(EMPTY_FORM)
       await loadHoldings()
       loadTransactions()
+      setAccountInfo([])  // 계좌 내역 캐시 초기화 (다음 탭 진입 시 재조회)
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "저장 실패")
     } finally {
@@ -219,33 +232,44 @@ export default function StockPage() {
     ? chartData.reduce((s, r) => s + r.amt, 0) / chartData.length
     : null
 
-  // t_stock_amt 최신 저장가 기반 포트폴리오 계산 (평가금액 큰 순 정렬)
-  const portfolioRows = holdings
-    .map((h) => {
-      const curPrice        = h.latest_price
-      const evalAmt         = curPrice != null ? Math.round(curPrice * h.net_qty) : null
-      const pnl             = evalAmt != null ? evalAmt - h.total_buy_amount : null
-      const pnlRate         = (pnl != null && h.total_buy_amount > 0)
-        ? (pnl / h.total_buy_amount) * 100 : null
-      const priceChange     = (curPrice != null && h.prev_price != null)
-        ? curPrice - h.prev_price : null
-      const priceChangeRate = (priceChange != null && h.prev_price != null && h.prev_price > 0)
-        ? (priceChange / h.prev_price) * 100 : null
-      return { ...h, curPrice, evalAmt, pnl, pnlRate, priceChange, priceChangeRate }
-    })
-    .sort((a, b) => (b.evalAmt ?? -1) - (a.evalAmt ?? -1))
+  // t_stock_amt 최신 저장가 기반 포트폴리오 계산
+  const portfolioRows = holdings.map((h) => {
+    const curPrice        = h.latest_price
+    const evalAmt         = curPrice != null ? Math.round(curPrice * h.net_qty) : null
+    const pnl             = evalAmt != null ? evalAmt - h.total_buy_amount : null
+    const pnlRate         = (pnl != null && h.total_buy_amount > 0)
+      ? (pnl / h.total_buy_amount) * 100 : null
+    const priceChange     = (curPrice != null && h.prev_price != null)
+      ? curPrice - h.prev_price : null
+    const priceChangeRate = (priceChange != null && h.prev_price != null && h.prev_price > 0)
+      ? (priceChange / h.prev_price) * 100 : null
+    return { ...h, curPrice, evalAmt, pnl, pnlRate, priceChange, priceChangeRate }
+  })
 
-  // 종목별 매입 내역 맵 (호버 툴팁용)
+  // 계좌별 그룹핑 (계좌 순서 유지, 그룹 내 평가금액 큰 순)
+  const portfolioByAccount = useMemo(() => {
+    const map = new Map<string, { account_nm: string | null; rows: typeof portfolioRows }>()
+    for (const r of portfolioRows) {
+      if (!map.has(r.account_no)) map.set(r.account_no, { account_nm: r.account_nm, rows: [] })
+      map.get(r.account_no)!.rows.push(r)
+    }
+    for (const g of map.values()) {
+      g.rows.sort((a, b) => (b.evalAmt ?? -1) - (a.evalAmt ?? -1))
+    }
+    return map
+  }, [portfolioRows])
+
+  // 계좌+종목별 매입 내역 맵 (호버 툴팁용, 키: "account_no::stock_code")
   const txMap = useMemo(() => {
     const map: Record<string, StockTransaction[]> = {}
     for (const tx of transactions) {
       if (tx.qty <= 0) continue   // 매입(양수)만
-      if (!map[tx.stock_code]) map[tx.stock_code] = []
-      map[tx.stock_code].push(tx)
+      const key = `${tx.account_no}::${tx.stock_code}`
+      if (!map[key]) map[key] = []
+      map[key].push(tx)
     }
-    // 각 종목별로 날짜 역순 정렬
-    for (const code of Object.keys(map)) {
-      map[code].sort((a, b) => b.s_date.localeCompare(a.s_date))
+    for (const key of Object.keys(map)) {
+      map[key].sort((a, b) => b.s_date.localeCompare(a.s_date))
     }
     return map
   }, [transactions])
@@ -265,27 +289,47 @@ export default function StockPage() {
             <h1 className="text-xl font-bold text-gray-900">주식 투자</h1>
             <p className="text-xs text-gray-500 mt-0.5">실시간 평가 현황 및 거래 내역 관리</p>
           </div>
-          <button
-            onClick={() => { setForm(EMPTY_FORM); setFormError(""); setStockSearch(""); setStockResults([]); setShowModal(true) }}
-            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            + 매입/매도 내역 추가
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setForm({ ...EMPTY_FORM, account_no: accounts[0]?.account_no ?? "" }); setFormError(""); setStockSearch(""); setStockResults([]); setShowModal(true) }}
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              + 매입/매도 내역 추가
+            </button>
+            <button
+              onClick={() => { setAcForm({ account_no: accounts[0]?.account_no ?? "", trade_date: todayISO, in_out: "I", amt: "", memo: "" }); setAcFormError(""); setShowAcModal(true) }}
+              className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+            >
+              + 입출금 내역 추가
+            </button>
+          </div>
         </div>
 
         {/* 탭 */}
         <div className="flex gap-1 border-b border-gray-200">
-          {(["portfolio", "history"] as const).map((tab) => (
+          {([
+            { key: "portfolio", label: "포트폴리오" },
+            { key: "history",   label: "거래 내역" },
+            { key: "account",   label: "계좌 내역" },
+          ] as const).map(({ key, label }) => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
+              key={key}
+              onClick={async () => {
+                setActiveTab(key)
+                if (key === "account" && accountInfo.length === 0) {
+                  setAcInfoLoading(true)
+                  const data = await getAccountInfo()
+                  setAccountInfo(data)
+                  setAcInfoLoading(false)
+                }
+              }}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab
+                activeTab === key
                   ? "border-blue-600 text-blue-600"
                   : "border-transparent text-gray-500 hover:text-gray-700"
               }`}
             >
-              {tab === "portfolio" ? "포트폴리오" : "거래 내역"}
+              {label}
             </button>
           ))}
         </div>
@@ -294,7 +338,7 @@ export default function StockPage() {
         {activeTab === "portfolio" && (
           <>
             {/* 요약 카드 */}
-            {portfolioRows.length > 0 && (
+            {portfolioByAccount.size > 0 && (
               <div className="grid grid-cols-3 gap-3">
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
                   <p className="text-xs font-medium text-gray-600">총 매입금액</p>
@@ -383,7 +427,7 @@ export default function StockPage() {
                   )}
                 </div>
               </div>
-              {portfolioRows.length === 0 ? (
+              {portfolioByAccount.size === 0 ? (
                 <p className="text-center text-gray-400 py-10 text-sm">보유 종목이 없습니다.</p>
               ) : (
                 <div className="overflow-x-auto">
@@ -402,57 +446,85 @@ export default function StockPage() {
                         ))}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {portfolioRows.map((r) => (
-                        <tr
-                          key={r.stock_code}
-                          onClick={() => setSelectedCode(selectedCode === r.stock_code ? null : r.stock_code)}
-                          onMouseEnter={(e) => {
-                            const rect = e.currentTarget.getBoundingClientRect()
-                            setTooltip({
-                              code: r.stock_code,
-                              x: Math.min(rect.left, window.innerWidth - 420),
-                              y: rect.bottom + 4,
-                            })
-                          }}
-                          onMouseLeave={() => setTooltip(null)}
-                          className={`cursor-pointer transition-colors ${
-                            selectedCode === r.stock_code ? "bg-blue-50" : "hover:bg-gray-50"
-                          }`}
-                        >
-                          <td className="px-3 py-2 font-mono text-xs text-gray-700">{r.stock_code}</td>
-                          <td className="px-3 py-2 text-gray-900 font-medium whitespace-nowrap">
-                            {r.stock_name ?? r.stock_code}
-                          </td>
-                          <td className="px-3 py-2 text-gray-500 text-xs whitespace-nowrap">
-                            {r.stock_type === 2 ? "ETF" : "주식"}
-                          </td>
-                          <td className="px-3 py-2 text-right text-gray-900">{fmt(r.net_qty)}주</td>
-                          <td className="px-3 py-2 text-right text-gray-700">{fmt(r.avg_buy_price)}원</td>
-                          <td className="px-3 py-2 text-right font-medium text-gray-900">
-                            {r.curPrice != null ? `${fmt(r.curPrice)}원` : "-"}
-                            {r.priceChange != null && (
-                              <div className={`text-xs ${cc(r.priceChange)}`}>
-                                {r.priceChange > 0 ? "+" : ""}{fmt(r.priceChange)}원
-                                {r.priceChangeRate != null && (
-                                  <span className="ml-1">({r.priceChangeRate > 0 ? "+" : ""}{fmt(r.priceChangeRate, 2)}%)</span>
-                                )}
+                    {[...portfolioByAccount.entries()].map(([accNo, { account_nm, rows }]) => {
+                      const accBuy  = rows.reduce((s, r) => s + r.total_buy_amount, 0)
+                      const accEval = rows.reduce((s, r) => s + (r.evalAmt ?? 0), 0)
+                      const accPnl  = accEval - accBuy
+                      const accRate = accBuy > 0 ? (accPnl / accBuy) * 100 : null
+                      return (
+                        <tbody key={accNo}>
+                          {/* 계좌 헤더 행 */}
+                          <tr className="bg-gray-100 border-t-2 border-gray-300">
+                            <td colSpan={10} className="px-3 py-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-gray-700">
+                                  {accNo}
+                                  {account_nm && <span className="font-normal text-gray-500 ml-1">({account_nm})</span>}
+                                </span>
+                                <span className="text-xs text-gray-500 flex items-center gap-3">
+                                  <span>매입 {won(accBuy)}</span>
+                                  <span>평가 <span className={cc(accPnl)}>{won(accEval)}</span></span>
+                                  <span className={`font-semibold ${cc(accPnl)}`}>
+                                    {accPnl > 0 ? "+" : ""}{won(accPnl)}
+                                    {accRate != null && <span className="ml-1">({accRate > 0 ? "+" : ""}{fmt(accRate, 2)}%)</span>}
+                                  </span>
+                                </span>
                               </div>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-right text-gray-700">{won(r.total_buy_amount)}</td>
-                          <td className={`px-3 py-2 text-right font-medium ${cc(r.pnl)}`}>
-                            {r.evalAmt != null ? won(r.evalAmt) : "-"}
-                          </td>
-                          <td className={`px-3 py-2 text-right font-medium ${cc(r.pnl)}`}>
-                            {r.pnl != null ? `${r.pnl > 0 ? "+" : ""}${won(r.pnl)}` : "-"}
-                          </td>
-                          <td className={`px-3 py-2 text-right font-medium whitespace-nowrap ${cc(r.pnlRate)}`}>
-                            {r.pnlRate != null ? `${r.pnlRate > 0 ? "+" : ""}${fmt(r.pnlRate, 2)}%` : "-"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
+                            </td>
+                          </tr>
+                          {rows.map((r) => (
+                            <tr
+                              key={`${accNo}-${r.stock_code}`}
+                              onClick={() => setSelectedCode(selectedCode === r.stock_code ? null : r.stock_code)}
+                              onMouseEnter={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect()
+                                setTooltip({
+                                  code: r.stock_code,
+                                  account_no: r.account_no,
+                                  x: Math.min(rect.left, window.innerWidth - 580),
+                                  y: rect.bottom + 4,
+                                })
+                              }}
+                              onMouseLeave={() => setTooltip(null)}
+                              className={`cursor-pointer transition-colors border-t border-gray-100 ${
+                                selectedCode === r.stock_code ? "bg-blue-50" : "hover:bg-gray-50"
+                              }`}
+                            >
+                              <td className="px-3 py-2 font-mono text-xs text-gray-700">{r.stock_code}</td>
+                              <td className="px-3 py-2 text-gray-900 font-medium whitespace-nowrap">
+                                {r.stock_name ?? r.stock_code}
+                              </td>
+                              <td className="px-3 py-2 text-gray-500 text-xs whitespace-nowrap">
+                                {r.stock_type === 2 ? "ETF" : "주식"}
+                              </td>
+                              <td className="px-3 py-2 text-right text-gray-900">{fmt(r.net_qty)}주</td>
+                              <td className="px-3 py-2 text-right text-gray-700">{fmt(r.avg_buy_price)}원</td>
+                              <td className="px-3 py-2 text-right font-medium text-gray-900">
+                                {r.curPrice != null ? `${fmt(r.curPrice)}원` : "-"}
+                                {r.priceChange != null && (
+                                  <div className={`text-xs ${cc(r.priceChange)}`}>
+                                    {r.priceChange > 0 ? "+" : ""}{fmt(r.priceChange)}원
+                                    {r.priceChangeRate != null && (
+                                      <span className="ml-1">({r.priceChangeRate > 0 ? "+" : ""}{fmt(r.priceChangeRate, 2)}%)</span>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-right text-gray-700">{won(r.total_buy_amount)}</td>
+                              <td className={`px-3 py-2 text-right font-medium ${cc(r.pnl)}`}>
+                                {r.evalAmt != null ? won(r.evalAmt) : "-"}
+                              </td>
+                              <td className={`px-3 py-2 text-right font-medium ${cc(r.pnl)}`}>
+                                {r.pnl != null ? `${r.pnl > 0 ? "+" : ""}${won(r.pnl)}` : "-"}
+                              </td>
+                              <td className={`px-3 py-2 text-right font-medium whitespace-nowrap ${cc(r.pnlRate)}`}>
+                                {r.pnlRate != null ? `${r.pnlRate > 0 ? "+" : ""}${fmt(r.pnlRate, 2)}%` : "-"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      )
+                    })}
                   </table>
                 </div>
               )}
@@ -633,19 +705,107 @@ export default function StockPage() {
           </div>
         )}
 
+        {/* ── 계좌 내역 탭 ── */}
+        {activeTab === "account" && (() => {
+          // 계좌별 그룹핑
+          const acByAccount = new Map<string, { account_nm: string | null; rows: AccountInfo[] }>()
+          for (const r of accountInfo) {
+            if (!acByAccount.has(r.account_no)) acByAccount.set(r.account_no, { account_nm: r.account_nm, rows: [] })
+            acByAccount.get(r.account_no)!.rows.push(r)
+          }
+          return (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-gray-800">계좌 입출금 내역</h2>
+                {accountInfo.length > 0 && (
+                  <div className="flex items-center gap-4 text-xs text-gray-500">
+                    <span>입금 합계 <span className="font-semibold text-red-600">{won(accountInfo.filter(r => r.in_out === "I").reduce((s, r) => s + r.amt, 0))}</span></span>
+                    <span>출금 합계 <span className="font-semibold text-blue-600">{won(accountInfo.filter(r => r.in_out === "O").reduce((s, r) => s + r.amt, 0))}</span></span>
+                  </div>
+                )}
+              </div>
+              {acInfoLoading ? (
+                <p className="text-center text-gray-400 py-8 text-sm">로딩 중...</p>
+              ) : accountInfo.length === 0 ? (
+                <p className="text-center text-gray-400 py-8 text-sm">내역이 없습니다.</p>
+              ) : (
+                <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 sticky top-0 z-10">
+                      <tr>
+                        {["거래일", "구분", "금액", "비고"].map((h, i) => (
+                          <th key={i} className={`px-3 py-2.5 text-xs font-semibold text-gray-700 whitespace-nowrap ${i === 0 || i === 3 ? "text-left" : i === 2 ? "text-right" : "text-center"}`}>
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    {[...acByAccount.entries()].map(([accNo, { account_nm, rows }]) => {
+                      const inSum  = rows.filter(r => r.in_out === "I").reduce((s, r) => s + r.amt, 0)
+                      const outSum = rows.filter(r => r.in_out === "O").reduce((s, r) => s + r.amt, 0)
+                      return (
+                        <tbody key={accNo}>
+                          <tr className="bg-gray-100 border-t-2 border-gray-300">
+                            <td colSpan={4} className="px-3 py-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-gray-700">
+                                  {accNo}
+                                  {account_nm && <span className="font-normal text-gray-500 ml-1">({account_nm})</span>}
+                                </span>
+                                <span className="text-xs text-gray-500 flex items-center gap-3">
+                                  <span>입금 <span className="font-semibold text-red-600">{won(inSum)}</span></span>
+                                  <span>출금 <span className="font-semibold text-blue-600">{won(outSum)}</span></span>
+                                  <span className={`font-semibold ${(inSum - outSum) >= 0 ? "text-red-600" : "text-blue-600"}`}>
+                                    잔액 {won(inSum - outSum)}
+                                  </span>
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                          {rows.map((r) => (
+                            <tr key={r.id} className="hover:bg-gray-50 border-t border-gray-100">
+                              <td className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                                {`${r.trade_date.slice(0,4)}-${r.trade_date.slice(4,6)}-${r.trade_date.slice(6,8)}`}
+                              </td>
+                              <td className={`px-3 py-2 text-center font-medium ${r.in_out === "I" ? "text-red-600" : "text-blue-600"}`}>
+                                {r.in_out === "I" ? "입금" : "출금"}
+                              </td>
+                              <td className={`px-3 py-2 text-right font-medium ${r.in_out === "I" ? "text-red-600" : "text-blue-600"}`}>
+                                {r.in_out === "O" ? "-" : ""}{won(r.amt)}
+                              </td>
+                              <td className="px-3 py-2 text-left text-gray-500 text-xs">{r.memo ?? ""}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      )
+                    })}
+                  </table>
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
         {/* ── 보유 종목 호버 툴팁 ── */}
         {tooltip && (() => {
-          const holding  = holdings.find(h => h.stock_code === tooltip.code)
+          const holding  = holdings.find(h => h.stock_code === tooltip.code && h.account_no === tooltip.account_no)
+          const accGroup = portfolioByAccount.get(tooltip.account_no)
           const curPrice = holding?.latest_price ?? null
-          const buyTxs   = txMap[tooltip.code] ?? []
+          const buyTxs   = txMap[`${tooltip.account_no}::${tooltip.code}`] ?? []
           return (
             <div
-              className="fixed z-40 bg-white border border-gray-200 rounded-xl shadow-2xl p-4 w-[400px] pointer-events-none"
+              className="fixed z-40 bg-white border border-gray-200 rounded-xl shadow-2xl p-4 w-[560px] pointer-events-none"
               style={{ top: tooltip.y, left: tooltip.x }}
             >
-              <p className="text-xs font-semibold text-gray-700 mb-2">
-                {holding?.stock_name ?? tooltip.code} 매입 내역
-              </p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-700">
+                  {holding?.stock_name ?? tooltip.code} 매입 내역
+                </p>
+                <p className="text-xs text-gray-400">
+                  {tooltip.account_no}
+                  {accGroup?.account_nm && <span className="ml-1">({accGroup.account_nm})</span>}
+                </p>
+              </div>
               {buyTxs.length === 0 ? (
                 <p className="text-xs text-gray-400">매입 내역 없음</p>
               ) : (
@@ -655,20 +815,28 @@ export default function StockPage() {
                       <th className="text-left pb-1">매입일</th>
                       <th className="text-right pb-1">수량</th>
                       <th className="text-right pb-1">매입가</th>
+                      <th className="text-right pb-1">매입금액</th>
                       <th className="text-right pb-1">현재가</th>
+                      <th className="text-right pb-1">수익금액</th>
                       <th className="text-right pb-1">수익률</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {buyTxs.map(tx => {
-                      const rate = (curPrice != null && tx.s_amt > 0)
+                      const buyAmt  = tx.qty * tx.s_amt
+                      const pnlAmt  = curPrice != null ? Math.round((curPrice - tx.s_amt) * tx.qty) : null
+                      const rate    = (curPrice != null && tx.s_amt > 0)
                         ? (curPrice - tx.s_amt) / tx.s_amt * 100 : null
                       return (
                         <tr key={tx.id} className="leading-6">
                           <td className="text-gray-700 pr-2">{`${tx.s_date.slice(0,4)}-${tx.s_date.slice(4,6)}-${tx.s_date.slice(6,8)}`}</td>
                           <td className="text-right text-gray-700">{fmt(tx.qty)}주</td>
                           <td className="text-right text-gray-700">{fmt(tx.s_amt)}원</td>
+                          <td className="text-right text-gray-700">{fmt(buyAmt)}원</td>
                           <td className="text-right text-gray-700">{curPrice != null ? `${fmt(curPrice)}원` : "-"}</td>
+                          <td className={`text-right font-semibold ${cc(pnlAmt)}`}>
+                            {pnlAmt != null ? `${pnlAmt > 0 ? "+" : ""}${fmt(pnlAmt)}원` : "-"}
+                          </td>
                           <td className={`text-right font-semibold ${cc(rate)}`}>
                             {rate != null ? `${rate > 0 ? "+" : ""}${fmt(rate, 2)}%` : "-"}
                           </td>
@@ -818,31 +986,28 @@ export default function StockPage() {
               </div>
               <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
 
+                {/* 계좌 선택 */}
+                {accounts.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5">계좌</label>
+                    <select
+                      value={form.account_no}
+                      onChange={(e) => setForm((f) => ({ ...f, account_no: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {accounts.map((acc) => (
+                        <option key={acc.account_no} value={acc.account_no}>
+                          {acc.account_no} ({acc.account_nm})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 {/* 구분 안내 */}
                 <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500">
                   수량 <span className="font-semibold text-red-600">양수(+)</span> = 매입 &nbsp;·&nbsp;
                   수량 <span className="font-semibold text-blue-600">음수(-)</span> = 매도
-                </div>
-
-                {/* 종목 구분 */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1.5">종목 유형</label>
-                  <div className="flex gap-2">
-                    {(["1", "2"] as const).map((v) => (
-                      <button
-                        key={v}
-                        type="button"
-                        onClick={() => setForm((f) => ({ ...f, stock_type: v }))}
-                        className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-colors ${
-                          form.stock_type === v
-                            ? "bg-blue-600 text-white border-blue-600"
-                            : "border-gray-300 text-gray-700 hover:bg-gray-50"
-                        }`}
-                      >
-                        {v === "1" ? "주식" : "ETF"}
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
                 {/* 일자 */}
@@ -916,7 +1081,7 @@ export default function StockPage() {
                     <input
                       type="number"
                       min={1}
-                      placeholder="65900"
+                      placeholder="0"
                       value={form.s_amt}
                       onChange={(e) => setForm((f) => ({ ...f, s_amt: e.target.value }))}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -957,6 +1122,129 @@ export default function StockPage() {
                     className="flex-1 py-2.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
                   >
                     {submitting ? "저장 중..." : "저장"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ── 입출금 내역 추가 모달 ── */}
+        {showAcModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                <h2 className="text-base font-semibold text-gray-900">입출금 내역 추가</h2>
+                <button onClick={() => setShowAcModal(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+              </div>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault()
+                  setAcFormError("")
+                  const amt = Number(acForm.amt)
+                  if (!acForm.account_no)    { setAcFormError("계좌를 선택하세요."); return }
+                  if (!acForm.trade_date)    { setAcFormError("거래일을 선택하세요."); return }
+                  if (!amt || amt <= 0)      { setAcFormError("금액을 올바르게 입력하세요."); return }
+                  setAcSubmitting(true)
+                  try {
+                    await addAccountInfo({
+                      account_no: acForm.account_no,
+                      trade_date: acForm.trade_date.replace(/-/g, ""),
+                      in_out:     acForm.in_out,
+                      amt,
+                      memo:       acForm.memo,
+                    })
+                    setShowAcModal(false)
+                    setAccountInfo([])  // 재조회 트리거
+                    if (activeTab === "account") {
+                      setAcInfoLoading(true)
+                      const data = await getAccountInfo()
+                      setAccountInfo(data)
+                      setAcInfoLoading(false)
+                    }
+                  } catch (err) {
+                    setAcFormError(err instanceof Error ? err.message : "저장 실패")
+                  } finally {
+                    setAcSubmitting(false)
+                  }
+                }}
+                className="px-6 py-5 space-y-4"
+              >
+                {/* 계좌 */}
+                {accounts.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5">계좌</label>
+                    <select
+                      value={acForm.account_no}
+                      onChange={(e) => setAcForm((f) => ({ ...f, account_no: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    >
+                      {accounts.map((acc) => (
+                        <option key={acc.account_no} value={acc.account_no}>
+                          {acc.account_no} ({acc.account_nm})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {/* 거래일 */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">거래일</label>
+                  <input
+                    type="date"
+                    value={acForm.trade_date}
+                    onChange={(e) => setAcForm((f) => ({ ...f, trade_date: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+                {/* 구분 */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">구분</label>
+                  <div className="flex gap-2">
+                    {(["I", "O"] as const).map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setAcForm((f) => ({ ...f, in_out: v }))}
+                        className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                          acForm.in_out === v
+                            ? v === "I" ? "bg-red-500 text-white border-red-500" : "bg-blue-600 text-white border-blue-600"
+                            : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        {v === "I" ? "입금" : "출금"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* 금액 */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">금액 (원)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    placeholder="0"
+                    value={acForm.amt}
+                    onChange={(e) => setAcForm((f) => ({ ...f, amt: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+                {/* 비고 */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">비고</label>
+                  <input
+                    type="text"
+                    placeholder="메모 (선택)"
+                    value={acForm.memo}
+                    onChange={(e) => setAcForm((f) => ({ ...f, memo: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+                {acFormError && <p className="text-xs text-red-500">{acFormError}</p>}
+                <div className="flex gap-2 pt-1">
+                  <button type="button" onClick={() => setShowAcModal(false)} className="flex-1 py-2.5 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">취소</button>
+                  <button type="submit" disabled={acSubmitting} className="flex-1 py-2.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50">
+                    {acSubmitting ? "저장 중..." : "저장"}
                   </button>
                 </div>
               </form>

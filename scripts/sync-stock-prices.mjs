@@ -18,10 +18,11 @@ const pool = new Pool({
   max: 3,
 })
 
-async function fetchSisePage(code, page) {
+async function fetchSisePage(code, page, market) {
   try {
+    const marketParam = market ? `&market=${market}` : ""
     const res = await fetch(
-      `https://finance.naver.com/item/sise_day.naver?code=${code}&page=${page}`,
+      `https://finance.naver.com/item/sise_day.naver?code=${code}&page=${page}${marketParam}`,
       {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -73,10 +74,12 @@ async function syncStock(stockCode, stockType) {
   const maxPage = maxDateStr ? 6 : 30
   const allPrices = []
   let done = false
+  // ETF는 KRX 정규장 종가, 일반 주식은 기본(시장 파라미터 없음)
+  const siseMarket = stockType === 2 ? "krx" : undefined
 
   for (let batchStart = 1; batchStart <= maxPage && !done; batchStart += 3) {
     const pages = [batchStart, batchStart+1, batchStart+2].filter(p => p <= maxPage)
-    const batchPrices = (await Promise.all(pages.map(p => fetchSisePage(stockCode, p)))).flat()
+    const batchPrices = (await Promise.all(pages.map(p => fetchSisePage(stockCode, p, siseMarket)))).flat()
     if (batchPrices.length === 0) break
     for (const p of batchPrices) {
       if (maxDateStr && p.date <= maxDateStr) { done = true; break }
@@ -100,20 +103,22 @@ async function syncStock(stockCode, stockType) {
     )
   }
 
-  // 당일 after-market 최종가: NXT sise.naver 파싱으로 덮어쓰기
-  try {
-    const nxt = await fetchNxtPrice(stockCode)
-    if (nxt && nxt.close > 0) {
-      await pool.query(
-        `INSERT INTO t_stock_amt (e_date, stock_code, e_amt, c_amt, e_rate, e_trade, finish_yn)
-         VALUES ($1::date, $2, $3, $4, $5, $6, 'Y')
-         ON CONFLICT (e_date, stock_code) DO UPDATE
-           SET e_amt = EXCLUDED.e_amt, c_amt = EXCLUDED.c_amt, e_rate = EXCLUDED.e_rate,
-               e_trade = EXCLUDED.e_trade, finish_yn = 'Y', updated_at = NOW()`,
-        [todayStr, stockCode, nxt.close, nxt.change, nxt.rate, nxt.volume]
-      )
-    }
-  } catch {}
+  // 일반 주식만 NXT after-market 최종가로 덮어씀; ETF(stockType=2)는 KRX 종가 그대로 사용
+  if (stockType !== 2) {
+    try {
+      const nxt = await fetchNxtPrice(stockCode)
+      if (nxt && nxt.close > 0) {
+        await pool.query(
+          `INSERT INTO t_stock_amt (e_date, stock_code, e_amt, c_amt, e_rate, e_trade, finish_yn)
+           VALUES ($1::date, $2, $3, $4, $5, $6, 'Y')
+           ON CONFLICT (e_date, stock_code) DO UPDATE
+             SET e_amt = EXCLUDED.e_amt, c_amt = EXCLUDED.c_amt, e_rate = EXCLUDED.e_rate,
+                 e_trade = EXCLUDED.e_trade, finish_yn = 'Y', updated_at = NOW()`,
+          [todayStr, stockCode, nxt.close, nxt.change, nxt.rate, nxt.volume]
+        )
+      }
+    } catch {}
+  }
 
   return unique.length || 1
 }
@@ -134,8 +139,8 @@ async function fetchNxtPrice(code) {
     const nxtM = html.match(/id="rate_info_nxt"([\s\S]{0,2000})/)
     if (!nxtM) return null
     const section = nxtM[1]
-    const closeM  = section.match(/오늘의시세 ([\d,]+) 포인트/)
-    const changeM = section.match(/([\d,]+) 포인트 (상승|하락|보합)/)
+    const closeM  = section.match(/오늘의시세 ([\d,]+) (?:포인트|원)/)
+    const changeM = section.match(/([\d,]+) (?:포인트|원) (상승|하락|보합)/)
     const rateM   = section.match(/([\d.]+)% (플러스|마이너스|제로)/)
     if (!closeM) return null
     const close  = Number(closeM[1].replace(/,/g, ''))
