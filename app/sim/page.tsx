@@ -1637,7 +1637,7 @@ export default function SavingsFundPage() {
 
   const isLoggedIn = status === "authenticated"
 
-  const visibleTabs = TABS
+  const visibleTabs = TABS.filter((t) => !t.isIRP)
 
   const [activeId, setActiveId]     = useState(TABS[0].id)
   const [inputs, setInputs]         = useState<Record<string, InputValues>>(
