@@ -143,7 +143,7 @@ export default function StockPage() {
       const defaultStocks = await getDefaultStockList()
       let total = 0
       for (const s of defaultStocks) {
-        try { total += await fetchAndSaveNaverPrices(s.stock_code, s.stock_type) }
+        try { total += await fetchAndSaveNaverPrices(s.stock_code) }
         catch { /* 개별 실패 무시 */ }
       }
       await loadHoldings()

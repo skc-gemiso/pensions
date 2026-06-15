@@ -42,7 +42,8 @@ def run_daily(etf_list: list[str] | None = None, dry_run: bool = False):
             if holding_date is None:
                 print(f"  [{etf}] FAIL: 데이터 없음")
                 if not dry_run:
-                    db.log_fetch(etf, today, "error", row_count=0)
+                    db.log_fetch(etf, today, "error", row_count=0,
+                                 error_msg="CSV 다운로드/파싱 실패 (봇 탐지 또는 페이지 변경)")
                 total_fail += 1
                 continue
 
@@ -66,7 +67,7 @@ def run_daily(etf_list: list[str] | None = None, dry_run: bool = False):
         except Exception as e:
             print(f"  [{etf}] FAIL: {e}")
             if not dry_run:
-                db.log_fetch(etf, today, "error", row_count=0)
+                db.log_fetch(etf, today, "error", row_count=0, error_msg=str(e))
             total_fail += 1
 
     print(f"\n{'='*60}")

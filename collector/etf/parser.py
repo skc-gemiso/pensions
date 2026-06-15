@@ -145,7 +145,7 @@ def download_csv(etf_ticker: str) -> bytes:
             raw = Path(dl_path).read_bytes()
 
     except Exception:
-        pass
+        raise
 
     finally:
         page.close()
