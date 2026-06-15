@@ -35,5 +35,25 @@ export async function register() {
     )
 
     console.log("[Scheduler] ETF(매일 09:00) · USA(매주 월 09:00) · FX(매일 09:00) 스케줄 등록 완료")
+
+    // 서버 시작 시 당일 ETF 수집 누락이면 즉시 catch-up
+    setTimeout(async () => {
+      try {
+        const { getPensionPool } = await import("./lib/pension-db")
+        const pool = getPensionPool()
+        const { rows } = await pool.query(`
+          SELECT COUNT(*)::int AS cnt FROM etf_fetch_log
+          WHERE (fetched_at AT TIME ZONE 'Asia/Seoul')::date
+                = (NOW() AT TIME ZONE 'Asia/Seoul')::date
+            AND status = 'success'
+        `)
+        if (rows[0].cnt === 0) {
+          console.log("[Scheduler] 당일 ETF 수집 누락 → catch-up 실행")
+          startEtf()
+        }
+      } catch (e) {
+        console.error("[Scheduler] ETF catch-up 확인 실패:", e)
+      }
+    }, 5000)
   }
 }
