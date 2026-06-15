@@ -9,7 +9,7 @@ load_dotenv(Path(__file__).parent.parent.parent / "config" / ".env")
 
 _DSN = dict(
     host=os.getenv("PENSION_SIM_DB_HOST"),
-    port=int(os.getenv("PENSION_SIM_DB_PORT", 5432)),
+    port=int(os.getenv("PENSION_SIM_DB_PORT") or 5432),
     dbname=os.getenv("PENSION_SIM_DB_NAME"),
     user=os.getenv("PENSION_SIM_DB_USER"),
     password=os.getenv("PENSION_SIM_DB_PASSWORD"),
