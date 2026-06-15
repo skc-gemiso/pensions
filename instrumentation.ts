@@ -1,5 +1,6 @@
 export async function register() {
-  if (process.env.NEXT_RUNTIME === "nodejs") {
+  // Vercel 서버리스 환경에서는 Python 프로세스 실행 불가 → 수집 스케줄 비활성화
+  if (process.env.NEXT_RUNTIME === "nodejs" && !process.env.VERCEL) {
     const cron = (await import("node-cron")).default
     const { startCollection: startEtf } = await import("./lib/etf-collector")
     const { startCollection: startUsa, startFxCollection } = await import("./lib/usa-collector")
