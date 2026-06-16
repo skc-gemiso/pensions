@@ -85,7 +85,7 @@ function CustomTooltip({ active, payload, label }: {
             {usdBil(e.usd)}
           </span>
           {e.krw != null && (
-            <span className="text-gray-400 ml-1">({krwTril(e.krw)})</span>
+            <span className="text-gray-500 ml-1">({krwTril(e.krw)})</span>
           )}
         </div>
       ))}
@@ -165,16 +165,16 @@ export default function TreasuryPage() {
             <p className="text-sm font-semibold text-gray-700 mb-2">{label}</p>
             {last ? (
               <div className="flex items-baseline gap-3 flex-wrap">
-                <span className="text-sm text-gray-400">{last.stat_date?.slice(0, 7)}</span>
+                <span className="text-sm text-gray-500">{last.stat_date?.slice(0, 7)}</span>
                 <span className={`text-xl font-bold ${color}`}>
                   {usdBil(last.amount_usd_billion)}
                 </span>
-                <span className="text-sm text-gray-400">
+                <span className="text-sm text-gray-500">
                   ({krwTril(last.amount_usd_billion * FIXED_FX / 1000)})
                 </span>
               </div>
             ) : (
-              <p className="text-gray-400">-</p>
+              <p className="text-gray-500">-</p>
             )}
           </div>
         ))}

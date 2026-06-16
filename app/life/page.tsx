@@ -7,7 +7,7 @@ export default function ComingSoonPage() {
         <div className="text-center">
           <p className="text-4xl mb-4">🚧</p>
           <h1 className="text-xl font-bold text-gray-700 mb-2">준비 중입니다</h1>
-          <p className="text-sm text-gray-400">서비스 준비 중입니다. 조금만 기다려 주세요.</p>
+          <p className="text-sm text-gray-500">서비스 준비 중입니다. 조금만 기다려 주세요.</p>
         </div>
       </div>
     </AppLayout>

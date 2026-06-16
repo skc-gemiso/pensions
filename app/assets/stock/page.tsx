@@ -428,7 +428,7 @@ export default function StockPage() {
                 </div>
               </div>
               {portfolioByAccount.size === 0 ? (
-                <p className="text-center text-gray-400 py-10 text-sm">보유 종목이 없습니다.</p>
+                <p className="text-center text-gray-500 py-10 text-sm">보유 종목이 없습니다.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -557,7 +557,7 @@ export default function StockPage() {
                 {chartLoading && <p className="text-center text-gray-400 py-8 text-sm">로딩 중...</p>}
 
                 {!chartLoading && chartData.length === 0 && (
-                  <p className="text-center text-gray-400 py-8 text-sm">
+                  <p className="text-center text-gray-500 py-8 text-sm">
                     저장된 주가 데이터가 없습니다. 위 "네이버 주가 가져오기" 버튼을 눌러 데이터를 불러오세요.
                   </p>
                 )}
@@ -656,7 +656,7 @@ export default function StockPage() {
             {txLoading ? (
               <p className="text-center text-gray-400 py-8 text-sm">로딩 중...</p>
             ) : transactions.length === 0 ? (
-              <p className="text-center text-gray-400 py-8 text-sm">거래 내역이 없습니다.</p>
+              <p className="text-center text-gray-500 py-8 text-sm">거래 내역이 없습니다.</p>
             ) : (
               <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
                 <table className="w-full text-sm">
@@ -691,7 +691,7 @@ export default function StockPage() {
                         <td className="px-3 py-2 text-center">
                           <button
                             onClick={() => handleDelete(tx.id)}
-                            className="text-xs text-gray-400 hover:text-red-500 transition-colors px-2 py-1"
+                            className="text-xs text-gray-500 hover:text-red-500 transition-colors px-2 py-1"
                           >
                             삭제
                           </button>
@@ -727,7 +727,7 @@ export default function StockPage() {
               {acInfoLoading ? (
                 <p className="text-center text-gray-400 py-8 text-sm">로딩 중...</p>
               ) : accountInfo.length === 0 ? (
-                <p className="text-center text-gray-400 py-8 text-sm">내역이 없습니다.</p>
+                <p className="text-center text-gray-500 py-8 text-sm">내역이 없습니다.</p>
               ) : (
                 <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
                   <table className="w-full text-sm">
@@ -801,13 +801,13 @@ export default function StockPage() {
                 <p className="text-xs font-semibold text-gray-700">
                   {holding?.stock_name ?? tooltip.code} 매입 내역
                 </p>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-gray-500">
                   {tooltip.account_no}
                   {accGroup?.account_nm && <span className="ml-1">({accGroup.account_nm})</span>}
                 </p>
               </div>
               {buyTxs.length === 0 ? (
-                <p className="text-xs text-gray-400">매입 내역 없음</p>
+                <p className="text-xs text-gray-500">매입 내역 없음</p>
               ) : (
                 <table className="w-full text-xs">
                   <thead>
@@ -884,17 +884,17 @@ export default function StockPage() {
                       <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
                         <p className="text-xs text-gray-500 mb-0.5">최근 분배율</p>
                         <p className="text-xl font-bold text-amber-600">{latest?.dist_rate.toFixed(2)}%</p>
-                        <p className="text-xs text-gray-400">{latest?.ref_date}</p>
+                        <p className="text-xs text-gray-500">{latest?.ref_date}</p>
                       </div>
                       <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
                         <p className="text-xs text-gray-500 mb-0.5">월평균 분배율</p>
                         <p className="text-xl font-bold text-orange-600">{avgRate.toFixed(2)}%</p>
-                        <p className="text-xs text-gray-400">최근 {divHistory.length}회 평균</p>
+                        <p className="text-xs text-gray-500">최근 {divHistory.length}회 평균</p>
                       </div>
                       <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
                         <p className="text-xs text-gray-500 mb-0.5">연환산 수익률</p>
                         <p className="text-xl font-bold text-red-600">{annualRate.toFixed(2)}%</p>
-                        <p className="text-xs text-gray-400">월평균 × 12</p>
+                        <p className="text-xs text-gray-500">월평균 × 12</p>
                       </div>
                     </div>
                     {/* 잔고 기반 분배금 카드 */}
@@ -902,7 +902,7 @@ export default function StockPage() {
                       <div className="bg-white rounded-xl p-3 border border-orange-300">
                         <div className="flex items-center justify-between mb-2">
                           <p className="text-xs font-semibold text-orange-700">내 잔고 기준 이번 달 분배금</p>
-                          <span className="text-xs text-gray-400">{latest?.ref_date} 분배금 기준</span>
+                          <span className="text-xs text-gray-500">{latest?.ref_date} 분배금 기준</span>
                         </div>
                         <div className="grid grid-cols-3 gap-3 text-center">
                           <div>
@@ -912,12 +912,12 @@ export default function StockPage() {
                           <div>
                             <p className="text-xs text-gray-500 mb-0.5">예상 분배금</p>
                             <p className="text-base font-bold text-orange-600">{fmt(monthlyDiv)}원</p>
-                            <p className="text-xs text-gray-400">{fmt(latest?.dist_amt ?? 0)}원/주</p>
+                            <p className="text-xs text-gray-500">{fmt(latest?.dist_amt ?? 0)}원/주</p>
                           </div>
                           <div>
                             <p className="text-xs text-gray-500 mb-0.5">과세표준액</p>
                             <p className="text-base font-bold text-gray-700">{fmt(monthlyTax ?? 0)}원</p>
-                            <p className="text-xs text-gray-400">{fmt(latest?.tax_base_amt ?? 0)}원/주</p>
+                            <p className="text-xs text-gray-500">{fmt(latest?.tax_base_amt ?? 0)}원/주</p>
                           </div>
                         </div>
                       </div>
@@ -933,7 +933,7 @@ export default function StockPage() {
                         <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-left">실지급일</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-amber-700 text-right">분배율</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-right">분배금액</th>
-                        <th className="px-4 py-2.5 text-xs font-semibold text-gray-400 text-right">과세표준액</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-right">과세표준액</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -960,7 +960,7 @@ export default function StockPage() {
                               {r.dist_amt.toLocaleString()}원
                             </div>
                           </td>
-                          <td className="px-4 py-2 text-right text-gray-400 text-xs">{r.tax_base_amt.toLocaleString()}원</td>
+                          <td className="px-4 py-2 text-right text-gray-700 text-xs">{r.tax_base_amt.toLocaleString()}원</td>
                         </tr>
                       ))}
                     </tbody>
@@ -968,7 +968,7 @@ export default function StockPage() {
                 </div>
                 {/* 푸터 */}
                 <div className="px-5 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
-                  <p className="text-xs text-gray-400">※ 분배금은 운용 성과에 따라 변동될 수 있습니다.</p>
+                  <p className="text-xs text-gray-500">※ 분배금은 운용 성과에 따라 변동될 수 있습니다.</p>
                   <button onClick={() => setShowDivModal(false)} className="text-xs px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-lg transition-colors">닫기</button>
                 </div>
               </div>
@@ -982,7 +982,7 @@ export default function StockPage() {
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
               <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
                 <h2 className="text-base font-semibold text-gray-900">매입/매도 내역 추가</h2>
-                <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+                <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700 text-xl leading-none">×</button>
               </div>
               <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
 
@@ -1033,7 +1033,7 @@ export default function StockPage() {
                       <button
                         type="button"
                         onClick={clearStock}
-                        className="text-gray-400 hover:text-red-500 text-lg leading-none"
+                        className="text-gray-500 hover:text-red-500 text-lg leading-none"
                       >×</button>
                     </div>
                   ) : (
@@ -1065,7 +1065,7 @@ export default function StockPage() {
                             >
                               <span className="font-mono text-xs text-blue-600 font-semibold w-16 shrink-0">{item.code}</span>
                               <span className="text-sm text-gray-900 flex-1 truncate">{item.name}</span>
-                              <span className="text-xs text-gray-400 shrink-0">{item.market}</span>
+                              <span className="text-xs text-gray-500 shrink-0">{item.market}</span>
                             </button>
                           ))}
                         </div>
@@ -1135,7 +1135,7 @@ export default function StockPage() {
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
               <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
                 <h2 className="text-base font-semibold text-gray-900">입출금 내역 추가</h2>
-                <button onClick={() => setShowAcModal(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+                <button onClick={() => setShowAcModal(false)} className="text-gray-500 hover:text-gray-700 text-xl leading-none">×</button>
               </div>
               <form
                 onSubmit={async (e) => {

@@ -60,9 +60,17 @@ async function fetchSisePage(code, page) {
   }
 }
 
-async function syncStock(stockCode) {
+async function syncStock(stockCode, resyncDays = 0) {
   const todayStr = new Date().toISOString().slice(0, 10)
-  await pool.query(`DELETE FROM t_stock_amt WHERE stock_code = $1 AND e_date = $2::date`, [stockCode, todayStr])
+
+  if (resyncDays > 0) {
+    await pool.query(
+      `DELETE FROM t_stock_amt WHERE stock_code = $1 AND e_date >= (CURRENT_DATE - $2::int)`,
+      [stockCode, resyncDays]
+    )
+  } else {
+    await pool.query(`DELETE FROM t_stock_amt WHERE stock_code = $1 AND e_date = $2::date`, [stockCode, todayStr])
+  }
 
   const { rows } = await pool.query(
     `SELECT TO_CHAR(MAX(e_date), 'YYYY-MM-DD') AS max_date FROM t_stock_amt WHERE stock_code = $1`,
@@ -104,7 +112,13 @@ async function syncStock(stockCode) {
 }
 
 async function main() {
+  const resyncDays = (() => {
+    const idx = process.argv.indexOf("--resync-days")
+    return idx !== -1 ? Number(process.argv[idx + 1]) : 0
+  })()
+
   console.log(`[sync] 시작: ${new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}`)
+  if (resyncDays > 0) console.log(`[sync] 최근 ${resyncDays}일 데이터 강제 재수집`)
 
   // 수집 대상: t_stock_list default_yn='Y'
   const { rows: stocks } = await pool.query(`
@@ -123,7 +137,7 @@ async function main() {
   console.log(`[sync] 수집 대상 ${stocks.length}개`)
   for (const s of stocks) {
     try {
-      const saved = await syncStock(s.stock_code)
+      const saved = await syncStock(s.stock_code, resyncDays)
       console.log(`  ✓ ${s.stock_code}: ${saved}건 저장`)
     } catch (e) {
       console.error(`  ✗ ${s.stock_code}: ${e.message}`)

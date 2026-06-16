@@ -298,7 +298,7 @@ function HelpPopover({ title, desc, composition, pros, cons, href }: HelpPopover
                   <p className="text-xs font-semibold text-gray-700 mb-1">📊 주요 구성</p>
                   <ul className="space-y-0.5">
                     {composition.map((c, i) => (
-                      <li key={i} className="text-xs text-gray-600 flex gap-1"><span className="text-gray-400">·</span>{c}</li>
+                      <li key={i} className="text-xs text-gray-600 flex gap-1"><span className="text-gray-500">·</span>{c}</li>
                     ))}
                   </ul>
                 </div>
@@ -365,7 +365,7 @@ function DisclaimerModal() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
               <h2 className="text-base font-bold text-gray-900">면책조항 (Disclaimer)</h2>
-              <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+              <button onClick={() => setOpen(false)} className="text-gray-500 hover:text-gray-700 text-xl leading-none">×</button>
             </div>
 
             <div className="overflow-y-auto px-6 py-5 space-y-5 text-sm">
@@ -386,36 +386,36 @@ function DisclaimerModal() {
                 <div>
                   <p className="font-semibold text-gray-800 mb-1.5">📊 시뮬레이션의 한계</p>
                   <ul className="space-y-1.5 text-xs text-gray-600">
-                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>이 페이지의 시뮬레이션 결과는 <span className="font-semibold">미래 수익을 예측하거나 보장하지 않습니다.</span></span></li>
-                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>입력한 연평균 수익률은 가정치이며, 실제 시장은 그보다 높거나 낮게 움직일 수 있습니다.</span></li>
-                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>과거의 수익률이 미래에도 동일하게 반복된다는 보장은 없습니다.</span></li>
-                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>커버드콜 ETF의 배당률(연 15%)은 시장 변동성에 따라 달라질 수 있습니다.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 flex-shrink-0">·</span><span>이 페이지의 시뮬레이션 결과는 <span className="font-semibold">미래 수익을 예측하거나 보장하지 않습니다.</span></span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 flex-shrink-0">·</span><span>입력한 연평균 수익률은 가정치이며, 실제 시장은 그보다 높거나 낮게 움직일 수 있습니다.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 flex-shrink-0">·</span><span>과거의 수익률이 미래에도 동일하게 반복된다는 보장은 없습니다.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 flex-shrink-0">·</span><span>커버드콜 ETF의 배당률(연 15%)은 시장 변동성에 따라 달라질 수 있습니다.</span></li>
                   </ul>
                 </div>
 
                 <div>
                   <p className="font-semibold text-gray-800 mb-1.5">💰 세금·수수료 미반영</p>
                   <ul className="space-y-1.5 text-xs text-gray-600">
-                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>시뮬레이션 금액에는 <span className="font-semibold">운용보수·거래수수료·배당소득세·연금소득세</span>가 반영되어 있지 않습니다.</span></li>
-                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>실제 수령액은 세금 및 수수료 공제 후 시뮬레이션보다 낮을 수 있습니다.</span></li>
-                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>세율·세법은 정부 정책에 따라 변경될 수 있습니다.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 flex-shrink-0">·</span><span>시뮬레이션 금액에는 <span className="font-semibold">운용보수·거래수수료·배당소득세·연금소득세</span>가 반영되어 있지 않습니다.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 flex-shrink-0">·</span><span>실제 수령액은 세금 및 수수료 공제 후 시뮬레이션보다 낮을 수 있습니다.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 flex-shrink-0">·</span><span>세율·세법은 정부 정책에 따라 변경될 수 있습니다.</span></li>
                   </ul>
                 </div>
 
                 <div>
                   <p className="font-semibold text-gray-800 mb-1.5">📋 정보 제공 목적</p>
                   <ul className="space-y-1.5 text-xs text-gray-600">
-                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>이 서비스는 <span className="font-semibold">개인 학습 및 참고 목적</span>으로 제공되며, 금융투자상품의 매수·매도를 권유하거나 투자를 자문하는 서비스가 아닙니다.</span></li>
-                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>금융 관련 중요한 결정을 내리기 전에는 <span className="font-semibold">자격을 갖춘 금융 전문가(FP·투자상담사 등)와 반드시 상담</span>하시기 바랍니다.</span></li>
-                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>이 페이지에 표시되는 상품명·수치는 공개된 정보를 기반으로 작성되었으며, 최신 정보와 다를 수 있습니다.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 flex-shrink-0">·</span><span>이 서비스는 <span className="font-semibold">개인 학습 및 참고 목적</span>으로 제공되며, 금융투자상품의 매수·매도를 권유하거나 투자를 자문하는 서비스가 아닙니다.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 flex-shrink-0">·</span><span>금융 관련 중요한 결정을 내리기 전에는 <span className="font-semibold">자격을 갖춘 금융 전문가(FP·투자상담사 등)와 반드시 상담</span>하시기 바랍니다.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 flex-shrink-0">·</span><span>이 페이지에 표시되는 상품명·수치는 공개된 정보를 기반으로 작성되었으며, 최신 정보와 다를 수 있습니다.</span></li>
                   </ul>
                 </div>
 
                 <div>
                   <p className="font-semibold text-gray-800 mb-1.5">🔒 책임의 한계</p>
                   <ul className="space-y-1.5 text-xs text-gray-600">
-                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>이 시뮬레이션 결과를 참고하여 내린 투자 결정으로 발생한 손실에 대해 이 서비스는 <span className="font-semibold">어떠한 법적 책임도 지지 않습니다.</span></span></li>
-                    <li className="flex gap-2"><span className="text-gray-400 flex-shrink-0">·</span><span>모든 투자 결정과 그에 따른 결과는 <span className="font-semibold">투자자 본인의 책임</span>입니다.</span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 flex-shrink-0">·</span><span>이 시뮬레이션 결과를 참고하여 내린 투자 결정으로 발생한 손실에 대해 이 서비스는 <span className="font-semibold">어떠한 법적 책임도 지지 않습니다.</span></span></li>
+                    <li className="flex gap-2"><span className="text-gray-500 flex-shrink-0">·</span><span>모든 투자 결정과 그에 따른 결과는 <span className="font-semibold">투자자 본인의 책임</span>입니다.</span></li>
                   </ul>
                 </div>
 
@@ -463,7 +463,7 @@ function PageHelpModal() {
             {/* 헤더 */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
               <h2 className="text-base font-bold text-gray-900">연금투자 시뮬레이션 안내</h2>
-              <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+              <button onClick={() => setOpen(false)} className="text-gray-500 hover:text-gray-700 text-xl leading-none">×</button>
             </div>
 
             {/* 탭 */}
@@ -1967,17 +1967,17 @@ export default function SavingsFundPage() {
                       <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
                         <p className="text-xs text-gray-500 mb-0.5">최근 분배율</p>
                         <p className="text-xl font-bold text-amber-600">{latest?.dist_rate.toFixed(2)}%</p>
-                        <p className="text-xs text-gray-400">{latest?.ref_date}</p>
+                        <p className="text-xs text-gray-500">{latest?.ref_date}</p>
                       </div>
                       <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
                         <p className="text-xs text-gray-500 mb-0.5">월평균 분배율</p>
                         <p className="text-xl font-bold text-orange-600">{avgRate.toFixed(2)}%</p>
-                        <p className="text-xs text-gray-400">최근 {divHistory.length}회 평균</p>
+                        <p className="text-xs text-gray-500">최근 {divHistory.length}회 평균</p>
                       </div>
                       <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
                         <p className="text-xs text-gray-500 mb-0.5">연환산 수익률</p>
                         <p className="text-xl font-bold text-red-600">{annualRate.toFixed(2)}%</p>
-                        <p className="text-xs text-gray-400">월평균 × 12</p>
+                        <p className="text-xs text-gray-500">월평균 × 12</p>
                       </div>
                     </div>
                     {/* 최신 분배금 주당 현황 카드 */}
@@ -1985,7 +1985,7 @@ export default function SavingsFundPage() {
                       <div className="bg-white rounded-xl p-3 border border-orange-300">
                         <div className="flex items-center justify-between mb-2">
                           <p className="text-xs font-semibold text-orange-700">최신 분배금 현황 (주당)</p>
-                          <span className="text-xs text-gray-400">{latest.ref_date} → 지급 {latest.pay_date}</span>
+                          <span className="text-xs text-gray-500">{latest.ref_date} → 지급 {latest.pay_date}</span>
                         </div>
                         <div className="grid grid-cols-3 gap-3 text-center">
                           <div>
@@ -2015,7 +2015,7 @@ export default function SavingsFundPage() {
                         <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-left">실지급일</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-amber-700 text-right">분배율</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-right">분배금액</th>
-                        <th className="px-4 py-2.5 text-xs font-semibold text-gray-400 text-right">과세표준액</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-right">과세표준액</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -2048,7 +2048,7 @@ export default function SavingsFundPage() {
                               {r.dist_amt.toLocaleString()}원
                             </div>
                           </td>
-                          <td className="px-4 py-2 text-right text-gray-400 text-xs">{r.tax_base_amt.toLocaleString()}원</td>
+                          <td className="px-4 py-2 text-right text-gray-700 text-xs">{r.tax_base_amt.toLocaleString()}원</td>
                         </tr>
                       ))}
                     </tbody>
@@ -2057,7 +2057,7 @@ export default function SavingsFundPage() {
 
                 {/* 푸터 */}
                 <div className="px-5 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
-                  <p className="text-xs text-gray-400">※ 분배금은 운용 성과에 따라 변동될 수 있습니다.</p>
+                  <p className="text-xs text-gray-500">※ 분배금은 운용 성과에 따라 변동될 수 있습니다.</p>
                   <button onClick={() => setShowDivModal(false)} className="text-xs px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-lg transition-colors">닫기</button>
                 </div>
               </div>
@@ -2333,13 +2333,13 @@ export default function SavingsFundPage() {
           <h2 className="font-semibold text-gray-900 text-sm mb-3">저장된 시뮬레이션</h2>
 
           {!isLoggedIn ? (
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-gray-500">
               <a href="/login" className="text-blue-600 underline">로그인</a>하면 시뮬레이션을 저장하고 불러올 수 있습니다.
             </p>
           ) : loading ? (
             <p className="text-sm text-gray-400">불러오는 중...</p>
           ) : savedList.length === 0 ? (
-            <p className="text-sm text-gray-400">저장된 시뮬레이션이 없습니다.</p>
+            <p className="text-sm text-gray-500">저장된 시뮬레이션이 없습니다.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {savedList.map((sim) => (
@@ -2398,7 +2398,7 @@ export default function SavingsFundPage() {
               </button>
               <button
                 onClick={() => setSelectedSim(null)}
-                className="text-xs text-gray-400 hover:text-gray-600"
+                className="text-xs text-gray-500 hover:text-gray-700"
               >
                 닫기
               </button>
