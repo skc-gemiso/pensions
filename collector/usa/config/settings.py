@@ -6,7 +6,7 @@ import os
 _ENV_PATH = Path(__file__).parent.parent.parent.parent / "config" / ".env"
 load_dotenv(_ENV_PATH)
 
-FRED_API_KEY = os.environ["FRED_API_KEY"]
+FRED_API_KEY = os.environ.get("FRED_API_KEY", "")
 FRED_BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 
 DB_HOST     = os.environ["PENSION_SIM_DB_HOST"]
