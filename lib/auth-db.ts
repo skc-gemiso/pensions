@@ -414,6 +414,54 @@ async function _applyMigrations(): Promise<void> {
     await pool.query("INSERT INTO app_migrations (name) VALUES ('v015_add_stock_menu')")
   }
 
+  // v016: 생활비 관리 테이블 + 메뉴 추가
+  const { rows: v016 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v016_add_life_cost'"
+  )
+  if (v016.length === 0) {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS my_cost_item (
+        id                   SERIAL PRIMARY KEY,
+        category             TEXT NOT NULL,
+        sub_category         TEXT,
+        name                 TEXT NOT NULL,
+        payment_method       TEXT,
+        payment_day          INT,
+        default_amount       NUMERIC(12,0) DEFAULT 0,
+        account_no           TEXT,
+        settlement_start_day INT,
+        settlement_end_day   INT,
+        sort_order           INT DEFAULT 0,
+        is_active            BOOLEAN DEFAULT TRUE,
+        created_at           TIMESTAMPTZ DEFAULT NOW()
+      )
+    `)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS my_cost_info (
+        id          SERIAL PRIMARY KEY,
+        year_month  TEXT NOT NULL,
+        item_id     INT NOT NULL REFERENCES my_cost_item(id),
+        amount      NUMERIC(12,0) DEFAULT 0,
+        memo        TEXT,
+        created_at  TIMESTAMPTZ DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (year_month, item_id)
+      )
+    `)
+    await pool.query(`
+      INSERT INTO app_menus (id, label, href, parent_id, sort_order)
+      VALUES ('life-cost', '생활비', '/life/cost', 'life', 10)
+      ON CONFLICT (id) DO NOTHING
+    `)
+    await pool.query(`
+      INSERT INTO app_role_menus (role, menu_id)
+      SELECT r, 'life-cost'
+      FROM unnest(ARRAY['admin','normal']::text[]) AS r
+      ON CONFLICT DO NOTHING
+    `)
+    await pool.query("INSERT INTO app_migrations (name) VALUES ('v016_add_life_cost')")
+  }
+
   // v010: 메뉴 ID 단축 (savings-fund→sim, compound-magic→magic, personal-pension→per 등)
   const { rows: v010 } = await pool.query<{ name: string }>(
     "SELECT name FROM app_migrations WHERE name = 'v010_shorten_menu_ids'"

@@ -33,6 +33,8 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
     ├── /invest/usa/indicator            지표별 시계열
     ├── /invest/usa/treasury             미국 국채 보유
     └── /invest/usa/fx                   원/달러 환율 조회
+/life                            생활 (→ /life/cost 리다이렉트)
+└── /life/cost                   생활비 관리 (가계부)
 /login                           로그인
 /register                        회원가입
 ```
@@ -177,6 +179,28 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 - 참고 파일: [app/invest/etf/](../app/invest/etf/) (이전 예정)
 - 수집기: [collector/etf/](../collector/etf/) (이전 예정)
 - 상세 문서: [invest/etf/etf_project.md](invest/etf/etf_project.md), [invest/etf/etf_task.md](invest/etf/etf_task.md)
+
+---
+
+### 생활비 관리 (`/life/cost`)
+
+| 기능 | 설명 |
+|------|------|
+| 월 선택 | YYYY-MM 드롭다운, 기본값 당월 |
+| 수입 대비 지출 현황 | 수입/지출/잔액 요약 (잔액 적자 시 빨간색) |
+| 주요 지출 TOP 3 | 당월 금액 상위 3개 + 전월 대비 변동 |
+| 최근 3개월 현황 | 월별 수입·지출 테이블 |
+| 고정지출 | 항목별 월 금액 인라인 편집 + 툴팁 |
+| 고정이체 & 금융 | 대출·이체 항목 + 계좌번호 툴팁 |
+| 생활비 & 공과금 | sub_category(건물명) 탭 + 항목 목록 |
+| 카드결재 | 카드별 결제금액 + 전월 대비 + 정산기간 |
+| 항목 추가/비활성화 | 모달로 항목 추가, 삭제 대신 비활성화 |
+| 이전 달 복사 | 신규 월 첫 접근 시 default_amount 기준 일괄 생성 |
+
+- 참고 파일: [app/life/cost/page.tsx](../app/life/cost/page.tsx), [app/life/cost/actions.ts](../app/life/cost/actions.ts)
+- 리다이렉트: [app/life/page.tsx](../app/life/page.tsx) → `/life/cost`
+- DB 마이그레이션: `v016_add_life_cost` (lib/auth-db.ts)
+- 상세 문서: [life/cost/cost_project.md](life/cost/cost_project.md), [life/cost/cost_task.md](life/cost/cost_task.md)
 
 ---
 
