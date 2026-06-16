@@ -10,7 +10,7 @@ FRED_API_KEY = os.environ["FRED_API_KEY"]
 FRED_BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 
 DB_HOST     = os.environ["PENSION_SIM_DB_HOST"]
-DB_PORT     = int(os.environ.get("PENSION_SIM_DB_PORT", 5432))
+DB_PORT     = int(os.environ.get("PENSION_SIM_DB_PORT") or 5432)
 DB_NAME     = os.environ["PENSION_SIM_DB_NAME"]
 DB_USER     = os.environ["PENSION_SIM_DB_USER"]
 DB_PASSWORD = os.environ["PENSION_SIM_DB_PASSWORD"]
