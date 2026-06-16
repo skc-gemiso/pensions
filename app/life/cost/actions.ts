@@ -53,8 +53,8 @@ export async function getMonthData(yearMonth: string): Promise<MonthDataRow[]> {
       c.memo,
       COALESCE(p.amount, 0)::int   AS prev_amount
     FROM my_cost_item i
-    LEFT JOIN my_cost_info c ON c.item_id = i.id AND c.year_month = $1
-    LEFT JOIN my_cost_info p ON p.item_id = i.id AND p.year_month = $2
+    LEFT JOIN my_cost_info c ON c.item_id = i.id AND c.year_month = $1::text
+    LEFT JOIN my_cost_info p ON p.item_id = i.id AND p.year_month = $2::text
     WHERE i.is_active = TRUE
     ORDER BY
       CASE i.category
@@ -106,7 +106,7 @@ export async function upsertCostInfo(
   const pool = getPensionPool()
   await pool.query(`
     INSERT INTO my_cost_info (year_month, item_id, amount, memo, updated_at)
-    VALUES ($1, $2, $3, $4, NOW())
+    VALUES ($1::text, $2, $3, $4, NOW())
     ON CONFLICT (year_month, item_id)
     DO UPDATE SET amount = EXCLUDED.amount, memo = EXCLUDED.memo, updated_at = NOW()
   `, [yearMonth, itemId, amount, memo])
@@ -165,19 +165,19 @@ export async function copyFromPrevMonth(yearMonth: string): Promise<void> {
   const prevMonth = getPrevMonth(yearMonth)
   await pool.query(`
     INSERT INTO my_cost_info (year_month, item_id, amount, memo)
-    SELECT $1, item_id, amount, memo
+    SELECT $1::text, item_id, amount, memo
     FROM my_cost_info
-    WHERE year_month = $2
+    WHERE year_month = $2::text
     ON CONFLICT (year_month, item_id) DO NOTHING
   `, [yearMonth, prevMonth])
   // 이전 달에 없는 항목은 default_amount로 초기화
   await pool.query(`
     INSERT INTO my_cost_info (year_month, item_id, amount)
-    SELECT $1, i.id, i.default_amount
+    SELECT $1::text, i.id, i.default_amount
     FROM my_cost_item i
     WHERE i.is_active = TRUE
       AND NOT EXISTS (
-        SELECT 1 FROM my_cost_info c WHERE c.year_month = $1 AND c.item_id = i.id
+        SELECT 1 FROM my_cost_info c WHERE c.year_month = $1::text AND c.item_id = i.id
       )
     ON CONFLICT (year_month, item_id) DO NOTHING
   `, [yearMonth])
