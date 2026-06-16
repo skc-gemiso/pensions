@@ -2015,7 +2015,7 @@ export default function SavingsFundPage() {
                         <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-left">실지급일</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-amber-700 text-right">분배율</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-right">분배금액</th>
-                        <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-right">과세표준액</th>
+                        <th className="px-4 py-2.5 text-xs font-bold text-red-600 text-right">과세표준액</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -2048,7 +2048,7 @@ export default function SavingsFundPage() {
                               {r.dist_amt.toLocaleString()}원
                             </div>
                           </td>
-                          <td className="px-4 py-2 text-right text-gray-700 text-xs">{r.tax_base_amt.toLocaleString()}원</td>
+                          <td className="px-4 py-2 text-right text-red-600 text-xs font-bold">{r.tax_base_amt.toLocaleString()}원</td>
                         </tr>
                       ))}
                     </tbody>
