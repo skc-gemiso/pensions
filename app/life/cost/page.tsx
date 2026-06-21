@@ -26,12 +26,6 @@ function getCurrentYearMonth(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
 }
 
-function getPrevMonth(ym: string): string {
-  let [y, m] = ym.split("-").map(Number)
-  m--
-  if (m === 0) { m = 12; y-- }
-  return `${y}-${String(m).padStart(2, "0")}`
-}
 
 function buildMonthOptions(): string[] {
   const options: string[] = []
@@ -89,7 +83,6 @@ function CostRow({ row, yearMonth, onSaved, onDeactivate }: RowProps) {
   const [val, setVal] = useState(String(row.amount))
   const [memo, setMemo] = useState(row.memo ?? "")
   const [hover, setHover] = useState(false)
-  const [saving, setSaving] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -102,9 +95,7 @@ function CostRow({ row, yearMonth, onSaved, onDeactivate }: RowProps) {
   }, [editing])
 
   async function save() {
-    setSaving(true)
     await upsertCostInfo(yearMonth, row.id, Number(val.replace(/,/g, "")) || 0, memo || null)
-    setSaving(false)
     setEditing(false)
     onSaved()
   }
@@ -201,7 +192,7 @@ function AddItemModal({ defaultCategory, onClose, onAdded }: AddModalProps) {
     setForm(f => ({ ...f, [k]: v }))
   }
 
-  async function submit(e: React.FormEvent) {
+  async function submit(e: React.SyntheticEvent) {
     e.preventDefault()
     if (!form.name || !form.category) return
     setSaving(true)
@@ -228,50 +219,50 @@ function AddItemModal({ defaultCategory, onClose, onAdded }: AddModalProps) {
         <form onSubmit={submit} className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-gray-600">카테고리 *</label>
+              <label className="text-sm text-gray-700">카테고리 *</label>
               <select className="w-full border rounded px-2 py-1.5 text-sm mt-1" value={form.category ?? ""} onChange={e => set("category", e.target.value)}>
                 {CATEGORIES.map(c => <option key={c}>{c}</option>)}
               </select>
             </div>
             {form.category === "생활비" && (
               <div>
-                <label className="text-xs text-gray-600">건물명(탭)</label>
+                <label className="text-sm text-gray-700">건물명(탭)</label>
                 <input className="w-full border rounded px-2 py-1.5 text-sm mt-1" value={form.sub_category ?? ""} onChange={e => set("sub_category", e.target.value)} />
               </div>
             )}
           </div>
           <div>
-            <label className="text-xs text-gray-600">항목명 *</label>
+            <label className="text-sm text-gray-700">항목명 *</label>
             <input required className="w-full border rounded px-2 py-1.5 text-sm mt-1" value={form.name ?? ""} onChange={e => set("name", e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-gray-600">결제수단</label>
+              <label className="text-sm text-gray-700">결제수단</label>
               <input className="w-full border rounded px-2 py-1.5 text-sm mt-1" value={form.payment_method ?? ""} onChange={e => set("payment_method", e.target.value)} />
             </div>
             <div>
-              <label className="text-xs text-gray-600">결제일</label>
+              <label className="text-sm text-gray-700">결제일</label>
               <input type="number" min={1} max={31} className="w-full border rounded px-2 py-1.5 text-sm mt-1" value={form.payment_day ?? ""} onChange={e => set("payment_day", e.target.value)} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-gray-600">기본금액</label>
+              <label className="text-sm text-gray-700">기본금액</label>
               <input type="number" className="w-full border rounded px-2 py-1.5 text-sm mt-1" value={form.default_amount ?? ""} onChange={e => set("default_amount", e.target.value)} />
             </div>
             <div>
-              <label className="text-xs text-gray-600">계좌/사용자번호</label>
+              <label className="text-sm text-gray-700">계좌/사용자번호</label>
               <input className="w-full border rounded px-2 py-1.5 text-sm mt-1" value={form.account_no ?? ""} onChange={e => set("account_no", e.target.value)} />
             </div>
           </div>
           {form.category === "카드결재" && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-gray-600">정산 시작일 (전월)</label>
+                <label className="text-sm text-gray-700">정산 시작일 (전월)</label>
                 <input type="number" min={1} max={31} className="w-full border rounded px-2 py-1.5 text-sm mt-1" value={form.settlement_start_day ?? ""} onChange={e => set("settlement_start_day", e.target.value)} />
               </div>
               <div>
-                <label className="text-xs text-gray-600">정산 종료일 (당월)</label>
+                <label className="text-sm text-gray-700">정산 종료일 (당월)</label>
                 <input type="number" min={1} max={31} className="w-full border rounded px-2 py-1.5 text-sm mt-1" value={form.settlement_end_day ?? ""} onChange={e => set("settlement_end_day", e.target.value)} />
               </div>
             </div>
@@ -444,11 +435,11 @@ export default function CostPage() {
                 <h2 className="text-xs font-semibold text-gray-600 mb-2">수입 대비 지출 현황</h2>
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs text-gray-600">수입</span>
+                    <span className="text-sm text-gray-700">수입</span>
                     <span className="text-sm font-medium text-blue-600">₩{fmt(income)}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-xs text-gray-600">지출</span>
+                    <span className="text-sm text-gray-700">지출</span>
                     <span className="text-sm font-medium text-red-500">₩{fmt(expense)}</span>
                   </div>
                   <div className="border-t border-gray-100 pt-1.5 flex justify-between items-center">
@@ -499,8 +490,8 @@ export default function CostPage() {
                   </thead>
                   <tbody>
                     {recentMonths.map(rm => (
-                      <tr key={rm.year_month} className={`border-b border-gray-50 ${rm.year_month === yearMonth ? "font-semibold" : ""}`}>
-                        <td className="py-1 text-gray-700">{rm.year_month}</td>
+                      <tr key={rm.yyyymm} className={`border-b border-gray-50 ${rm.yyyymm === yearMonth ? "font-semibold" : ""}`}>
+                        <td className="py-1 text-gray-700">{rm.yyyymm}</td>
                         <td className="py-1 text-right text-blue-600">{rm.income ? fmt(rm.income) : "-"}</td>
                         <td className="py-1 text-right text-red-500">{rm.expense ? fmt(rm.expense) : "-"}</td>
                       </tr>
