@@ -173,6 +173,7 @@ export async function getAllCostItems(): Promise<CostItem[]> {
 }
 
 export async function updateCostItemFields(id: number, data: {
+  category?: string
   name?: string
   payment_method?: string | null
   payment_day?: number | null
@@ -181,10 +182,11 @@ export async function updateCostItemFields(id: number, data: {
   const pool = getPensionPool()
   const pairs: string[] = []
   const values: unknown[] = [id]
-  if (data.name !== undefined)            { pairs.push(`item_nm   = $${values.length + 1}`); values.push(data.name) }
-  if (data.payment_method !== undefined)  { pairs.push(`cost_type = $${values.length + 1}`); values.push(data.payment_method) }
-  if (data.payment_day !== undefined)     { pairs.push(`pay_dd    = $${values.length + 1}`); values.push(data.payment_day) }
-  if (data.default_amount !== undefined)  { pairs.push(`amt       = $${values.length + 1}`); values.push(data.default_amount) }
+  if (data.category !== undefined)        { pairs.push(`item_type1 = $${values.length + 1}`); values.push(data.category) }
+  if (data.name !== undefined)            { pairs.push(`item_nm    = $${values.length + 1}`); values.push(data.name) }
+  if (data.payment_method !== undefined)  { pairs.push(`cost_type  = $${values.length + 1}`); values.push(data.payment_method) }
+  if (data.payment_day !== undefined)     { pairs.push(`pay_dd     = $${values.length + 1}`); values.push(data.payment_day) }
+  if (data.default_amount !== undefined)  { pairs.push(`amt        = $${values.length + 1}`); values.push(data.default_amount) }
   if (pairs.length === 0) return
   await pool.query(`UPDATE my_cost_item SET ${pairs.join(', ')} WHERE id = $1`, values)
 }

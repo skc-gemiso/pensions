@@ -11,9 +11,13 @@
 - [x] `app/life/cost/actions.ts` 생성
 - [x] `app/life/cost/page.tsx` 생성
 - [x] `app/life/page.tsx` — `/life/cost` 리다이렉트로 변경
-- [ ] git push
+- [x] git push (commit: d7323da)
 
-## 재개 방법
+## 구현 완료
 
-새 세션에서 이 파일을 읽은 후 미완료 항목부터 진행.
+모든 작업 완료. 추가 개선이 필요한 경우 이 파일을 참고.
+
+## 재개 방법 (향후 개선 시)
+
+새 세션에서 이 파일을 읽은 후 추가 작업 진행.
 설계 상세는 [PLAN.md](PLAN.md), 기술 명세는 [cost_task.md](cost_task.md) 참조.

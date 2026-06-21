@@ -177,6 +177,17 @@ function CostRow({ row, yearMonth, onSaved, onDeactivate }: RowProps) {
 }
 
 // ─────────────────────────────────────────────
+// 카테고리 옵션 (항목 관리 모달용)
+// ─────────────────────────────────────────────
+const CATEGORY_MANAGE_OPTIONS = [
+  { label: "고정지출",      value: "고정지출" },
+  { label: "고정이체",      value: "고정이체" },
+  { label: "생활비/공과금", value: "생활비" },
+  { label: "카드결재",      value: "카드결재" },
+  { label: "수입",          value: "기타수입" },
+]
+
+// ─────────────────────────────────────────────
 // 항목 추가 모달
 // ─────────────────────────────────────────────
 // ─────────────────────────────────────────────
@@ -189,6 +200,7 @@ type ManageRowProps = {
 
 function ManageRow({ item, onUpdated }: ManageRowProps) {
   const [editing, setEditing] = useState(false)
+  const [category, setCategory] = useState(item.category)
   const [name, setName] = useState(item.name)
   const [payMethod, setPayMethod] = useState(item.payment_method ?? "")
   const [payDay, setPayDay] = useState(item.payment_day != null ? String(item.payment_day) : "")
@@ -196,6 +208,7 @@ function ManageRow({ item, onUpdated }: ManageRowProps) {
 
   async function save() {
     await updateCostItemFields(item.id, {
+      category,
       name,
       payment_method: payMethod || null,
       payment_day: payDay ? Number(payDay) : null,
@@ -212,10 +225,23 @@ function ManageRow({ item, onUpdated }: ManageRowProps) {
   }
 
   const rowCls = `border-b border-gray-100 text-sm ${!item.is_active ? "opacity-40" : "hover:bg-gray-50"}`
+  const categoryLabel = CATEGORY_MANAGE_OPTIONS.find(o => o.value === category)?.label ?? category
 
   return (
     <tr className={rowCls}>
-      <td className="px-2 py-1.5 text-xs text-gray-500 whitespace-nowrap">{item.category}</td>
+      <td className="px-2 py-1.5 whitespace-nowrap">
+        {editing
+          ? <select
+              className="border rounded px-1.5 py-0.5 text-xs focus:outline-none focus:border-blue-400"
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+            >
+              {CATEGORY_MANAGE_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          : <span className="text-xs text-gray-500">{categoryLabel}</span>}
+      </td>
       <td className="px-2 py-1.5">
         {editing
           ? <input className="w-full border rounded px-1.5 py-0.5 text-sm focus:outline-none focus:border-blue-400" value={name} onChange={e => setName(e.target.value)} />
