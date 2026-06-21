@@ -9,6 +9,9 @@ import {
   addCostItem,
   deactivateCostItem,
   copyFromPrevMonth,
+  getAllCostItems,
+  updateCostItemFields,
+  activateCostItem,
   type MonthDataRow,
   type RecentMonthSummary,
   type CostItem,
@@ -175,6 +178,145 @@ function CostRow({ row, yearMonth, onSaved, onDeactivate }: RowProps) {
 
 // ─────────────────────────────────────────────
 // 항목 추가 모달
+// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// 항목 관리 모달
+// ─────────────────────────────────────────────
+type ManageRowProps = {
+  item: CostItem
+  onUpdated: () => void
+}
+
+function ManageRow({ item, onUpdated }: ManageRowProps) {
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState(item.name)
+  const [payMethod, setPayMethod] = useState(item.payment_method ?? "")
+  const [payDay, setPayDay] = useState(item.payment_day != null ? String(item.payment_day) : "")
+  const [amt, setAmt] = useState(String(item.default_amount))
+
+  async function save() {
+    await updateCostItemFields(item.id, {
+      name,
+      payment_method: payMethod || null,
+      payment_day: payDay ? Number(payDay) : null,
+      default_amount: Number(amt.replace(/,/g, "")) || 0,
+    })
+    setEditing(false)
+    onUpdated()
+  }
+
+  async function toggleActive() {
+    if (item.is_active) await deactivateCostItem(item.id)
+    else await activateCostItem(item.id)
+    onUpdated()
+  }
+
+  const rowCls = `border-b border-gray-100 text-sm ${!item.is_active ? "opacity-40" : "hover:bg-gray-50"}`
+
+  return (
+    <tr className={rowCls}>
+      <td className="px-2 py-1.5 text-xs text-gray-500 whitespace-nowrap">{item.category}</td>
+      <td className="px-2 py-1.5">
+        {editing
+          ? <input className="w-full border rounded px-1.5 py-0.5 text-sm focus:outline-none focus:border-blue-400" value={name} onChange={e => setName(e.target.value)} />
+          : <span className="text-gray-800">{item.name}</span>}
+      </td>
+      <td className="px-2 py-1.5">
+        {editing
+          ? <input className="w-full border rounded px-1.5 py-0.5 text-sm focus:outline-none focus:border-blue-400" value={payMethod} onChange={e => setPayMethod(e.target.value)} placeholder="-" />
+          : <span className="text-gray-600">{item.payment_method ?? "-"}</span>}
+      </td>
+      <td className="px-2 py-1.5 text-center">
+        {editing
+          ? <input type="number" min={1} max={31} className="w-14 border rounded px-1.5 py-0.5 text-sm text-center focus:outline-none focus:border-blue-400" value={payDay} onChange={e => setPayDay(e.target.value)} placeholder="-" />
+          : <span className="text-gray-600">{item.payment_day ?? "-"}</span>}
+      </td>
+      <td className="px-2 py-1.5 text-right">
+        {editing
+          ? <input className="w-24 border rounded px-1.5 py-0.5 text-sm text-right focus:outline-none focus:border-blue-400" value={amt} onChange={e => setAmt(e.target.value)} />
+          : <span className="text-gray-700 font-medium">{item.default_amount ? fmt(item.default_amount) : "-"}</span>}
+      </td>
+      <td className="px-2 py-1.5 text-center whitespace-nowrap">
+        {editing ? (
+          <span className="flex gap-1 justify-center">
+            <button onClick={save} className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700">저장</button>
+            <button onClick={() => setEditing(false)} className="text-xs px-2 py-0.5 border text-gray-600 rounded hover:bg-gray-50">취소</button>
+          </span>
+        ) : (
+          <button onClick={() => setEditing(true)} className="text-xs px-2 py-0.5 border text-gray-600 rounded hover:bg-gray-50">수정</button>
+        )}
+      </td>
+      <td className="px-2 py-1.5 text-center">
+        <button
+          onClick={toggleActive}
+          className={`text-xs px-2 py-0.5 rounded border ${item.is_active ? "text-red-500 border-red-200 hover:bg-red-50" : "text-green-600 border-green-200 hover:bg-green-50"}`}
+        >
+          {item.is_active ? "비활성" : "활성화"}
+        </button>
+      </td>
+    </tr>
+  )
+}
+
+function ItemManageModal({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
+  const [items, setItems] = useState<CostItem[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const reload = useCallback(async () => {
+    setLoading(true)
+    setItems(await getAllCostItems())
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { reload() }, [reload])
+
+  async function handleUpdated() {
+    await reload()
+    onChanged()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+          <h3 className="text-base font-bold text-gray-700">항목 관리</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+        </div>
+        <div className="overflow-auto flex-1 px-1">
+          {loading ? (
+            <div className="text-center py-10 text-gray-400 text-sm">불러오는 중...</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-white z-10">
+                <tr className="text-xs text-gray-500 border-b border-gray-200">
+                  <th className="px-2 py-2 text-left font-medium">구분</th>
+                  <th className="px-2 py-2 text-left font-medium">항목명</th>
+                  <th className="px-2 py-2 text-left font-medium">결제수단</th>
+                  <th className="px-2 py-2 text-center font-medium">결제일</th>
+                  <th className="px-2 py-2 text-right font-medium">기본금액</th>
+                  <th className="px-2 py-2 text-center font-medium">수정</th>
+                  <th className="px-2 py-2 text-center font-medium">상태</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(item => (
+                  <ManageRow key={item.id} item={item} onUpdated={handleUpdated} />
+                ))}
+                {items.length === 0 && (
+                  <tr><td colSpan={7} className="text-center py-8 text-gray-400 text-sm">항목 없음</td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
+          <button onClick={onClose} className="text-sm px-4 py-1.5 border rounded text-gray-600 hover:bg-gray-50">닫기</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────
 type AddModalProps = {
   defaultCategory: string
@@ -345,6 +487,7 @@ export default function CostPage() {
   const [recentMonths, setRecentMonths] = useState<RecentMonthSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [addModalCategory, setAddModalCategory] = useState<string | null>(null)
+  const [showItemManage, setShowItemManage] = useState(false)
   const [activeTab, setActiveTab] = useState<string>("")
   const monthOptions = buildMonthOptions()
 
@@ -404,7 +547,15 @@ export default function CostPage() {
     <AppLayout>
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-lg font-bold text-gray-800">생활비 관리</h1>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowItemManage(true)}
+              className="text-sm text-gray-600 border border-gray-300 rounded px-3 py-1.5 hover:bg-gray-50"
+            >
+              항목 관리
+            </button>
+            <h1 className="text-lg font-bold text-gray-800">생활비 관리</h1>
+          </div>
           <div className="flex items-center gap-2">
             <select
               className="border border-gray-300 rounded px-2 py-1.5 text-sm text-gray-700 focus:outline-none focus:border-blue-400"
@@ -559,6 +710,14 @@ export default function CostPage() {
           </div>
         )}
       </div>
+
+      {/* 항목 관리 모달 */}
+      {showItemManage && (
+        <ItemManageModal
+          onClose={() => setShowItemManage(false)}
+          onChanged={load}
+        />
+      )}
 
       {/* 항목 추가 모달 */}
       {addModalCategory && (

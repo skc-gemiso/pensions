@@ -145,9 +145,58 @@ export async function addCostItem(data: {
   ])
 }
 
+export async function getAllCostItems(): Promise<CostItem[]> {
+  const pool = getPensionPool()
+  const { rows } = await pool.query<CostItem>(`
+    SELECT
+      id,
+      item_type1  AS category,
+      item_type2  AS sub_category,
+      item_nm     AS name,
+      cost_type   AS payment_method,
+      pay_dd      AS payment_day,
+      amt         AS default_amount,
+      NULL::text  AS account_no,
+      NULL::int   AS settlement_start_day,
+      NULL::int   AS settlement_end_day,
+      0           AS sort_order,
+      (use_yn = 'Y') AS is_active
+    FROM my_cost_item
+    ORDER BY
+      CASE item_type1
+        WHEN '기타수입' THEN 1 WHEN '고정지출' THEN 2 WHEN '고정이체' THEN 3
+        WHEN '생활비'   THEN 4 WHEN '카드결재' THEN 5 ELSE 9
+      END,
+      id
+  `)
+  return rows
+}
+
+export async function updateCostItemFields(id: number, data: {
+  name?: string
+  payment_method?: string | null
+  payment_day?: number | null
+  default_amount?: number
+}): Promise<void> {
+  const pool = getPensionPool()
+  const pairs: string[] = []
+  const values: unknown[] = [id]
+  if (data.name !== undefined)            { pairs.push(`item_nm   = $${values.length + 1}`); values.push(data.name) }
+  if (data.payment_method !== undefined)  { pairs.push(`cost_type = $${values.length + 1}`); values.push(data.payment_method) }
+  if (data.payment_day !== undefined)     { pairs.push(`pay_dd    = $${values.length + 1}`); values.push(data.payment_day) }
+  if (data.default_amount !== undefined)  { pairs.push(`amt       = $${values.length + 1}`); values.push(data.default_amount) }
+  if (pairs.length === 0) return
+  await pool.query(`UPDATE my_cost_item SET ${pairs.join(', ')} WHERE id = $1`, values)
+}
+
 export async function deactivateCostItem(id: number): Promise<void> {
   const pool = getPensionPool()
   await pool.query(`UPDATE my_cost_item SET use_yn = 'N' WHERE id = $1`, [id])
+}
+
+export async function activateCostItem(id: number): Promise<void> {
+  const pool = getPensionPool()
+  await pool.query(`UPDATE my_cost_item SET use_yn = 'Y' WHERE id = $1`, [id])
 }
 
 export async function copyFromPrevMonth(yyyymm: string): Promise<void> {
