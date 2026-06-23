@@ -151,6 +151,15 @@ itemStyle={{ fontSize: 12, padding: "1px 0" }}
 
 ---
 
+## 다크모드 미지원
+
+이 앱은 다크모드를 지원하지 않는다.
+`globals.css`에서 `prefers-color-scheme: dark` 블록을 제거해 OS 설정과 무관하게 항상 라이트모드 색상(`--foreground: #171717`, `--background: #ffffff`)을 유지한다.
+
+다크모드 관련 CSS를 추가하지 않는다. 모든 화면·팝업의 텍스트 가시성은 이 전역 설정으로 보장한다.
+
+---
+
 ## 레이아웃
 
 - 모든 페이지 최대 너비: `max-w-7xl mx-auto` (AppLayout 내부 첫 번째 div)

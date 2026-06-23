@@ -12,6 +12,8 @@ import {
   getAllCostItems,
   updateCostItemFields,
   activateCostItem,
+  getAvailableCostItems,
+  addCostInfoItems,
   type MonthDataRow,
   type RecentMonthSummary,
   type CostItem,
@@ -21,7 +23,30 @@ import {
 // 유틸
 // ─────────────────────────────────────────────
 function fmt(n: number): string {
-  return n.toLocaleString("ko-KR")
+  return Math.round(n).toLocaleString("ko-KR")
+}
+
+const PAY_METHOD_OPTIONS = [
+  { label: "-",   value: "" },
+  { label: "현금", value: "1" },
+  { label: "카드", value: "2" },
+]
+const PAY_METHOD_COLOR: Record<string, string> = {
+  "1": "text-emerald-600 font-medium",
+  "2": "text-blue-600 font-medium",
+}
+function getPayMethodLabel(v: string | null) {
+  if (v === "1") return "현금"
+  if (v === "2") return "카드"
+  return v || "-"
+}
+
+const CATEGORY_COLOR: Record<string, string> = {
+  "1": "text-red-600 font-medium",
+  "2": "text-purple-600 font-medium",
+  "3": "text-amber-600 font-medium",
+  "4": "text-blue-600 font-medium",
+  "5": "text-emerald-600 font-medium",
 }
 
 function getCurrentYearMonth(): string {
@@ -55,13 +80,9 @@ type TooltipProps = { row: MonthDataRow }
 
 function Tooltip({ row }: TooltipProps) {
   const lines: string[] = []
-  if (row.payment_method) lines.push(`결제수단: ${row.payment_method}`)
-  if (row.payment_day) lines.push(`결제일: ${row.payment_day}일`)
-  if (row.account_no) lines.push(`계좌/사용자번호: ${row.account_no}`)
-  if (row.default_amount) lines.push(`기본금액: ${fmt(row.default_amount)}`)
-  if (row.category === "카드결재" && row.settlement_start_day && row.settlement_end_day) {
-    lines.push(`정산기간: 전월 ${row.settlement_start_day}일 ~ 당월 ${row.settlement_end_day}일`)
-  }
+  if (row.cost_type) lines.push(`결제수단: ${getPayMethodLabel(row.cost_type)}`)
+  if (row.pay_dd) lines.push(`결제일: ${row.pay_dd}일`)
+  if (row.amt) lines.push(`기본금액: ${fmt(row.amt)}`)
   if (row.memo) lines.push(`메모: ${row.memo}`)
   if (lines.length === 0) return null
   return (
@@ -103,10 +124,6 @@ function CostRow({ row, yearMonth, onSaved, onDeactivate }: RowProps) {
     onSaved()
   }
 
-  const settlementLabel =
-    row.category === "카드결재" && row.settlement_start_day && row.settlement_end_day
-      ? `전월${row.settlement_start_day}~당월${row.settlement_end_day}`
-      : null
 
   return (
     <tr
@@ -116,17 +133,14 @@ function CostRow({ row, yearMonth, onSaved, onDeactivate }: RowProps) {
       onMouseLeave={() => setHover(false)}
     >
       <td className="py-1.5 px-2 relative">
-        <span className="text-gray-700 text-sm">{row.name}</span>
+        <span className="text-gray-700 text-sm">{row.item_nm}</span>
         {hover && <Tooltip row={row} />}
       </td>
-      {row.category === "카드결재" && (
-        <td className="py-1.5 px-2 text-xs text-gray-500 text-center">{settlementLabel}</td>
-      )}
       <td className="py-1.5 px-2 text-xs text-gray-500 text-center">
-        {row.payment_day ? `${row.payment_day}일` : "-"}
+        {row.pay_dd ? `${row.pay_dd}일` : "-"}
       </td>
       <td className="py-1.5 px-2 text-xs text-gray-500 text-center">
-        {row.payment_method ?? "-"}
+        {getPayMethodLabel(row.cost_type)}
       </td>
       <td className="py-1.5 px-2 text-right min-w-[90px]" onClick={e => e.stopPropagation()}>
         {editing ? (
@@ -148,7 +162,7 @@ function CostRow({ row, yearMonth, onSaved, onDeactivate }: RowProps) {
           </span>
         )}
       </td>
-      {row.category === "카드결재" && (
+      {row.item_type1 === "4" && (
         <td className="py-1.5 px-2 text-xs text-center">
           {(() => { const d = diffLabel(row.amount, row.prev_amount); return <span className={d.cls}>{d.text}</span> })()}
         </td>
@@ -169,7 +183,7 @@ function CostRow({ row, yearMonth, onSaved, onDeactivate }: RowProps) {
       <td className="py-1.5 px-2 text-center" onClick={e => e.stopPropagation()}>
         <button
           className="text-xs text-gray-400 hover:text-red-500"
-          onClick={() => { if (confirm(`"${row.name}" 항목을 비활성화하시겠습니까?`)) onDeactivate(row.id) }}
+          onClick={() => { if (confirm(`"${row.item_nm}" 항목을 비활성화하시겠습니까?`)) onDeactivate(row.id) }}
         >✕</button>
       </td>
     </tr>
@@ -180,12 +194,14 @@ function CostRow({ row, yearMonth, onSaved, onDeactivate }: RowProps) {
 // 카테고리 옵션 (항목 관리 모달용)
 // ─────────────────────────────────────────────
 const CATEGORY_MANAGE_OPTIONS = [
-  { label: "고정지출",      value: "고정지출" },
-  { label: "고정이체",      value: "고정이체" },
-  { label: "생활비/공과금", value: "생활비" },
-  { label: "카드결재",      value: "카드결재" },
-  { label: "수입",          value: "기타수입" },
+  { label: "고정지출",      value: "1" },
+  { label: "고정이체",      value: "2" },
+  { label: "생활비/공과금", value: "3" },
+  { label: "카드결재",      value: "4" },
+  { label: "수입",          value: "5" },
 ]
+
+const BUILDING_OPTIONS = ["푸르지오", "효성쉐르빌", "신곡동빌라"]
 
 // ─────────────────────────────────────────────
 // 항목 추가 모달
@@ -193,100 +209,208 @@ const CATEGORY_MANAGE_OPTIONS = [
 // ─────────────────────────────────────────────
 // 항목 관리 모달
 // ─────────────────────────────────────────────
-type ManageRowProps = {
+// ─────────────────────────────────────────────
+// 항목 수정 모달
+// ─────────────────────────────────────────────
+type EditItemModalProps = {
   item: CostItem
+  onClose: () => void
   onUpdated: () => void
 }
 
-function ManageRow({ item, onUpdated }: ManageRowProps) {
-  const [editing, setEditing] = useState(false)
-  const [category, setCategory] = useState(item.category)
-  const [name, setName] = useState(item.name)
-  const [payMethod, setPayMethod] = useState(item.payment_method ?? "")
-  const [payDay, setPayDay] = useState(item.payment_day != null ? String(item.payment_day) : "")
-  const [amt, setAmt] = useState(String(item.default_amount))
+function EditItemModal({ item, onClose, onUpdated }: EditItemModalProps) {
+  const [category, setCategory] = useState(item.item_type1)
+  const [building, setBuilding] = useState(item.item_type2 ?? "")
+  const [name, setName] = useState(item.item_nm)
+  const [payMethod, setPayMethod] = useState(item.cost_type ?? "")
+  const [payDay, setPayDay] = useState(item.pay_dd != null ? String(item.pay_dd) : "")
+  const [amt, setAmt] = useState(Math.round(item.amt).toLocaleString("ko-KR"))
+  const [memo, setMemo] = useState(item.memo ?? "")
+  const [saving, setSaving] = useState(false)
 
-  async function save() {
+  async function save(e: React.SyntheticEvent) {
+    e.preventDefault()
+    setSaving(true)
     await updateCostItemFields(item.id, {
-      category,
-      name,
-      payment_method: payMethod || null,
-      payment_day: payDay ? Number(payDay) : null,
-      default_amount: Number(amt.replace(/,/g, "")) || 0,
+      item_type1: category,
+      item_type2: category === "3" ? (building || null) : null,
+      item_nm: name,
+      cost_type: payMethod || null,
+      pay_dd: payDay ? Number(payDay) : null,
+      amt: Number(amt.replace(/,/g, "")) || 0,
+      memo: memo || null,
     })
-    setEditing(false)
+    setSaving(false)
     onUpdated()
+    onClose()
   }
 
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+        {/* 헤더 */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
+          <h3 className="text-base font-bold text-gray-800">항목 수정</h3>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+        </div>
+
+        <form onSubmit={save}>
+          <div className="px-6 py-5 space-y-4">
+
+            {/* 카테고리 + 건물명 */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">카테고리</label>
+                <select
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                  value={category} onChange={e => setCategory(e.target.value)}
+                >
+                  {CATEGORY_MANAGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              {category === "3" && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">건물명</label>
+                  <select
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                    value={building} onChange={e => setBuilding(e.target.value)}
+                  >
+                    <option value="">-</option>
+                    {BUILDING_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* 항목명 */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">항목명 <span className="text-red-400">*</span></label>
+              <input
+                required
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                value={name} onChange={e => setName(e.target.value)}
+              />
+            </div>
+
+            {/* 결제수단 · 결제일 · 기본금액 */}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">결제수단</label>
+                <select
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-center text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                  value={payMethod} onChange={e => setPayMethod(e.target.value)}
+                >
+                  {PAY_METHOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">결제일</label>
+                <input
+                  type="number" min={1} max={31} placeholder="-"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                  value={payDay} onChange={e => setPayDay(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">기본금액</label>
+                <input
+                  type="text" inputMode="numeric" placeholder="0"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                  value={amt}
+                  onChange={e => {
+                    const raw = e.target.value.replace(/[^0-9]/g, "")
+                    setAmt(raw ? Number(raw).toLocaleString("ko-KR") : "")
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* 비고 */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">비고</label>
+              <input
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                value={memo} onChange={e => setMemo(e.target.value)} placeholder="선택사항"
+              />
+            </div>
+
+          </div>
+
+          {/* 푸터 */}
+          <div className="flex justify-end gap-2 px-6 py-4 bg-gray-50 border-t border-gray-200">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+              취소
+            </button>
+            <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+              {saving ? "저장 중..." : "저장"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+// 항목 관리 모달 행
+// ─────────────────────────────────────────────
+type ManageRowProps = {
+  item: CostItem
+  onEdit: (item: CostItem) => void
+  onUpdated: () => void
+}
+
+function ManageRow({ item, onEdit, onUpdated }: ManageRowProps) {
   async function toggleActive() {
-    if (item.is_active) await deactivateCostItem(item.id)
+    if (item.use_yn === 'Y') await deactivateCostItem(item.id)
     else await activateCostItem(item.id)
     onUpdated()
   }
 
-  const rowCls = `border-b border-gray-100 text-sm ${!item.is_active ? "opacity-40" : "hover:bg-gray-50"}`
-  const categoryLabel = CATEGORY_MANAGE_OPTIONS.find(o => o.value === category)?.label ?? category
+  const rowCls = `border-b border-gray-100 text-sm ${item.use_yn !== 'Y' ? "opacity-40" : "hover:bg-gray-50"}`
+  const categoryLabel = CATEGORY_MANAGE_OPTIONS.find(o => o.value === item.item_type1)?.label ?? item.item_type1
 
   return (
     <tr className={rowCls}>
       <td className="px-2 py-1.5 whitespace-nowrap">
-        {editing
-          ? <select
-              className="border rounded px-1.5 py-0.5 text-xs focus:outline-none focus:border-blue-400"
-              value={category}
-              onChange={e => setCategory(e.target.value)}
-            >
-              {CATEGORY_MANAGE_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          : <span className="text-xs text-gray-500">{categoryLabel}</span>}
+        <span className={`text-xs ${CATEGORY_COLOR[item.item_type1] ?? "text-gray-500"}`}>{categoryLabel}</span>
+      </td>
+      <td className="px-2 py-1.5 whitespace-nowrap">
+        <span className="text-xs text-gray-600">{item.item_type2 ?? "-"}</span>
       </td>
       <td className="px-2 py-1.5">
-        {editing
-          ? <input className="w-full border rounded px-1.5 py-0.5 text-sm focus:outline-none focus:border-blue-400" value={name} onChange={e => setName(e.target.value)} />
-          : <span className="text-gray-800">{item.name}</span>}
+        <span className="text-gray-800">{item.item_nm}</span>
       </td>
       <td className="px-2 py-1.5">
-        {editing
-          ? <input className="w-full border rounded px-1.5 py-0.5 text-sm focus:outline-none focus:border-blue-400" value={payMethod} onChange={e => setPayMethod(e.target.value)} placeholder="-" />
-          : <span className="text-gray-600">{item.payment_method ?? "-"}</span>}
+        <span className={`text-sm ${PAY_METHOD_COLOR[item.cost_type ?? ""] ?? "text-gray-400"}`}>{getPayMethodLabel(item.cost_type)}</span>
       </td>
       <td className="px-2 py-1.5 text-center">
-        {editing
-          ? <input type="number" min={1} max={31} className="w-14 border rounded px-1.5 py-0.5 text-sm text-center focus:outline-none focus:border-blue-400" value={payDay} onChange={e => setPayDay(e.target.value)} placeholder="-" />
-          : <span className="text-gray-600">{item.payment_day ?? "-"}</span>}
+        <span className="text-gray-600">{item.pay_dd ?? "-"}</span>
       </td>
       <td className="px-2 py-1.5 text-right">
-        {editing
-          ? <input className="w-24 border rounded px-1.5 py-0.5 text-sm text-right focus:outline-none focus:border-blue-400" value={amt} onChange={e => setAmt(e.target.value)} />
-          : <span className="text-gray-700 font-medium">{item.default_amount ? fmt(item.default_amount) : "-"}</span>}
+        <span className="text-gray-700 font-medium">{item.amt ? fmt(item.amt) : "-"}</span>
       </td>
       <td className="px-2 py-1.5 text-center whitespace-nowrap">
-        {editing ? (
-          <span className="flex gap-1 justify-center">
-            <button onClick={save} className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700">저장</button>
-            <button onClick={() => setEditing(false)} className="text-xs px-2 py-0.5 border text-gray-600 rounded hover:bg-gray-50">취소</button>
-          </span>
-        ) : (
-          <button onClick={() => setEditing(true)} className="text-xs px-2 py-0.5 border text-gray-600 rounded hover:bg-gray-50">수정</button>
-        )}
+        <button onClick={() => onEdit(item)} className="text-xs px-2 py-0.5 border text-gray-600 rounded hover:bg-gray-50">수정</button>
       </td>
       <td className="px-2 py-1.5 text-center">
         <button
           onClick={toggleActive}
-          className={`text-xs px-2 py-0.5 rounded border ${item.is_active ? "text-red-500 border-red-200 hover:bg-red-50" : "text-green-600 border-green-200 hover:bg-green-50"}`}
+          className={`text-xs px-2 py-0.5 rounded border ${item.use_yn === 'Y' ? "text-red-500 border-red-200 hover:bg-red-50" : "text-green-600 border-green-200 hover:bg-green-50"}`}
         >
-          {item.is_active ? "비활성" : "활성화"}
+          {item.use_yn === 'Y' ? "비활성" : "활성화"}
         </button>
       </td>
     </tr>
   )
 }
 
-function ItemManageModal({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
+function ItemManageModal({ onClose, onChanged, defaultCategory = "" }: { onClose: () => void; onChanged: () => void; defaultCategory?: string }) {
   const [items, setItems] = useState<CostItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [showAdd, setShowAdd] = useState(false)
+  const [editingItem, setEditingItem] = useState<CostItem | null>(null)
+  const [filterCategory, setFilterCategory] = useState(defaultCategory)
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -301,12 +425,35 @@ function ItemManageModal({ onClose, onChanged }: { onClose: () => void; onChange
     onChanged()
   }
 
+  const filteredItems = filterCategory
+    ? items.filter(i => i.item_type1 === filterCategory)
+    : items
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
-          <h3 className="text-base font-bold text-gray-700">항목 관리</h3>
+          <h3 className="text-base font-bold text-gray-700">입출금 항목 관리</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+        </div>
+        <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-2">
+          <span className="text-xs text-gray-500">카테고리</span>
+          <select
+            className="border border-gray-300 rounded px-2 py-1 text-xs text-gray-700 bg-white focus:outline-none focus:border-blue-400"
+            value={filterCategory}
+            onChange={e => setFilterCategory(e.target.value)}
+          >
+            <option value="">전체</option>
+            {CATEGORY_MANAGE_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => setShowAdd(true)}
+            className="ml-auto text-sm text-blue-600 border border-blue-300 rounded px-3 py-1 hover:bg-blue-50"
+          >
+            입출금 항목 추가
+          </button>
         </div>
         <div className="overflow-auto flex-1 px-1">
           {loading ? (
@@ -315,7 +462,8 @@ function ItemManageModal({ onClose, onChanged }: { onClose: () => void; onChange
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-white z-10">
                 <tr className="text-xs text-gray-500 border-b border-gray-200">
-                  <th className="px-2 py-2 text-left font-medium">구분</th>
+                  <th className="px-2 py-2 text-left font-medium">카테고리</th>
+                  <th className="px-2 py-2 text-left font-medium">건물명</th>
                   <th className="px-2 py-2 text-left font-medium">항목명</th>
                   <th className="px-2 py-2 text-left font-medium">결제수단</th>
                   <th className="px-2 py-2 text-center font-medium">결제일</th>
@@ -325,11 +473,11 @@ function ItemManageModal({ onClose, onChanged }: { onClose: () => void; onChange
                 </tr>
               </thead>
               <tbody>
-                {items.map(item => (
-                  <ManageRow key={item.id} item={item} onUpdated={handleUpdated} />
+                {filteredItems.map(item => (
+                  <ManageRow key={item.id} item={item} onEdit={setEditingItem} onUpdated={handleUpdated} />
                 ))}
-                {items.length === 0 && (
-                  <tr><td colSpan={7} className="text-center py-8 text-gray-400 text-sm">항목 없음</td></tr>
+                {filteredItems.length === 0 && (
+                  <tr><td colSpan={8} className="text-center py-8 text-gray-400 text-sm">항목 없음</td></tr>
                 )}
               </tbody>
             </table>
@@ -339,6 +487,20 @@ function ItemManageModal({ onClose, onChanged }: { onClose: () => void; onChange
           <button onClick={onClose} className="text-sm px-4 py-1.5 border rounded text-gray-600 hover:bg-gray-50">닫기</button>
         </div>
       </div>
+      {showAdd && (
+        <AddItemModal
+          defaultCategory={filterCategory || "1"}
+          onClose={() => setShowAdd(false)}
+          onAdded={handleUpdated}
+        />
+      )}
+      {editingItem && (
+        <EditItemModal
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
+          onUpdated={async () => { setEditingItem(null); await handleUpdated() }}
+        />
+      )}
     </div>
   )
 }
@@ -350,10 +512,8 @@ type AddModalProps = {
   onAdded: () => void
 }
 
-const CATEGORIES = ["고정지출", "고정이체", "생활비", "카드결재", "기타수입"]
-
 function AddItemModal({ defaultCategory, onClose, onAdded }: AddModalProps) {
-  const [form, setForm] = useState<Partial<CostItem & { category: string }>>({ category: defaultCategory })
+  const [form, setForm] = useState<Partial<CostItem>>({ item_type1: defaultCategory })
   const [saving, setSaving] = useState(false)
 
   function set(k: string, v: string | number | null) {
@@ -362,18 +522,16 @@ function AddItemModal({ defaultCategory, onClose, onAdded }: AddModalProps) {
 
   async function submit(e: React.SyntheticEvent) {
     e.preventDefault()
-    if (!form.name || !form.category) return
+    if (!form.item_nm || !form.item_type1) return
     setSaving(true)
     await addCostItem({
-      category: form.category!,
-      sub_category: form.sub_category ?? null,
-      name: form.name!,
-      payment_method: form.payment_method ?? null,
-      payment_day: form.payment_day ? Number(form.payment_day) : null,
-      default_amount: Number(form.default_amount) || 0,
-      account_no: form.account_no ?? null,
-      settlement_start_day: form.settlement_start_day ? Number(form.settlement_start_day) : null,
-      settlement_end_day: form.settlement_end_day ? Number(form.settlement_end_day) : null,
+      item_type1: form.item_type1!,
+      item_type2: form.item_type2 ?? null,
+      item_nm: form.item_nm!,
+      cost_type: form.cost_type ?? null,
+      pay_dd: form.pay_dd ? Number(form.pay_dd) : null,
+      amt: Number(form.amt) || 0,
+      memo: form.memo ?? null,
     })
     setSaving(false)
     onAdded()
@@ -381,63 +539,100 @@ function AddItemModal({ defaultCategory, onClose, onAdded }: AddModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-        <h3 className="text-base font-bold text-gray-700 mb-4">항목 추가</h3>
-        <form onSubmit={submit} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm text-gray-700">카테고리 *</label>
-              <select className="w-full border rounded px-2 py-1.5 text-sm mt-1" value={form.category ?? ""} onChange={e => set("category", e.target.value)}>
-                {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-              </select>
-            </div>
-            {form.category === "생활비" && (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+        {/* 헤더 */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
+          <h3 className="text-base font-bold text-gray-800">입출금 항목 추가</h3>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+        </div>
+
+        <form onSubmit={submit}>
+          <div className="px-6 py-5 space-y-4">
+
+            {/* 카테고리 + 건물명 */}
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-sm text-gray-700">건물명(탭)</label>
-                <input className="w-full border rounded px-2 py-1.5 text-sm mt-1" value={form.sub_category ?? ""} onChange={e => set("sub_category", e.target.value)} />
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">카테고리 <span className="text-red-400">*</span></label>
+                <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" value={form.item_type1 ?? ""} onChange={e => set("item_type1", e.target.value)}>
+                  {CATEGORY_MANAGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
               </div>
-            )}
-          </div>
-          <div>
-            <label className="text-sm text-gray-700">항목명 *</label>
-            <input required className="w-full border rounded px-2 py-1.5 text-sm mt-1" value={form.name ?? ""} onChange={e => set("name", e.target.value)} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm text-gray-700">결제수단</label>
-              <input className="w-full border rounded px-2 py-1.5 text-sm mt-1" value={form.payment_method ?? ""} onChange={e => set("payment_method", e.target.value)} />
+              {form.item_type1 === "3" && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">건물명</label>
+                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" value={form.item_type2 ?? ""} onChange={e => set("item_type2", e.target.value)}>
+                    <option value="">-</option>
+                    {BUILDING_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
+
+            {/* 항목명 */}
             <div>
-              <label className="text-sm text-gray-700">결제일</label>
-              <input type="number" min={1} max={31} className="w-full border rounded px-2 py-1.5 text-sm mt-1" value={form.payment_day ?? ""} onChange={e => set("payment_day", e.target.value)} />
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">항목명 <span className="text-red-400">*</span></label>
+              <input
+                required
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                value={form.item_nm ?? ""}
+                onChange={e => set("item_nm", e.target.value)}
+                placeholder="항목명 입력"
+              />
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm text-gray-700">기본금액</label>
-              <input type="number" className="w-full border rounded px-2 py-1.5 text-sm mt-1" value={form.default_amount ?? ""} onChange={e => set("default_amount", e.target.value)} />
-            </div>
-            <div>
-              <label className="text-sm text-gray-700">계좌/사용자번호</label>
-              <input className="w-full border rounded px-2 py-1.5 text-sm mt-1" value={form.account_no ?? ""} onChange={e => set("account_no", e.target.value)} />
-            </div>
-          </div>
-          {form.category === "카드결재" && (
-            <div className="grid grid-cols-2 gap-3">
+
+            {/* 결제수단 · 결제일 · 기본금액 */}
+            <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="text-sm text-gray-700">정산 시작일 (전월)</label>
-                <input type="number" min={1} max={31} className="w-full border rounded px-2 py-1.5 text-sm mt-1" value={form.settlement_start_day ?? ""} onChange={e => set("settlement_start_day", e.target.value)} />
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">결제수단</label>
+                <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-center text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" value={form.cost_type ?? ""} onChange={e => set("cost_type", e.target.value)}>
+                  {PAY_METHOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
               </div>
               <div>
-                <label className="text-sm text-gray-700">정산 종료일 (당월)</label>
-                <input type="number" min={1} max={31} className="w-full border rounded px-2 py-1.5 text-sm mt-1" value={form.settlement_end_day ?? ""} onChange={e => set("settlement_end_day", e.target.value)} />
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">결제일</label>
+                <input
+                  type="number" min={1} max={31}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                  value={form.pay_dd ?? ""}
+                  onChange={e => set("pay_dd", e.target.value)}
+                  placeholder="-"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">기본금액</label>
+                <input
+                  type="text" inputMode="numeric"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                  value={form.amt !== undefined && form.amt !== null ? String(form.amt) : ""}
+                  onChange={e => {
+                    const raw = e.target.value.replace(/[^0-9]/g, "")
+                    set("amt", raw ? Number(raw) : "")
+                  }}
+                  placeholder="0"
+                />
               </div>
             </div>
-          )}
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 border rounded hover:bg-gray-50">취소</button>
-            <button type="submit" disabled={saving} className="px-3 py-1.5 text-sm text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50">
+
+            {/* 비고 */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">비고</label>
+              <input
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                value={(form.memo as string) ?? ""}
+                onChange={e => set("memo", e.target.value || null)}
+                placeholder="선택사항"
+              />
+            </div>
+
+          </div>
+
+          {/* 푸터 */}
+          <div className="flex justify-end gap-2 px-6 py-4 bg-gray-50 border-t border-gray-200">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+              취소
+            </button>
+            <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
               {saving ? "저장 중..." : "추가"}
             </button>
           </div>
@@ -449,6 +644,113 @@ function AddItemModal({ defaultCategory, onClose, onAdded }: AddModalProps) {
 
 // ─────────────────────────────────────────────
 // 섹션 헤더
+// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// 월 항목 추가 모달 (my_cost_info 생성)
+// ─────────────────────────────────────────────
+function AddToMonthModal({ yyyymm, category, onClose, onAdded }: {
+  yyyymm: string
+  category: string
+  onClose: () => void
+  onAdded: () => void
+}) {
+  const [items, setItems] = useState<CostItem[]>([])
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    getAvailableCostItems(yyyymm, category).then(data => {
+      setItems(data)
+      setLoading(false)
+    })
+  }, [yyyymm, category])
+
+  function toggleItem(id: number) {
+    const next = new Set(selected)
+    next.has(id) ? next.delete(id) : next.add(id)
+    setSelected(next)
+  }
+
+  function toggleAll(checked: boolean) {
+    setSelected(checked ? new Set(items.map(i => i.id)) : new Set())
+  }
+
+  async function submit() {
+    if (selected.size === 0) return
+    setSaving(true)
+    await addCostInfoItems(yyyymm, [...selected])
+    setSaving(false)
+    onAdded()
+    onClose()
+  }
+
+  const categoryLabel = CATEGORY_MANAGE_OPTIONS.find(o => o.value === category)?.label ?? category
+  const allSelected = items.length > 0 && selected.size === items.length
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
+          <h3 className="text-base font-bold text-gray-800">{categoryLabel} — 항목 추가</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+        </div>
+
+        <div className="overflow-auto max-h-[50vh]">
+          {loading ? (
+            <div className="text-center py-10 text-gray-400 text-sm">불러오는 중...</div>
+          ) : items.length === 0 ? (
+            <div className="text-center py-10 text-gray-400 text-sm">추가 가능한 항목이 없습니다</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-white border-b border-gray-200">
+                <tr className="text-xs text-gray-500">
+                  <th className="px-4 py-2 text-center">
+                    <input type="checkbox" checked={allSelected} onChange={e => toggleAll(e.target.checked)} />
+                  </th>
+                  <th className="px-4 py-2 text-left font-medium">항목명</th>
+                  <th className="px-4 py-2 text-center font-medium">결제수단</th>
+                  <th className="px-4 py-2 text-center font-medium">결제일</th>
+                  <th className="px-4 py-2 text-right font-medium">기본금액</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(item => (
+                  <tr
+                    key={item.id}
+                    className={`border-b border-gray-100 cursor-pointer transition-colors ${selected.has(item.id) ? "bg-blue-50" : "hover:bg-gray-50"}`}
+                    onClick={() => toggleItem(item.id)}
+                  >
+                    <td className="px-4 py-2 text-center" onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" checked={selected.has(item.id)} onChange={() => toggleItem(item.id)} />
+                    </td>
+                    <td className="px-4 py-2 text-gray-800">{item.item_nm}</td>
+                    <td className="px-4 py-2 text-center">
+                      <span className={PAY_METHOD_COLOR[item.cost_type ?? ""] ?? "text-gray-400"}>{getPayMethodLabel(item.cost_type)}</span>
+                    </td>
+                    <td className="px-4 py-2 text-center text-gray-600">{item.pay_dd ?? "-"}</td>
+                    <td className="px-4 py-2 text-right text-gray-700 font-medium">{item.amt ? fmt(item.amt) : "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
+          <span className="text-sm text-gray-500">{selected.size > 0 ? `${selected.size}개 선택` : "항목을 선택하세요"}</span>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">취소</button>
+            <button onClick={submit} disabled={saving || selected.size === 0} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+              {saving ? "추가 중..." : "추가"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────
 function SectionHeader({ title, onAdd }: { title: string; onAdd: () => void }) {
   return (
@@ -477,7 +779,6 @@ function SectionTable({ rows, yearMonth, showSettlement, onSaved, onDeactivate }
       <thead>
         <tr className="text-xs text-gray-500 border-b border-gray-200">
           <th className="py-1 px-2 text-left">항목명</th>
-          {showSettlement && <th className="py-1 px-2 text-center">정산기간</th>}
           <th className="py-1 px-2 text-center">날짜</th>
           <th className="py-1 px-2 text-center">결제수단</th>
           <th className="py-1 px-2 text-right">금액</th>
@@ -512,8 +813,8 @@ export default function CostPage() {
   const [rows, setRows] = useState<MonthDataRow[]>([])
   const [recentMonths, setRecentMonths] = useState<RecentMonthSummary[]>([])
   const [loading, setLoading] = useState(true)
-  const [addModalCategory, setAddModalCategory] = useState<string | null>(null)
   const [showItemManage, setShowItemManage] = useState(false)
+  const [addMonthCategory, setAddMonthCategory] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<string>("")
   const monthOptions = buildMonthOptions()
 
@@ -532,7 +833,7 @@ export default function CostPage() {
 
   // 탭 초기값 설정
   useEffect(() => {
-    const tabs = [...new Set(rows.filter(r => r.category === "생활비" && r.sub_category).map(r => r.sub_category!))]
+    const tabs = [...new Set(rows.filter(r => r.item_type1 === "3" && r.item_type2).map(r => r.item_type2!))]
     if (tabs.length > 0 && !tabs.includes(activeTab)) setActiveTab(tabs[0])
   }, [rows])
 
@@ -548,38 +849,32 @@ export default function CostPage() {
   }
 
   // 집계
-  const income = rows.filter(r => r.category === "기타수입").reduce((s, r) => s + r.amount, 0)
-  const expense = rows.filter(r => r.category !== "기타수입").reduce((s, r) => s + r.amount, 0)
+  const income = rows.filter(r => r.item_type1 === "5").reduce((s, r) => s + r.amount, 0)
+  const expense = rows.filter(r => r.item_type1 !== "5").reduce((s, r) => s + r.amount, 0)
   const balance = income - expense
 
   // 카테고리별 그룹
-  const fixedRows = rows.filter(r => r.category === "고정지출")
-  const transferRows = rows.filter(r => r.category === "고정이체")
-  const livingRows = rows.filter(r => r.category === "생활비")
-  const cardRows = rows.filter(r => r.category === "카드결재")
+  const fixedRows = rows.filter(r => r.item_type1 === "1")
+  const transferRows = rows.filter(r => r.item_type1 === "2")
+  const livingRows = rows.filter(r => r.item_type1 === "3")
+  const cardRows = rows.filter(r => r.item_type1 === "4")
 
-  const livingTabs = [...new Set(livingRows.map(r => r.sub_category ?? "기타"))]
-  const activeTabRows = livingRows.filter(r => (r.sub_category ?? "기타") === (activeTab || livingTabs[0]))
+  const livingTabs = [...new Set(livingRows.map(r => r.item_type2 ?? "기타"))]
+  const activeTabRows = livingRows.filter(r => (r.item_type2 ?? "기타") === (activeTab || livingTabs[0]))
 
   // TOP 3
   const top3 = [...rows]
-    .filter(r => r.category !== "기타수입")
+    .filter(r => r.item_type1 !== "5")
     .sort((a, b) => b.amount - a.amount)
     .slice(0, 3)
 
-  const hasData = rows.some(r => r.amount > 0)
+  const hasData = rows.length > 0
 
   return (
     <AppLayout>
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowItemManage(true)}
-              className="text-sm text-gray-600 border border-gray-300 rounded px-3 py-1.5 hover:bg-gray-50"
-            >
-              항목 관리
-            </button>
             <h1 className="text-lg font-bold text-gray-800">생활비 관리</h1>
           </div>
           <div className="flex items-center gap-2">
@@ -598,6 +893,12 @@ export default function CostPage() {
                 이전 달 복사
               </button>
             )}
+            <button
+              onClick={() => setShowItemManage(true)}
+              className="text-sm text-gray-600 border border-gray-300 rounded px-3 py-1.5 hover:bg-gray-50"
+            >
+              입출금 항목 관리
+            </button>
           </div>
         </div>
 
@@ -606,7 +907,7 @@ export default function CostPage() {
         ) : (
           <div className="flex gap-4">
             {/* ── 왼쪽 패널 ── */}
-            <div className="w-64 shrink-0 space-y-3">
+            <div className="w-[400px] shrink-0 space-y-3">
               {/* 수입 대비 지출 현황 */}
               <div className="bg-white border border-gray-200 rounded-lg p-3">
                 <h2 className="text-xs font-semibold text-gray-600 mb-2">수입 대비 지출 현황</h2>
@@ -641,7 +942,7 @@ export default function CostPage() {
                         <div key={r.id} className="flex items-start justify-between">
                           <div className="flex items-start gap-1.5">
                             <span className="text-xs text-gray-400 mt-0.5">{i + 1}</span>
-                            <span className="text-xs text-gray-700 leading-tight">{r.name}</span>
+                            <span className="text-xs text-gray-700 leading-tight">{r.item_nm}</span>
                           </div>
                           <div className="text-right shrink-0 ml-2">
                             <div className="text-xs font-semibold text-gray-800">{fmt(r.amount)}</div>
@@ -682,7 +983,7 @@ export default function CostPage() {
             <div className="flex-1 min-w-0 space-y-3">
               {/* 고정지출 */}
               <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                <SectionHeader title="고정지출" onAdd={() => setAddModalCategory("고정지출")} />
+                <SectionHeader title="고정지출" onAdd={() => setAddMonthCategory("1")} />
                 {fixedRows.length === 0 ? (
                   <p className="text-xs text-gray-400 px-3 py-3">항목 없음</p>
                 ) : (
@@ -692,7 +993,7 @@ export default function CostPage() {
 
               {/* 고정이체 & 금융 */}
               <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                <SectionHeader title="고정이체 & 금융" onAdd={() => setAddModalCategory("고정이체")} />
+                <SectionHeader title="고정이체 & 금융" onAdd={() => setAddMonthCategory("2")} />
                 {transferRows.length === 0 ? (
                   <p className="text-xs text-gray-400 px-3 py-3">항목 없음</p>
                 ) : (
@@ -702,7 +1003,7 @@ export default function CostPage() {
 
               {/* 생활비 & 공과금 */}
               <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                <SectionHeader title="생활비 & 공과금" onAdd={() => setAddModalCategory("생활비")} />
+                <SectionHeader title="생활비 & 공과금" onAdd={() => setAddMonthCategory("3")} />
                 {livingTabs.length > 1 && (
                   <div className="flex gap-1 px-3 pt-2 border-b border-gray-200">
                     {livingTabs.map(tab => (
@@ -725,7 +1026,7 @@ export default function CostPage() {
 
               {/* 카드결재 */}
               <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                <SectionHeader title="카드결재" onAdd={() => setAddModalCategory("카드결재")} />
+                <SectionHeader title="카드결재" onAdd={() => setAddMonthCategory("4")} />
                 {cardRows.length === 0 ? (
                   <p className="text-xs text-gray-400 px-3 py-3">항목 없음</p>
                 ) : (
@@ -737,7 +1038,7 @@ export default function CostPage() {
         )}
       </div>
 
-      {/* 항목 관리 모달 */}
+      {/* 입출금 항목 관리 모달 */}
       {showItemManage && (
         <ItemManageModal
           onClose={() => setShowItemManage(false)}
@@ -745,11 +1046,12 @@ export default function CostPage() {
         />
       )}
 
-      {/* 항목 추가 모달 */}
-      {addModalCategory && (
-        <AddItemModal
-          defaultCategory={addModalCategory}
-          onClose={() => setAddModalCategory(null)}
+      {/* 월 항목 추가 모달 */}
+      {addMonthCategory && (
+        <AddToMonthModal
+          yyyymm={yearMonth}
+          category={addMonthCategory}
+          onClose={() => setAddMonthCategory(null)}
           onAdded={load}
         />
       )}

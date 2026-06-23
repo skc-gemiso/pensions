@@ -4,17 +4,14 @@ import { getPensionPool } from "@/lib/pension-db"
 
 export type CostItem = {
   id: number
-  category: string
-  sub_category: string | null
-  name: string
-  payment_method: string | null
-  payment_day: number | null
-  default_amount: number
-  account_no: string | null
-  settlement_start_day: number | null
-  settlement_end_day: number | null
-  sort_order: number
-  is_active: boolean
+  item_type1: string
+  item_type2: string | null
+  item_nm: string
+  cost_type: string | null
+  pay_dd: number | null
+  amt: number
+  memo: string | null
+  use_yn: string
 }
 
 export type CostInfo = {
@@ -26,7 +23,7 @@ export type CostInfo = {
 }
 
 export type MonthDataRow = CostItem & {
-  info_id: number | null
+  info_id: number
   amount: number
   memo: string | null
   prev_amount: number
@@ -45,32 +42,29 @@ export async function getMonthData(yyyymm: string): Promise<MonthDataRow[]> {
   const { rows } = await pool.query<MonthDataRow>(`
     SELECT
       i.id,
-      i.item_type1  AS category,
-      i.item_type2  AS sub_category,
-      i.item_nm     AS name,
-      i.cost_type   AS payment_method,
-      i.pay_dd      AS payment_day,
-      i.amt         AS default_amount,
-      NULL::text    AS account_no,
-      NULL::int     AS settlement_start_day,
-      NULL::int     AS settlement_end_day,
-      0             AS sort_order,
-      TRUE          AS is_active,
+      i.item_type1,
+      i.item_type2,
+      i.item_nm,
+      i.cost_type,
+      i.pay_dd,
+      i.amt,
+      i.use_yn,
       c.id          AS info_id,
-      COALESCE(c.amt, 0)::int AS amount,
+      c.amt::int    AS amount,
       c.memo,
       COALESCE(p.amt, 0)::int AS prev_amount
-    FROM my_cost_item i
-    LEFT JOIN my_cost_info c ON c.item_id::int = i.id AND c.yyyymm = $1::text
+    FROM my_cost_info c
+    JOIN my_cost_item i ON i.id = c.item_id::int
     LEFT JOIN my_cost_info p ON p.item_id::int = i.id AND p.yyyymm = $2::text
-    WHERE i.use_yn = 'Y'
+    WHERE c.yyyymm = $1::text
+      AND i.use_yn = 'Y'
     ORDER BY
       CASE i.item_type1
-        WHEN '기타수입'  THEN 1
-        WHEN '고정지출'  THEN 2
-        WHEN '고정이체'  THEN 3
-        WHEN '생활비'    THEN 4
-        WHEN '카드결재'  THEN 5
+        WHEN '5' THEN 1
+        WHEN '1' THEN 2
+        WHEN '2' THEN 3
+        WHEN '3' THEN 4
+        WHEN '4' THEN 5
         ELSE 9
       END,
       i.id
@@ -92,8 +86,8 @@ export async function getRecentMonths(yyyymm: string, n: number): Promise<Recent
   const { rows } = await pool.query<RecentMonthSummary>(`
     SELECT
       c.yyyymm,
-      COALESCE(SUM(CASE WHEN i.item_type1 = '기타수입' THEN c.amt ELSE 0 END), 0)::int AS income,
-      COALESCE(SUM(CASE WHEN i.item_type1 != '기타수입' THEN c.amt ELSE 0 END), 0)::int AS expense
+      COALESCE(SUM(CASE WHEN i.item_type1 = '5' THEN c.amt ELSE 0 END), 0)::int AS income,
+      COALESCE(SUM(CASE WHEN i.item_type1 != '5' THEN c.amt ELSE 0 END), 0)::int AS expense
     FROM my_cost_info c
     JOIN my_cost_item i ON i.id = c.item_id::int
     WHERE c.yyyymm = ANY($1::text[])
@@ -120,28 +114,26 @@ export async function upsertCostInfo(
 }
 
 export async function addCostItem(data: {
-  category: string
-  sub_category?: string | null
-  name: string
-  payment_method?: string | null
-  payment_day?: number | null
-  default_amount?: number
-  account_no?: string | null
-  settlement_start_day?: number | null
-  settlement_end_day?: number | null
-  sort_order?: number
+  item_type1: string
+  item_type2?: string | null
+  item_nm: string
+  cost_type?: string | null
+  pay_dd?: number | null
+  amt?: number
+  memo?: string | null
 }): Promise<void> {
   const pool = getPensionPool()
   await pool.query(`
-    INSERT INTO my_cost_item (item_type1, item_type2, item_nm, cost_type, pay_dd, amt)
-    VALUES ($1, $2, $3, $4, $5, $6)
+    INSERT INTO my_cost_item (item_type1, item_type2, item_nm, cost_type, pay_dd, amt, memo)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
   `, [
-    data.category,
-    data.sub_category ?? null,
-    data.name,
-    data.payment_method ?? null,
-    data.payment_day ?? null,
-    data.default_amount ?? 0,
+    data.item_type1,
+    data.item_type2 ?? null,
+    data.item_nm,
+    data.cost_type ?? null,
+    data.pay_dd ?? null,
+    data.amt ?? 0,
+    data.memo ?? null,
   ])
 }
 
@@ -150,43 +142,71 @@ export async function getAllCostItems(): Promise<CostItem[]> {
   const { rows } = await pool.query<CostItem>(`
     SELECT
       id,
-      item_type1  AS category,
-      item_type2  AS sub_category,
-      item_nm     AS name,
-      cost_type   AS payment_method,
-      pay_dd      AS payment_day,
-      amt         AS default_amount,
-      NULL::text  AS account_no,
-      NULL::int   AS settlement_start_day,
-      NULL::int   AS settlement_end_day,
-      0           AS sort_order,
-      (use_yn = 'Y') AS is_active
+      item_type1,
+      item_type2,
+      item_nm,
+      cost_type,
+      pay_dd,
+      amt,
+      memo,
+      use_yn
     FROM my_cost_item
     ORDER BY
       CASE item_type1
-        WHEN '기타수입' THEN 1 WHEN '고정지출' THEN 2 WHEN '고정이체' THEN 3
-        WHEN '생활비'   THEN 4 WHEN '카드결재' THEN 5 ELSE 9
+        WHEN '5' THEN 1 WHEN '1' THEN 2 WHEN '2' THEN 3
+        WHEN '3' THEN 4 WHEN '4' THEN 5 ELSE 9
       END,
       id
   `)
   return rows
 }
 
+export async function getAvailableCostItems(yyyymm: string, item_type1: string): Promise<CostItem[]> {
+  const pool = getPensionPool()
+  const { rows } = await pool.query<CostItem>(`
+    SELECT id, item_type1, item_type2, item_nm, cost_type, pay_dd, amt, memo, use_yn
+    FROM my_cost_item
+    WHERE use_yn = 'Y'
+      AND item_type1 = $2
+      AND id NOT IN (
+        SELECT item_id::int FROM my_cost_info WHERE yyyymm = $1
+      )
+    ORDER BY id
+  `, [yyyymm, item_type1])
+  return rows
+}
+
+export async function addCostInfoItems(yyyymm: string, itemIds: number[]): Promise<void> {
+  if (itemIds.length === 0) return
+  const pool = getPensionPool()
+  for (const itemId of itemIds) {
+    await pool.query(`
+      INSERT INTO my_cost_info (yyyymm, item_id, amt)
+      SELECT $1, id, amt FROM my_cost_item WHERE id = $2
+      ON CONFLICT (yyyymm, item_id) DO NOTHING
+    `, [yyyymm, itemId])
+  }
+}
+
 export async function updateCostItemFields(id: number, data: {
-  category?: string
-  name?: string
-  payment_method?: string | null
-  payment_day?: number | null
-  default_amount?: number
+  item_type1?: string
+  item_type2?: string | null
+  item_nm?: string
+  cost_type?: string | null
+  pay_dd?: number | null
+  amt?: number
+  memo?: string | null
 }): Promise<void> {
   const pool = getPensionPool()
   const pairs: string[] = []
   const values: unknown[] = [id]
-  if (data.category !== undefined)        { pairs.push(`item_type1 = $${values.length + 1}`); values.push(data.category) }
-  if (data.name !== undefined)            { pairs.push(`item_nm    = $${values.length + 1}`); values.push(data.name) }
-  if (data.payment_method !== undefined)  { pairs.push(`cost_type  = $${values.length + 1}`); values.push(data.payment_method) }
-  if (data.payment_day !== undefined)     { pairs.push(`pay_dd     = $${values.length + 1}`); values.push(data.payment_day) }
-  if (data.default_amount !== undefined)  { pairs.push(`amt        = $${values.length + 1}`); values.push(data.default_amount) }
+  if (data.item_type1 !== undefined) { pairs.push(`item_type1 = $${values.length + 1}`); values.push(data.item_type1) }
+  if (data.item_type2 !== undefined) { pairs.push(`item_type2 = $${values.length + 1}`); values.push(data.item_type2) }
+  if (data.item_nm !== undefined)    { pairs.push(`item_nm    = $${values.length + 1}`); values.push(data.item_nm) }
+  if (data.cost_type !== undefined)  { pairs.push(`cost_type  = $${values.length + 1}`); values.push(data.cost_type) }
+  if (data.pay_dd !== undefined)     { pairs.push(`pay_dd     = $${values.length + 1}`); values.push(data.pay_dd) }
+  if (data.amt !== undefined)        { pairs.push(`amt        = $${values.length + 1}`); values.push(data.amt) }
+  if (data.memo !== undefined)       { pairs.push(`memo       = $${values.length + 1}`); values.push(data.memo) }
   if (pairs.length === 0) return
   await pool.query(`UPDATE my_cost_item SET ${pairs.join(', ')} WHERE id = $1`, values)
 }

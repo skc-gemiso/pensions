@@ -1,4 +1,5 @@
 @AGENTS.md
+@docs/main_design.md
 
 # 문서 동기화 규칙
 
@@ -35,6 +36,53 @@
 4. 사용자에게 어떤 문서를 어떻게 수정 후 변경을 진행 할지 확인한다.
 5. 달러 금액을 표현할때는 t_fx_rate 테이블을 활용하여 원화 항목을 함께 조회한다.
  - 단 원화를 먼저 표현하고 달러를 부가적으로 나타나게 한다.
+
+# SQL 작성 기준
+
+## AS alias 사용 원칙
+
+alias는 꼭 필요한 경우에만 사용한다. **실제 컬럼명을 숨기는 alias는 작성하지 않는다.**
+
+### alias를 사용해야 하는 경우
+
+1. **JOIN 시 동일 컬럼명 충돌** — 두 테이블에 같은 이름의 컬럼이 있어 구분이 필요할 때
+   ```sql
+   -- i.id와 c.id가 모두 존재 → alias 필요
+   c.id AS info_id
+   ```
+2. **계산식·파생값** — 연산 결과나 리터럴 값에 이름을 붙여야 할 때
+   - 이때도 대응하는 DB 컬럼이 존재하면 그 컬럼명을 alias로 사용한다
+   - 완전히 새로운 파생값(두 테이블 합산 등)일 때만 새 이름을 붙인다
+   ```sql
+   -- 대응 컬럼 있음 → 컬럼명 그대로
+   i.use_yn                         -- 직접 조회 (boolean 변환은 TypeScript에서)
+   COALESCE(c.amt, 0)::int AS amt   -- c.amt와 대응, amt 유지
+
+   -- 완전한 파생값 → 새 이름 허용
+   COALESCE(c.amt, 0)::int AS amount     -- 두 테이블 amt 합산 결과
+   COALESCE(p.amt, 0)::int AS prev_amount
+   ```
+
+### alias를 사용하면 안 되는 경우
+
+- 단순히 컬럼명을 다른 이름으로 바꾸는 용도 → **실제 컬럼명을 그대로 쓴다**
+  ```sql
+  -- 잘못된 예
+  i.item_nm AS name,
+  i.cost_type AS payment_method,
+  i.pay_dd AS payment_day
+
+  -- 올바른 예
+  i.item_nm,
+  i.cost_type,
+  i.pay_dd
+  ```
+
+## TypeScript 타입 작성 원칙
+
+- SQL이 반환하는 컬럼명과 TypeScript 타입의 필드명을 **동일하게** 작성한다.
+- alias 없이 `item_nm`을 조회하면 TypeScript 타입도 `item_nm: string`으로 선언한다.
+- alias를 쓴 경우에만 alias명을 TypeScript 필드명으로 사용한다 (`info_id`, `amount`, `is_active` 등).
 
 # 수집기 변경 규칙
 
