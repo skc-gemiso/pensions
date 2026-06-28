@@ -422,30 +422,30 @@ async function _applyMigrations(): Promise<void> {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS my_cost_item (
         id                   SERIAL PRIMARY KEY,
-        category             TEXT NOT NULL,
-        sub_category         TEXT,
-        name                 TEXT NOT NULL,
-        payment_method       TEXT,
-        payment_day          INT,
-        default_amount       NUMERIC(12,0) DEFAULT 0,
-        account_no           TEXT,
-        settlement_start_day INT,
-        settlement_end_day   INT,
-        sort_order           INT DEFAULT 0,
-        is_active            BOOLEAN DEFAULT TRUE,
-        created_at           TIMESTAMPTZ DEFAULT NOW()
+        item_nm              TEXT NOT NULL,
+        in_out               TEXT DEFAULT 'I',
+        cost_type            TEXT DEFAULT '1',
+        pay_dd               INT,
+        item_type1           TEXT NOT NULL,
+        item_type2           TEXT,
+        amt                  NUMERIC(12,0) DEFAULT 0,
+        use_yn               TEXT DEFAULT 'Y',
+        memo                 TEXT,
+        created_at           TIMESTAMPTZ DEFAULT NOW(),
+        updated_at           TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (id)
       )
     `)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS my_cost_info (
         id          SERIAL PRIMARY KEY,
-        year_month  TEXT NOT NULL,
+        yyyymm      TEXT NOT NULL,
         item_id     INT NOT NULL REFERENCES my_cost_item(id),
-        amount      NUMERIC(12,0) DEFAULT 0,
+        amt         NUMERIC(12,0) DEFAULT 0,
         memo        TEXT,
         created_at  TIMESTAMPTZ DEFAULT NOW(),
         updated_at  TIMESTAMPTZ DEFAULT NOW(),
-        UNIQUE (year_month, item_id)
+        UNIQUE (id)
       )
     `)
     await pool.query(`

@@ -460,6 +460,57 @@ export async function getDefaultStockList(): Promise<Array<{ stock_code: string;
   return rows.map((r) => ({ stock_code: r.stock_code, stock_type: Number(r.stock_type) }))
 }
 
+export type MonthlyAccountDiv = {
+  ref_date:   string        // YYYY-MM-DD
+  account_no: string
+  account_nm: string | null
+  qty_13th:   number        // 해당 월 13일 기준 보유 수량
+  dist_total: number        // qty_13th × dist_amt (반올림)
+  tax_total:  number        // qty_13th × tax_base_amt (반올림)
+}
+
+// 분배금 지급기준일별 계좌 보유수량(13일 기산)·분배금 조회
+// 기산 규칙: 각 지급기준일의 해당 월 13일(YYYYMM13)까지 매입한 수량 합산
+export async function getMonthlyDividendByAccount(stockCode: string): Promise<MonthlyAccountDiv[]> {
+  const session = await auth()
+  if (!session?.user) throw new Error("Unauthorized")
+
+  const db = getPensionPool()
+
+  // qty_13th = 해당 기준일의 월 13일까지 누적 순수량 (매입+매도 합산)
+  // dist_amt, tax_base_amt 는 TypeScript에서 곱해 dist_total, tax_total 산출
+  const { rows } = await db.query(`
+    SELECT
+      TO_CHAR(d.ref_date, 'YYYY-MM-DD') AS ref_date,
+      ms.account_no,
+      ma.account_nm,
+      SUM(ms.qty)::int AS qty_13th,
+      d.dist_amt,
+      d.tax_base_amt
+    FROM t_etf_dividend d
+    JOIN my_stock ms
+      ON ms.stock_code = d.stock_code
+      AND ms.s_date <= TO_CHAR(d.ref_date, 'YYYYMM') || '13'
+    LEFT JOIN my_account ma ON ma.account_no = ms.account_no
+    WHERE d.stock_code = $1
+    GROUP BY d.ref_date, d.dist_amt, d.tax_base_amt, ms.account_no, ma.account_nm
+    HAVING SUM(ms.qty) > 0
+    ORDER BY d.ref_date DESC, ms.account_no
+  `, [stockCode])
+
+  return rows.map(r => {
+    const qty = Number(r.qty_13th)
+    return {
+      ref_date:   r.ref_date,
+      account_no: r.account_no,
+      account_nm: r.account_nm ?? null,
+      qty_13th:   qty,
+      dist_total: Math.round(qty * Number(r.dist_amt)),
+      tax_total:  Math.round(qty * Number(r.tax_base_amt)),
+    }
+  })
+}
+
 type SiseRow = { date: string; close: number; e_amt: number; e_rate: number; e_trade: number }
 
 // sise_day.naver 1페이지 스크래핑 (EUC-KR 디코딩 + HTML 파싱)
