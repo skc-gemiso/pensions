@@ -121,9 +121,7 @@ export default function StockPage() {
     getAccounts().then(setAccounts)
     loadHoldings().then((h) => {
       if (h.length > 0) {
-        const firstCode = h[0].stock_code
-        setSelectedCode(firstCode)
-        handleFetchNaver(firstCode, true)
+        setSelectedCode(h[0].stock_code)
       }
     })
     loadTransactions()
