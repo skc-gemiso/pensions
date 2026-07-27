@@ -14,6 +14,7 @@ import {
   activateCostItem,
   getAvailableCostItems,
   addCostInfoItems,
+  copyFromMonth,
   type MonthDataRow,
   type RecentMonthSummary,
   type CostItem,
@@ -65,6 +66,22 @@ function buildMonthOptions(): string[] {
   return options
 }
 
+function buildCopyMonthOptions(yearMonth: string): string[] {
+  const [y, m] = yearMonth.split("-").map(Number)
+  const result: string[] = []
+  for (let i = -3; i <= 3; i++) {
+    if (i === 0) continue
+    const d = new Date(y, m - 1 + i, 1)
+    result.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`)
+  }
+  return result
+}
+
+function fmtYM(yyyymm: string): string {
+  const [y, m] = yyyymm.split("-")
+  return `${y}년 ${Number(m)}월`
+}
+
 function diffLabel(cur: number, prev: number): { text: string; cls: string } {
   const diff = cur - prev
   if (diff === 0 || prev === 0) return { text: "±0", cls: "text-gray-500" }
@@ -98,11 +115,12 @@ function Tooltip({ row }: TooltipProps) {
 type RowProps = {
   row: MonthDataRow
   yearMonth: string
+  hidePayMethod?: boolean
   onSaved: () => void
   onDeactivate: (id: number) => void
 }
 
-function CostRow({ row, yearMonth, onSaved, onDeactivate }: RowProps) {
+function CostRow({ row, yearMonth, hidePayMethod, onSaved, onDeactivate }: RowProps) {
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState(String(row.amount))
   const [memo, setMemo] = useState(row.memo ?? "")
@@ -133,16 +151,27 @@ function CostRow({ row, yearMonth, onSaved, onDeactivate }: RowProps) {
       onMouseLeave={() => setHover(false)}
     >
       <td className="py-1.5 px-2 relative">
-        <span className="text-gray-700 text-sm">{row.item_nm}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-gray-700 text-sm">{row.item_nm}</span>
+          {row.item_type2 && <span className="text-xs text-gray-400 bg-gray-100 px-1 rounded">{row.item_type2}</span>}
+        </div>
         {hover && <Tooltip row={row} />}
       </td>
       <td className="py-1.5 px-2 text-xs text-gray-500 text-center">
         {row.pay_dd ? `${row.pay_dd}일` : "-"}
       </td>
-      <td className="py-1.5 px-2 text-xs text-gray-500 text-center">
-        {getPayMethodLabel(row.cost_type)}
-      </td>
-      <td className="py-1.5 px-2 text-right min-w-[90px]" onClick={e => e.stopPropagation()}>
+      {!hidePayMethod && (
+        <td className="py-1.5 px-2 text-center">
+          {row.cost_type === "2" ? (
+            <span className="inline-block px-1.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-600 rounded">카드</span>
+          ) : row.cost_type === "1" ? (
+            <span className="inline-block px-1.5 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-600 rounded">현금</span>
+          ) : (
+            <span className="text-xs text-gray-400">-</span>
+          )}
+        </td>
+      )}
+      <td className="py-1.5 px-2 text-right" onClick={e => e.stopPropagation()}>
         {editing ? (
           <input
             ref={inputRef}
@@ -167,7 +196,7 @@ function CostRow({ row, yearMonth, onSaved, onDeactivate }: RowProps) {
           {(() => { const d = diffLabel(row.amount, row.prev_amount); return <span className={d.cls}>{d.text}</span> })()}
         </td>
       )}
-      <td className="py-1.5 px-2 text-xs text-gray-500 max-w-[120px] truncate">
+      <td className="py-1.5 px-2 text-xs text-gray-500 overflow-hidden truncate">
         {editing ? (
           <input
             className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs focus:outline-none"
@@ -180,7 +209,7 @@ function CostRow({ row, yearMonth, onSaved, onDeactivate }: RowProps) {
           row.memo
         )}
       </td>
-      <td className="py-1.5 px-2 text-center" onClick={e => e.stopPropagation()}>
+      <td className="py-1.5 px-2 text-right" onClick={e => e.stopPropagation()}>
         <button
           className="text-xs text-gray-400 hover:text-red-500"
           onClick={() => { if (confirm(`"${row.item_nm}" 항목을 비활성화하시겠습니까?`)) onDeactivate(row.id) }}
@@ -646,6 +675,69 @@ function AddItemModal({ defaultCategory, onClose, onAdded }: AddModalProps) {
 // 섹션 헤더
 // ─────────────────────────────────────────────
 // ─────────────────────────────────────────────
+// 생활비 복사 모달
+// ─────────────────────────────────────────────
+function CopyMonthModal({ yearMonth, onClose, onCopied }: {
+  yearMonth: string
+  onClose: () => void
+  onCopied: () => void
+}) {
+  const months = buildCopyMonthOptions(yearMonth)
+  const [selected, setSelected] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function apply() {
+    if (!selected) return
+    const msg = `${fmtYM(yearMonth)} 데이터가 삭제되고 ${fmtYM(selected)} 데이터로 변경됩니다.\n계속하시겠습니까?`
+    if (!confirm(msg)) return
+    setSaving(true)
+    await copyFromMonth(yearMonth, selected)
+    setSaving(false)
+    onCopied()
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl w-64 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+          <h3 className="text-sm font-bold text-gray-700">생활비 복사</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+        </div>
+        <div className="px-4 py-3">
+          <p className="text-xs text-gray-500 mb-3">복사할 원본 년월을 선택하세요.</p>
+          <div className="space-y-1">
+            {months.map(m => (
+              <button
+                key={m}
+                onClick={() => setSelected(m)}
+                className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                  selected === m
+                    ? "bg-blue-50 text-blue-700 font-medium border border-blue-200"
+                    : "hover:bg-gray-50 text-gray-700 border border-transparent"
+                }`}
+              >
+                {fmtYM(m)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 px-4 py-3 bg-gray-50 border-t border-gray-200">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50">취소</button>
+          <button
+            onClick={apply}
+            disabled={!selected || saving}
+            className="px-3 py-1.5 text-sm text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-40"
+          >
+            {saving ? "복사 중..." : "적용"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
 // 월 항목 추가 모달 (my_cost_info 생성)
 // ─────────────────────────────────────────────
 function AddToMonthModal({ yyyymm, category, onClose, onAdded }: {
@@ -752,11 +844,63 @@ function AddToMonthModal({ yyyymm, category, onClose, onAdded }: {
 }
 
 // ─────────────────────────────────────────────
-function SectionHeader({ title, onAdd }: { title: string; onAdd: () => void }) {
+function SectionHeader({ title, onAdd, cardTotal, cashTotal }: {
+  title: string
+  onAdd: () => void
+  cardTotal?: number
+  cashTotal?: number
+}) {
   return (
     <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-200">
-      <span className="text-sm font-semibold text-gray-700">{title}</span>
+      <div className="flex items-center gap-3">
+        <span className="text-sm font-semibold text-gray-700">{title}</span>
+        {(cardTotal !== undefined || cashTotal !== undefined) && (
+          <div className="flex items-center gap-3 text-xs">
+            {!!cardTotal && <span className="text-blue-500">카드 <span className="font-semibold text-blue-600">{fmt(cardTotal)}</span></span>}
+            {!!cashTotal && <span className="text-emerald-600">현금 <span className="font-semibold text-emerald-600">{fmt(cashTotal)}</span></span>}
+          </div>
+        )}
+      </div>
       <button onClick={onAdd} className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ 항목추가</button>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+// 접기/펼치기 섹션 카드
+// ─────────────────────────────────────────────
+function SectionCard({ title, defaultCollapsed, onAdd, cardTotal, cashTotal, children }: {
+  title: string
+  defaultCollapsed?: boolean
+  onAdd: () => void
+  cardTotal?: number
+  cashTotal?: number
+  children: React.ReactNode
+}) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed ?? false)
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-200">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-semibold text-gray-700">{title}</span>
+          {(cardTotal !== undefined || cashTotal !== undefined) && (
+            <div className="flex items-center gap-3 text-xs">
+              {!!cardTotal && <span className="text-blue-500">카드 <span className="font-semibold text-blue-600">{fmt(cardTotal)}</span></span>}
+              {!!cashTotal && <span className="text-emerald-600">현금 <span className="font-semibold text-emerald-600">{fmt(cashTotal)}</span></span>}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={onAdd} className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ 항목추가</button>
+          <button
+            onClick={() => setCollapsed(c => !c)}
+            className="text-xs text-gray-400 hover:text-gray-600 w-5 text-center leading-none"
+          >
+            {collapsed ? "▼" : "▲"}
+          </button>
+        </div>
+      </div>
+      {!collapsed && children}
     </div>
   )
 }
@@ -768,36 +912,42 @@ type SectionTableProps = {
   rows: MonthDataRow[]
   yearMonth: string
   showSettlement?: boolean
+  hidePayMethod?: boolean
+  compact?: boolean
   onSaved: () => void
   onDeactivate: (id: number) => void
 }
 
-function SectionTable({ rows, yearMonth, showSettlement, onSaved, onDeactivate }: SectionTableProps) {
+function SectionTable({ rows, yearMonth, showSettlement, hidePayMethod, compact, onSaved, onDeactivate }: SectionTableProps) {
   const total = rows.reduce((s, r) => s + r.amount, 0)
+  const cardTotal = rows.filter(r => r.cost_type === "2").reduce((s, r) => s + r.amount, 0)
+  const cashTotal = rows.filter(r => r.cost_type === "1").reduce((s, r) => s + r.amount, 0)
+  const baseCols = hidePayMethod ? 2 : 3
+  const trailCols = showSettlement ? 3 : 2
   return (
-    <table className="w-full text-sm">
+    <table className="w-full table-fixed text-sm">
       <thead>
         <tr className="text-xs text-gray-500 border-b border-gray-200">
-          <th className="py-1 px-2 text-left">항목명</th>
-          <th className="py-1 px-2 text-center">날짜</th>
-          <th className="py-1 px-2 text-center">결제수단</th>
-          <th className="py-1 px-2 text-right">금액</th>
-          {showSettlement && <th className="py-1 px-2 text-center">전월대비</th>}
-          <th className="py-1 px-2 text-left">메모</th>
-          <th className="py-1 px-2"></th>
+          <th className={`py-1 px-2 text-left ${compact ? "" : "w-[200px]"}`}>항목명</th>
+          <th className="py-1 px-2 text-center w-[50px]">날짜</th>
+          {!hidePayMethod && <th className="py-1 px-2 text-center w-[68px]">결제수단</th>}
+          <th className="py-1 px-2 text-right w-[100px]">금액</th>
+          {showSettlement && <th className="py-1 px-2 text-center w-[100px]">전월대비</th>}
+          <th className={`py-1 px-2 text-left ${compact ? "w-[80px]" : ""}`}>메모</th>
+          <th className="py-1 px-2 w-8"></th>
         </tr>
       </thead>
       <tbody>
         {rows.map(row => (
-          <CostRow key={row.id} row={row} yearMonth={yearMonth} onSaved={onSaved} onDeactivate={onDeactivate} />
+          <CostRow key={row.id} row={row} yearMonth={yearMonth} hidePayMethod={hidePayMethod} onSaved={onSaved} onDeactivate={onDeactivate} />
         ))}
       </tbody>
       {rows.length > 0 && (
         <tfoot>
           <tr className="border-t border-gray-200 bg-gray-50">
-            <td colSpan={showSettlement ? 4 : 3} className="py-1 px-2 text-xs text-gray-500 text-right">합계</td>
+            <td colSpan={baseCols} className="py-1 px-2 text-xs text-gray-500 text-right">합계</td>
             <td className="py-1 px-2 text-right text-sm font-semibold text-gray-700">{fmt(total)}</td>
-            <td colSpan={showSettlement ? 3 : 2}></td>
+            <td colSpan={trailCols}></td>
           </tr>
         </tfoot>
       )}
@@ -814,8 +964,8 @@ export default function CostPage() {
   const [recentMonths, setRecentMonths] = useState<RecentMonthSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [showItemManage, setShowItemManage] = useState(false)
+  const [showCopyMonth, setShowCopyMonth] = useState(false)
   const [addMonthCategory, setAddMonthCategory] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<string>("")
   const monthOptions = buildMonthOptions()
 
   const load = useCallback(async () => {
@@ -830,12 +980,6 @@ export default function CostPage() {
   }, [yearMonth])
 
   useEffect(() => { load() }, [load])
-
-  // 탭 초기값 설정
-  useEffect(() => {
-    const tabs = [...new Set(rows.filter(r => r.item_type1 === "3" && r.item_type2).map(r => r.item_type2!))]
-    if (tabs.length > 0 && !tabs.includes(activeTab)) setActiveTab(tabs[0])
-  }, [rows])
 
   async function handleDeactivate(id: number) {
     await deactivateCostItem(id)
@@ -852,15 +996,26 @@ export default function CostPage() {
   const income = rows.filter(r => r.item_type1 === "5").reduce((s, r) => s + r.amount, 0)
   const expense = rows.filter(r => r.item_type1 !== "5").reduce((s, r) => s + r.amount, 0)
   const balance = income - expense
+  const expenseCard = rows.filter(r => r.item_type1 !== "5" && r.cost_type === "2").reduce((s, r) => s + r.amount, 0)
+  const expenseCash = rows.filter(r => r.item_type1 !== "5" && r.cost_type === "1").reduce((s, r) => s + r.amount, 0)
 
   // 카테고리별 그룹
   const fixedRows = rows.filter(r => r.item_type1 === "1")
   const transferRows = rows.filter(r => r.item_type1 === "2")
   const livingRows = rows.filter(r => r.item_type1 === "3")
   const cardRows = rows.filter(r => r.item_type1 === "4")
+  const incomeRows = rows.filter(r => r.item_type1 === "5")
 
-  const livingTabs = [...new Set(livingRows.map(r => r.item_type2 ?? "기타"))]
-  const activeTabRows = livingRows.filter(r => (r.item_type2 ?? "기타") === (activeTab || livingTabs[0]))
+  function sectionTotals(sRows: MonthDataRow[]) {
+    return {
+      card: sRows.filter(r => r.cost_type === "2").reduce((s, r) => s + r.amount, 0),
+      cash: sRows.filter(r => r.cost_type === "1").reduce((s, r) => s + r.amount, 0),
+    }
+  }
+  const fixedTotals = sectionTotals(fixedRows)
+  const transferTotals = sectionTotals(transferRows)
+  const livingTotals = sectionTotals(livingRows)
+  const cardSectionTotals = sectionTotals(cardRows)
 
   // TOP 3
   const top3 = [...rows]
@@ -876,8 +1031,6 @@ export default function CostPage() {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <h1 className="text-lg font-bold text-gray-800">생활비 관리</h1>
-          </div>
-          <div className="flex items-center gap-2">
             <select
               className="border border-gray-300 rounded px-2 py-1.5 text-sm text-gray-700 focus:outline-none focus:border-blue-400"
               value={yearMonth}
@@ -885,6 +1038,8 @@ export default function CostPage() {
             >
               {monthOptions.map(m => <option key={m} value={m}>{m.replace("-", "년 ")}월</option>)}
             </select>
+          </div>
+          <div className="flex items-center gap-2">
             {!loading && !hasData && (
               <button
                 onClick={handleCopyPrev}
@@ -893,6 +1048,12 @@ export default function CostPage() {
                 이전 달 복사
               </button>
             )}
+            <button
+              onClick={() => setShowCopyMonth(true)}
+              className="text-sm text-gray-600 border border-gray-300 rounded px-3 py-1.5 hover:bg-gray-50"
+            >
+              생활비 복사
+            </button>
             <button
               onClick={() => setShowItemManage(true)}
               className="text-sm text-gray-600 border border-gray-300 rounded px-3 py-1.5 hover:bg-gray-50"
@@ -918,7 +1079,11 @@ export default function CostPage() {
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-700">지출</span>
-                    <span className="text-sm font-medium text-red-500">₩{fmt(expense)}</span>
+                    <div className="flex items-center gap-3">
+                      {expenseCard > 0 && <span className="text-xs text-blue-500">카드 <span className="font-semibold text-blue-600">{fmt(expenseCard)}</span></span>}
+                      {expenseCash > 0 && <span className="text-xs text-emerald-600">현금 <span className="font-semibold text-emerald-600">{fmt(expenseCash)}</span></span>}
+                      <span className="text-sm font-medium text-red-500">₩{fmt(expense)}</span>
+                    </div>
                   </div>
                   <div className="border-t border-gray-100 pt-1.5 flex justify-between items-center">
                     <span className="text-xs font-semibold text-gray-700">잔액</span>
@@ -977,62 +1142,55 @@ export default function CostPage() {
                   </tbody>
                 </table>
               </div>
+
+              {/* 수입 */}
+              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                <SectionHeader title="수입" onAdd={() => setAddMonthCategory("5")} />
+                {incomeRows.length === 0 ? (
+                  <p className="text-xs text-gray-400 px-3 py-3">항목 없음</p>
+                ) : (
+                  <SectionTable rows={incomeRows} yearMonth={yearMonth} hidePayMethod compact onSaved={load} onDeactivate={handleDeactivate} />
+                )}
+              </div>
             </div>
 
             {/* ── 오른쪽 패널 ── */}
             <div className="flex-1 min-w-0 space-y-3">
               {/* 고정지출 */}
-              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                <SectionHeader title="고정지출" onAdd={() => setAddMonthCategory("1")} />
+              <SectionCard title="고정지출" defaultCollapsed onAdd={() => setAddMonthCategory("1")} cardTotal={fixedTotals.card} cashTotal={fixedTotals.cash}>
                 {fixedRows.length === 0 ? (
                   <p className="text-xs text-gray-400 px-3 py-3">항목 없음</p>
                 ) : (
                   <SectionTable rows={fixedRows} yearMonth={yearMonth} onSaved={load} onDeactivate={handleDeactivate} />
                 )}
-              </div>
+              </SectionCard>
 
               {/* 고정이체 & 금융 */}
-              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                <SectionHeader title="고정이체 & 금융" onAdd={() => setAddMonthCategory("2")} />
+              <SectionCard title="고정이체 & 금융" defaultCollapsed onAdd={() => setAddMonthCategory("2")} cardTotal={transferTotals.card} cashTotal={transferTotals.cash}>
                 {transferRows.length === 0 ? (
                   <p className="text-xs text-gray-400 px-3 py-3">항목 없음</p>
                 ) : (
                   <SectionTable rows={transferRows} yearMonth={yearMonth} onSaved={load} onDeactivate={handleDeactivate} />
                 )}
-              </div>
+              </SectionCard>
 
               {/* 생활비 & 공과금 */}
-              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                <SectionHeader title="생활비 & 공과금" onAdd={() => setAddMonthCategory("3")} />
-                {livingTabs.length > 1 && (
-                  <div className="flex gap-1 px-3 pt-2 border-b border-gray-200">
-                    {livingTabs.map(tab => (
-                      <button
-                        key={tab}
-                        onClick={() => setActiveTab(tab)}
-                        className={`text-xs px-3 py-1 rounded-t border-b-2 transition-colors ${(activeTab || livingTabs[0]) === tab ? "border-blue-500 text-blue-600 font-semibold" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-                      >
-                        {tab}
-                      </button>
-                    ))}
-                  </div>
-                )}
+              <SectionCard title="생활비 & 공과금" onAdd={() => setAddMonthCategory("3")} cardTotal={livingTotals.card} cashTotal={livingTotals.cash}>
                 {livingRows.length === 0 ? (
                   <p className="text-xs text-gray-400 px-3 py-3">항목 없음</p>
                 ) : (
-                  <SectionTable rows={activeTabRows} yearMonth={yearMonth} onSaved={load} onDeactivate={handleDeactivate} />
+                  <SectionTable rows={livingRows} yearMonth={yearMonth} onSaved={load} onDeactivate={handleDeactivate} />
                 )}
-              </div>
+              </SectionCard>
 
-              {/* 카드결재 */}
-              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                <SectionHeader title="카드결재" onAdd={() => setAddMonthCategory("4")} />
+              {/* 신용카드 */}
+              <SectionCard title="신용카드" onAdd={() => setAddMonthCategory("4")} cardTotal={cardSectionTotals.card} cashTotal={cardSectionTotals.cash}>
                 {cardRows.length === 0 ? (
                   <p className="text-xs text-gray-400 px-3 py-3">항목 없음</p>
                 ) : (
                   <SectionTable rows={cardRows} yearMonth={yearMonth} showSettlement onSaved={load} onDeactivate={handleDeactivate} />
                 )}
-              </div>
+              </SectionCard>
             </div>
           </div>
         )}
@@ -1043,6 +1201,15 @@ export default function CostPage() {
         <ItemManageModal
           onClose={() => setShowItemManage(false)}
           onChanged={load}
+        />
+      )}
+
+      {/* 생활비 복사 모달 */}
+      {showCopyMonth && (
+        <CopyMonthModal
+          yearMonth={yearMonth}
+          onClose={() => setShowCopyMonth(false)}
+          onCopied={load}
         />
       )}
 

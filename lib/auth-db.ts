@@ -436,16 +436,16 @@ async function _applyMigrations(): Promise<void> {
         UNIQUE (id)
       )
     `)
+    await pool.query(`CREATE SEQUENCE IF NOT EXISTS my_cost_info_id_seq`)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS my_cost_info (
-        id          SERIAL PRIMARY KEY,
+        id          BIGINT DEFAULT nextval('my_cost_info_id_seq') PRIMARY KEY,
         yyyymm      TEXT NOT NULL,
         item_id     INT NOT NULL REFERENCES my_cost_item(id),
         amt         NUMERIC(12,0) DEFAULT 0,
         memo        TEXT,
         created_at  TIMESTAMPTZ DEFAULT NOW(),
-        updated_at  TIMESTAMPTZ DEFAULT NOW(),
-        UNIQUE (id)
+        updated_at  TIMESTAMPTZ DEFAULT NOW()
       )
     `)
     await pool.query(`

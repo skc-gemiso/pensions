@@ -105,12 +105,19 @@ export async function upsertCostInfo(
   memo: string | null
 ): Promise<void> {
   const pool = getPensionPool()
-  await pool.query(`
-    INSERT INTO my_cost_info (yyyymm, item_id, amt, memo)
-    VALUES ($1::text, $2, $3, $4)
-    ON CONFLICT (yyyymm, item_id)
-    DO UPDATE SET amt = EXCLUDED.amt, memo = EXCLUDED.memo
+  const res = await pool.query(`
+    UPDATE my_cost_info SET amt = $3, memo = $4, updated_at = NOW()
+    WHERE yyyymm = $1::text AND item_id = $2::int
   `, [yyyymm, itemId, amount, memo])
+  if ((res.rowCount ?? 0) === 0) {
+    await pool.query(`
+      INSERT INTO my_cost_info (yyyymm, item_id, amt, memo)
+      SELECT $1::text, $2::int, $3, $4
+      WHERE NOT EXISTS (
+        SELECT 1 FROM my_cost_info WHERE yyyymm = $1::text AND item_id = $2::int
+      )
+    `, [yyyymm, itemId, amount, memo])
+  }
 }
 
 export async function addCostItem(data: {
@@ -182,8 +189,10 @@ export async function addCostInfoItems(yyyymm: string, itemIds: number[]): Promi
   for (const itemId of itemIds) {
     await pool.query(`
       INSERT INTO my_cost_info (yyyymm, item_id, amt)
-      SELECT $1, id, amt FROM my_cost_item WHERE id = $2
-      ON CONFLICT (yyyymm, item_id) DO NOTHING
+      SELECT $1::text, id, amt FROM my_cost_item WHERE id = $2::int
+        AND NOT EXISTS (
+          SELECT 1 FROM my_cost_info WHERE yyyymm = $1::text AND item_id = $2::int
+        )
     `, [yyyymm, itemId])
   }
 }
@@ -250,4 +259,15 @@ function getPrevMonth(yyyymm: string): string {
   m--
   if (m === 0) { m = 12; y-- }
   return `${y}-${String(m).padStart(2, "0")}`
+}
+
+export async function copyFromMonth(targetYyyymm: string, sourceYyyymm: string): Promise<void> {
+  const pool = getPensionPool()
+  await pool.query(`DELETE FROM my_cost_info WHERE yyyymm = $1::text`, [targetYyyymm])
+  await pool.query(`
+    INSERT INTO my_cost_info (yyyymm, item_id, amt, memo)
+    SELECT $1::text, item_id, amt, memo
+    FROM my_cost_info
+    WHERE yyyymm = $2::text
+  `, [targetYyyymm, sourceYyyymm])
 }
