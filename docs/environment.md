@@ -184,6 +184,8 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `PENSION_SIM_DB_USER` | Supabase 사용자 | `postgres.PROJECT_REF` |
 | `PENSION_SIM_DB_PASSWORD` | Supabase 비밀번호 | 특수문자 포함 시 `"..."` |
 | `CRON_SECRET` | Vercel Cron 엔드포인트 인증 시크릿 | `Authorization: Bearer {CRON_SECRET}` 헤더 또는 `?secret=` 파라미터로 검증 |
+| `SUPABASE_URL` | Supabase 프로젝트 URL | `https://PROJECT_REF.supabase.co` (쇼핑 Storage) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase 서비스 롤 키 | 대시보드 > Settings > API (쇼핑 Storage 서버 사이드 업로드) |
 
 > **주의**: 특수문자(`#` 등) 포함 패스워드는 반드시 `"..."` 로 감싸야 dotenv 정상 파싱.
 
@@ -219,6 +221,7 @@ Vercel 프로젝트 Settings > Environment Variables 에 아래 변수 등록:
 | `NEXTAUTH_SECRET` / `NEXTAUTH_URL` | NextAuth |
 | `PENSION_SIM_DB_*` | Supabase 연결 |
 | `CRON_SECRET` | Cron 인증 시크릿 |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | 쇼핑 첨부파일 Storage |
 
 ---
 

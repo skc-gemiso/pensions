@@ -486,6 +486,65 @@ async function _applyMigrations(): Promise<void> {
     await pool.query("INSERT INTO app_migrations (name) VALUES ('v018_shopping_under_life')")
   }
 
+  // v019: 쇼핑 관리 테이블 생성 (my_shopping, my_shopping_ref, my_shopping_file)
+  const { rows: v019 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v019_add_shopping_tables'"
+  )
+  if (v019.length === 0) {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS my_shopping (
+        id             SERIAL PRIMARY KEY,
+        category       TEXT NOT NULL,
+        purchase_date  DATE NOT NULL,
+        product_nm     TEXT NOT NULL,
+        card_item_id   INT  REFERENCES my_cost_item(id),
+        original_price INT,
+        purchase_price INT,
+        purchase_place TEXT,
+        content        TEXT,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS my_shopping_ref (
+        id          SERIAL PRIMARY KEY,
+        category    TEXT NOT NULL,
+        title       TEXT NOT NULL,
+        url         TEXT,
+        content     TEXT,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS my_shopping_file (
+        id            SERIAL PRIMARY KEY,
+        ref_type      TEXT NOT NULL,
+        ref_id        INT  NOT NULL,
+        file_nm       TEXT NOT NULL,
+        storage_path  TEXT NOT NULL,
+        mime_type     TEXT,
+        file_size     INT,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `)
+    await pool.query("INSERT INTO app_migrations (name) VALUES ('v019_add_shopping_tables')")
+  }
+
+  // v020: 참고자료를 my_shopping 테이블로 통합 (item_type 컬럼 추가, my_shopping_ref 삭제)
+  const { rows: v020 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v020_merge_shopping_ref'"
+  )
+  if (v020.length === 0) {
+    await pool.query(`ALTER TABLE my_shopping ALTER COLUMN purchase_date DROP NOT NULL`)
+    await pool.query(`ALTER TABLE my_shopping ADD COLUMN IF NOT EXISTS item_type TEXT NOT NULL DEFAULT 'shopping'`)
+    await pool.query(`UPDATE my_shopping SET item_type = 'shopping' WHERE item_type IS NULL`)
+    await pool.query(`DELETE FROM my_shopping_file WHERE ref_type = 'ref'`)
+    await pool.query(`DROP TABLE IF EXISTS my_shopping_ref`)
+    await pool.query("INSERT INTO app_migrations (name) VALUES ('v020_merge_shopping_ref')")
+  }
+
   // v010: 메뉴 ID 단축 (savings-fund→sim, compound-magic→magic, personal-pension→per 등)
   const { rows: v010 } = await pool.query<{ name: string }>(
     "SELECT name FROM app_migrations WHERE name = 'v010_shorten_menu_ids'"

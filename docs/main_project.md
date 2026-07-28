@@ -35,7 +35,7 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
     └── /invest/usa/fx                   원/달러 환율 조회
 /life                            생활 (→ /life/cost 리다이렉트)
 ├── /life/cost                   생활비 관리 (가계부)
-└── /shopping                    쇼핑
+└── /shopping                    쇼핑 (구매 목록 + 참고 자료)
 /login                           로그인
 /register                        회원가입
 ```
@@ -180,6 +180,24 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 - 참고 파일: [app/invest/etf/](../app/invest/etf/) (이전 예정)
 - 수집기: [collector/etf/](../collector/etf/) (이전 예정)
 - 상세 문서: [invest/etf/etf_project.md](invest/etf/etf_project.md), [invest/etf/etf_task.md](invest/etf/etf_task.md)
+
+---
+
+### 쇼핑 (`/shopping`)
+
+| 기능 | 설명 |
+|------|------|
+| 구매 목록 | 카테고리 필터(국내/국외/휴대폰/노트북) + 최근 30건 목록 + 우측 상세 |
+| 참고 자료 | 구매 전 조사 자료 목록 (제목·카테고리·링크·내용·첨부) |
+| 모드 전환 | 상단 토글로 구매 목록 ↔ 참고 자료 전환 |
+| 첨부파일 | 파일 드래그·선택·이미지 붙여넣기 → Supabase Storage |
+| 결제수단 | 생활비 관리 신용카드 항목 재사용 |
+
+- 참고 파일: [app/shopping/page.tsx](../app/shopping/page.tsx), [app/shopping/actions.ts](../app/shopping/actions.ts)
+- 파일 업로드: [app/api/shopping/upload/route.ts](../app/api/shopping/upload/route.ts)
+- Storage 클라이언트: [lib/supabase-storage.ts](../lib/supabase-storage.ts)
+- DB 마이그레이션: `v019_add_shopping_tables` (lib/auth-db.ts)
+- 상세 문서: [shopping/shopping_project.md](shopping/shopping_project.md), [shopping/shopping_task.md](shopping/shopping_task.md)
 
 ---
 
