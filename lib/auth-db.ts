@@ -462,6 +462,30 @@ async function _applyMigrations(): Promise<void> {
     await pool.query("INSERT INTO app_migrations (name) VALUES ('v016_add_life_cost')")
   }
 
+  // v017: normal role에 invest, life 부모 메뉴 부여 (etf-group/usa-group/life-cost가 nav에 표시되도록)
+  const { rows: v017 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v017_normal_parent_menus'"
+  )
+  if (v017.length === 0) {
+    await pool.query(`
+      INSERT INTO app_role_menus (role, menu_id)
+      SELECT r, m
+      FROM unnest(ARRAY['normal']::text[]) AS r
+      CROSS JOIN unnest(ARRAY['invest', 'life']::text[]) AS m
+      ON CONFLICT DO NOTHING
+    `)
+    await pool.query("INSERT INTO app_migrations (name) VALUES ('v017_normal_parent_menus')")
+  }
+
+  // v018: 쇼핑 메뉴를 생활 카테고리 하위로 이동 (parent_id: null → 'life', sort_order: 20)
+  const { rows: v018 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v018_shopping_under_life'"
+  )
+  if (v018.length === 0) {
+    await pool.query("UPDATE app_menus SET parent_id = 'life', sort_order = 20 WHERE id = 'shopping'")
+    await pool.query("INSERT INTO app_migrations (name) VALUES ('v018_shopping_under_life')")
+  }
+
   // v010: 메뉴 ID 단축 (savings-fund→sim, compound-magic→magic, personal-pension→per 등)
   const { rows: v010 } = await pool.query<{ name: string }>(
     "SELECT name FROM app_migrations WHERE name = 'v010_shorten_menu_ids'"

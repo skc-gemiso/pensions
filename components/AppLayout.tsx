@@ -98,7 +98,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const rawMenus = status === "authenticated" ? (user?.menus ?? []) : []
   const NAV = buildNavTree(rawMenus)
 
-  const isActive = (href: string) =>
+const isActive = (href: string) =>
     href === "/" ? path === "/" : path === href || path.startsWith(href + "/")
 
   const initials = user?.name ? user.name.slice(0, 1) : "?"
@@ -213,10 +213,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           {/* 구분선 (데스크톱) */}
-          <div className="hidden md:block w-px bg-white/15 my-2.5 flex-shrink-0" />
+          <div className="block max-md:hidden w-px bg-white/15 my-2.5 flex-shrink-0" />
 
           {/* 중앙: 네비게이션 (데스크톱) */}
-          <nav className="hidden md:flex flex-1 justify-center">
+          <nav className="flex max-md:hidden flex-1 justify-center">
             {status === "loading" ? (
               <div className="flex items-center px-4">
                 <div className="h-3 w-48 bg-white/20 rounded animate-pulse" />
@@ -306,10 +306,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </nav>
 
           {/* 구분선 (데스크톱) */}
-          <div className="hidden md:block w-px bg-white/15 my-2.5 flex-shrink-0" />
+          <div className="block max-md:hidden w-px bg-white/15 my-2.5 flex-shrink-0" />
 
           {/* 우: 사용자 정보 (데스크톱) */}
-          <div className="hidden md:flex items-center gap-3 flex-shrink-0 pl-6">
+          <div className="flex max-md:hidden items-center gap-3 flex-shrink-0 pl-6">
             {status === "authenticated" ? (
               <>
                 <div className="w-8 h-8 rounded-full bg-white/25 border-2 border-white/40 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">

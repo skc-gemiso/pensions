@@ -34,7 +34,8 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
     ├── /invest/usa/treasury             미국 국채 보유
     └── /invest/usa/fx                   원/달러 환율 조회
 /life                            생활 (→ /life/cost 리다이렉트)
-└── /life/cost                   생활비 관리 (가계부)
+├── /life/cost                   생활비 관리 (가계부)
+└── /shopping                    쇼핑
 /login                           로그인
 /register                        회원가입
 ```
