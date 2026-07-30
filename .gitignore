@@ -49,3 +49,6 @@ collector/usa/utils/__pycache__/*
 
 .vercel
 .env*
+
+# Claude Code 개인 설정 (기기별 권한 허용 목록 — 공용 설정은 .claude/settings.json)
+.claude/settings.local.json
