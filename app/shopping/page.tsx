@@ -47,26 +47,28 @@ async function uploadFiles(files: File[], refType: string, refId: number): Promi
 
 // ── 파일 목록 컴포넌트 ────────────────────────────────────────────────────────
 
-function FileList({ files, onDelete }: { files: ShoppingFile[]; onDelete: (id: number) => void }) {
+function FileList({ files, onDelete, deletable = false }: { files: ShoppingFile[]; onDelete: (id: number) => void; deletable?: boolean }) {
   if (files.length === 0) return <p className="text-xs text-gray-400">첨부파일 없음</p>
   return (
-    <ul className="space-y-1">
+    <ul className="flex flex-wrap gap-3">
       {files.map((f) => (
-        <li key={f.id} className="flex items-center gap-2 text-xs">
+        <li key={f.id} className="flex flex-col items-center gap-1">
           {f.mime_type?.startsWith("image/") ? (
             <a href={f.signed_url} target="_blank" rel="noreferrer">
-              <img src={f.signed_url} alt={f.file_nm} className="h-16 rounded border border-gray-200 object-cover" />
+              <img src={f.signed_url} alt={f.file_nm} className="h-20 w-20 rounded border border-gray-200 object-cover" />
             </a>
           ) : (
-            <a href={f.signed_url} target="_blank" rel="noreferrer" className="text-blue-600 underline truncate max-w-[180px]">
+            <a href={f.signed_url} target="_blank" rel="noreferrer"
+              className="flex items-center justify-center h-20 w-20 rounded border border-gray-200 bg-gray-50 text-[10px] text-blue-600 text-center p-1 break-all hover:bg-gray-100">
               {f.file_nm}
             </a>
           )}
-          <button
-            onClick={() => onDelete(f.id)}
-            className="ml-auto text-gray-300 hover:text-red-400 transition-colors"
-            title="삭제"
-          >✕</button>
+          {deletable && (
+            <button
+              onClick={() => onDelete(f.id)}
+              className="px-3 py-0.5 text-xs text-red-500 border border-red-300 rounded hover:bg-red-50 transition-colors"
+            >삭제</button>
+          )}
         </li>
       ))}
     </ul>
@@ -321,6 +323,11 @@ function ShoppingDetail({
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">첨부파일</label>
+              {files.length > 0 && (
+                <div className="mb-2">
+                  <FileList files={files} onDelete={handleFileDelete} deletable />
+                </div>
+              )}
               <FileDropZone onFiles={(f) => setPendingFiles((p) => [...p, ...f])} />
               {pendingFiles.length > 0 && (
                 <ul className="mt-2 space-y-1">
@@ -546,6 +553,11 @@ function RefDetail({
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">첨부파일</label>
+              {files.length > 0 && (
+                <div className="mb-2">
+                  <FileList files={files} onDelete={handleFileDelete} />
+                </div>
+              )}
               <FileDropZone onFiles={(f) => setPendingFiles((p) => [...p, ...f])} />
               {pendingFiles.length > 0 && (
                 <ul className="mt-2 space-y-1">
