@@ -13,7 +13,17 @@ export type CostItem = {
   amt: number
   memo: string | null
   use_yn: string
+  /** item_type1='4'면 이 항목 자신의 카드, 그 외 cost_type='2'면 결제 카드 */
   card_id: number | null
+  card_nm: string | null
+}
+
+/** 항목 관리 모달용 — 삭제 확인창에 쓸 의존 데이터 건수 */
+export type ManagedCostItem = CostItem & {
+  info_cnt: number
+  first_ym: string | null
+  last_ym: string | null
+  shopping_cnt: number
 }
 
 /** my_card 상세 — 암호문(card_no·cvc·limit_ym)은 클라이언트로 내리지 않는다 */
@@ -69,12 +79,15 @@ export async function getMonthData(yyyymm: string): Promise<MonthDataRow[]> {
       i.id,
       i.item_type1,
       i.item_type2,
-      COALESCE(cd.card_nm, i.item_nm) AS item_nm,
+      -- 카드명으로 항목명을 대체하는 건 신용카드 항목뿐 (그 외는 결제 카드이므로 항목명 유지)
+      CASE WHEN i.item_type1 = '4' THEN COALESCE(cd.card_nm, i.item_nm)
+           ELSE i.item_nm END AS item_nm,
       i.cost_type,
       i.pay_dd,
       i.amt,
       i.use_yn,
       i.card_id,
+      cd.card_nm,
       cd.card_type,
       cd.pay_ymd,
       cd.start_ymd,
@@ -114,11 +127,15 @@ export async function getRecentMonths(yyyymm: string, n: number): Promise<Recent
     if (m === 0) { m = 12; y-- }
   }
 
+  // 카드 사용액(item_type1<>'4' AND cost_type='2')은 다음 달 카드 청구액으로 들어오므로
+  // 당월 지출에서 뺀다 — 화면의 수입 대비 지출 현황과 같은 기준 (cost_task.md 집계 로직)
   const { rows } = await pool.query<RecentMonthSummary>(`
     SELECT
       c.yyyymm,
       COALESCE(SUM(CASE WHEN i.item_type1 = '5' THEN c.amt ELSE 0 END), 0)::int AS income,
-      COALESCE(SUM(CASE WHEN i.item_type1 != '5' THEN c.amt ELSE 0 END), 0)::int AS expense
+      COALESCE(SUM(CASE WHEN i.item_type1 <> '5'
+                         AND NOT (i.item_type1 <> '4' AND i.cost_type = '2')
+                        THEN c.amt ELSE 0 END), 0)::int AS expense
     FROM my_cost_info c
     JOIN my_cost_item i ON i.id = c.item_id::int
     WHERE c.yyyymm = ANY($1::text[])
@@ -184,20 +201,27 @@ export async function addCostItem(data: {
   ])
 }
 
-export async function getAllCostItems(): Promise<CostItem[]> {
+export async function getAllCostItems(): Promise<ManagedCostItem[]> {
   const pool = getPensionPool()
-  const { rows } = await pool.query<CostItem>(`
+  const { rows } = await pool.query<ManagedCostItem>(`
     SELECT
       i.id,
       i.item_type1,
       i.item_type2,
-      COALESCE(cd.card_nm, i.item_nm) AS item_nm,
+      CASE WHEN i.item_type1 = '4' THEN COALESCE(cd.card_nm, i.item_nm)
+           ELSE i.item_nm END AS item_nm,
       i.cost_type,
       i.pay_dd,
       i.amt,
       i.memo,
       i.use_yn,
-      i.card_id
+      i.card_id,
+      cd.card_nm,
+      -- 삭제 확인창에 쓸 의존 건수 (파생값)
+      (SELECT COUNT(*)::int FROM my_cost_info c WHERE c.item_id = i.id) AS info_cnt,
+      (SELECT MIN(c.yyyymm)  FROM my_cost_info c WHERE c.item_id = i.id) AS first_ym,
+      (SELECT MAX(c.yyyymm)  FROM my_cost_info c WHERE c.item_id = i.id) AS last_ym,
+      (SELECT COUNT(*)::int FROM my_shopping s WHERE s.card_item_id = i.id) AS shopping_cnt
     FROM my_cost_item i
     LEFT JOIN my_card cd ON cd.id = i.card_id
     ORDER BY
@@ -215,8 +239,9 @@ export async function getAvailableCostItems(yyyymm: string, item_type1: string):
   const { rows } = await pool.query<CostItem>(`
     SELECT
       i.id, i.item_type1, i.item_type2,
-      COALESCE(cd.card_nm, i.item_nm) AS item_nm,
-      i.cost_type, i.pay_dd, i.amt, i.memo, i.use_yn, i.card_id
+      CASE WHEN i.item_type1 = '4' THEN COALESCE(cd.card_nm, i.item_nm)
+           ELSE i.item_nm END AS item_nm,
+      i.cost_type, i.pay_dd, i.amt, i.memo, i.use_yn, i.card_id, cd.card_nm
     FROM my_cost_item i
     LEFT JOIN my_card cd ON cd.id = i.card_id
     WHERE i.use_yn = 'Y'
@@ -271,6 +296,39 @@ export async function updateCostItemFields(id: number, data: {
 export async function deactivateCostItem(id: number): Promise<void> {
   const pool = getPensionPool()
   await pool.query(`UPDATE my_cost_item SET use_yn = 'N' WHERE id = $1`, [id])
+}
+
+/**
+ * 항목 마스터 완전 삭제. 되돌릴 수 없다.
+ *
+ * my_cost_info 에는 FK가 없어 항목만 지우면 월별 실적이 고아 레코드로 남으므로
+ * 한 트랜잭션에서 실적 → 항목 순으로 지운다. (cost_task.md 항목 삭제 시 주의)
+ */
+export async function deleteCostItem(id: number): Promise<void> {
+  const pool = getPensionPool()
+  const client = await pool.connect()
+  try {
+    await client.query("BEGIN")
+
+    const { rows } = await client.query<{ shopping_cnt: number }>(
+      `SELECT COUNT(*)::int AS shopping_cnt FROM my_shopping WHERE card_item_id = $1`,
+      [id]
+    )
+    const shoppingCnt = rows[0]?.shopping_cnt ?? 0
+    if (shoppingCnt > 0) {
+      throw new Error(`쇼핑 구매 내역 ${shoppingCnt}건이 이 항목을 결제수단으로 참조하고 있어 삭제할 수 없습니다.`)
+    }
+
+    await client.query(`DELETE FROM my_cost_info WHERE item_id = $1`, [id])
+    await client.query(`DELETE FROM my_cost_item WHERE id = $1`, [id])
+
+    await client.query("COMMIT")
+  } catch (e) {
+    await client.query("ROLLBACK")
+    throw e
+  } finally {
+    client.release()
+  }
 }
 
 export async function activateCostItem(id: number): Promise<void> {
@@ -344,21 +402,76 @@ export async function updateCardMaster(cardId: number, data: {
   await pool.query(`UPDATE my_card SET ${pairs.join(", ")} WHERE id = $1`, values)
 }
 
-/** [보기] 클릭 시에만 호출 — 지정한 컬럼 1개를 복호화해 반환 */
+/**
+ * [보기] 클릭 시에만 호출 — 지정한 컬럼 1개를 복호화해 반환.
+ * 실패 원인을 화면에서 구분할 수 있도록 예외 대신 결과 객체를 돌려준다
+ * (프로덕션에서는 서버 액션 예외 메시지가 가려져 원인을 알 수 없다).
+ */
+export type RevealResult =
+  | { ok: true; value: string | null }
+  | { ok: false; error: string }
+
 export async function revealCardSecret(
   cardId: number,
   field: CardSecretField
-): Promise<string | null> {
+): Promise<RevealResult> {
   const allowed: CardSecretField[] = ["card_no", "limit_ym", "cvc"]
-  if (!allowed.includes(field)) throw new Error(`복호화할 수 없는 컬럼입니다: ${field}`)
+  if (!allowed.includes(field)) return { ok: false, error: `복호화할 수 없는 컬럼입니다: ${field}` }
+
+  if (!process.env.CARD_ENC_KEY) {
+    return {
+      ok: false,
+      error: "서버에 CARD_ENC_KEY 가 없습니다. config/.env 에 키를 넣은 뒤 개발 서버를 재시작하세요.",
+    }
+  }
 
   const pool = getPensionPool()
   const { rows } = await pool.query<Record<string, string | null>>(
     `SELECT ${field} FROM my_card WHERE id = $1`,
     [cardId]
   )
-  if (rows.length === 0) return null
-  return decryptField(rows[0][field])
+  if (rows.length === 0) return { ok: false, error: "카드를 찾을 수 없습니다." }
+
+  try {
+    return { ok: true, value: decryptField(rows[0][field]) }
+  } catch {
+    return { ok: false, error: "복호화에 실패했습니다. 암호화할 때와 다른 CARD_ENC_KEY 일 수 있습니다." }
+  }
+}
+
+/** 카드 추가 — card_no 는 PK(NOT NULL)이자 암호화 대상이라 필수 */
+export async function addCard(data: {
+  card_nm: string
+  card_no: string
+  card_type?: string | null
+  pay_ymd?: string | null
+  start_ymd?: string | null
+  end_ymd?: string | null
+  limit_ym?: string | null
+  cvc?: string | null
+  memo?: string | null
+}): Promise<void> {
+  if (!data.card_nm) throw new Error("카드명을 입력하세요.")
+  if (!data.card_no) throw new Error("카드번호를 입력하세요.")
+
+  const pool = getPensionPool()
+  await pool.query(`
+    INSERT INTO my_card
+      (card_no, card_no_last4, card_nm, card_type, pay_ymd, start_ymd, end_ymd, limit_ym, cvc, memo, sort)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+            (SELECT COALESCE(MAX(sort::numeric), 0) + 1 FROM my_card))
+  `, [
+    encryptField(data.card_no),
+    extractLast4(data.card_no),
+    data.card_nm,
+    data.card_type ?? null,
+    data.pay_ymd ?? null,
+    data.start_ymd ?? null,
+    data.end_ymd ?? null,
+    encryptField(data.limit_ym),
+    encryptField(data.cvc),
+    data.memo ?? null,
+  ])
 }
 
 /** my_cost_item 카드 항목 ↔ my_card 연결·해제 */

@@ -78,11 +78,50 @@ my_cost_item.card_id     → my_card.id        item_type1='4' 카드 항목만
 my_shopping.card_item_id → my_cost_item.id   변경 없음
 ```
 
+### `card_id` 의 두 가지 의미
+
+`my_cost_item.card_id` 는 `item_type1` 에 따라 뜻이 갈린다. 두 집합은 서로 배타적이라 컬럼 하나로 처리한다.
+
+| 대상 | `card_id` 의 뜻 | 입력 위치 |
+|------|----------------|-----------|
+| `item_type1 = '4'` (신용카드 항목) | **이 항목이 곧 그 카드** — 카드 청구액 원장 | 항목 모달의 "연결 카드" 필드 |
+| 그 외 카테고리 + `cost_type = '2'` | **이 항목을 결제하는 카드** | 항목 모달의 "결제수단" 드롭다운 |
+
+**판정은 `item_type1` 우선**이다. `item_type1='4'` 이면 언제나 "자기 자신"으로 본다.
+
+이 때문에 조회 시 카드명으로 항목명을 대체하는 것은 `item_type1='4'` 일 때뿐이다.
+조건 없이 `COALESCE` 하면 '전기 요금'에 카드를 연결한 순간 항목명이 카드명으로 덮인다.
+
+```sql
+CASE WHEN i.item_type1 = '4' THEN COALESCE(cd.card_nm, i.item_nm)
+     ELSE i.item_nm END AS item_nm
+```
+
+### 결제수단 입력 — 통합 드롭다운
+
+`cost_type`(현금/카드)과 `card_id`(어느 카드)를 화면에서는 **드롭다운 하나**로 받는다.
+두 필드를 따로 받으면 "카드인데 카드 미선택" 같은 불일치가 생기지만, 통합하면 구조적으로 불가능해진다.
+
+| 선택값 (select value) | 표시 | `cost_type` | `card_id` |
+|----------------------|------|-------------|-----------|
+| `""` | `-` | `null` | `null` |
+| `"cash"` | 현금 | `'1'` | `null` |
+| `"card:<id>"` | 카드명 (my_card 목록) | `'2'` | `<id>` |
+| `"card"` | 카드(미지정) | `'2'` | `null` |
+
+- `"card"`(미지정)은 어느 카드인지 모르는 기존 데이터를 위한 퇴로다.
+- `item_type1='4'` 항목은 카드 대금이 계좌에서 빠지므로 결제수단이 `현금`이다.
+  이 카테고리에서는 드롭다운에 **카드 목록을 노출하지 않고**(현금/카드(미지정)만),
+  카드 연결은 별도 "연결 카드" 필드로 받는다.
+- `cost_type` 은 화면의 카드/현금 지출 합계와 배지에 쓰이므로, 드롭다운을 합쳤다고 해서
+  `cost_type` 에 카드 id 를 넣지 않는다. 저장은 두 컬럼 그대로다.
+
 카드 관련 표시 값의 출처:
 
 | 표시 항목 | 출처 |
 |-----------|------|
-| 카드명 | `my_card.card_nm` — `COALESCE(cd.card_nm, i.item_nm) AS item_nm` |
+| 카드명 (신용카드 항목) | `my_card.card_nm` — 위 `CASE` 식으로 `item_nm` 대체 |
+| 결제수단 (그 외 항목) | `cost_type='2'` 이면 연결된 `my_card.card_nm`, 없으면 "카드" |
 | 결제일 | `my_card.pay_ymd` (`card_type='2'`이면 "즉시") |
 | 정산기간 | `my_card.start_ymd` ~ `my_card.end_ymd` |
 | 카드번호 | `my_card.card_no_last4` (뒤 4자리만, 원문은 암호화) |
@@ -127,43 +166,88 @@ my_shopping.card_item_id → my_cost_item.id   변경 없음
 | `addCostItem` | `data: Partial<CostItem>` | `void` | 항목 추가 |
 | `updateCostItemFields` | `id, data` | `void` | 항목 수정 (변경된 필드만 동적 UPDATE) |
 | `deactivateCostItem` / `activateCostItem` | `id: number` | `void` | `use_yn` 토글 |
+| `deleteCostItem` | `id: number` | `void` | 항목 마스터 **완전 삭제**. 아래 주의 참고 |
 | `copyFromPrevMonth` | `yearMonth: string` | `void` | 이전 달 복사 (없는 항목은 `my_cost_item.amt` 기준 생성) |
 | `copyFromMonth` | `targetYyyymm, sourceYyyymm` | `void` | 대상 월 전체 삭제 후 원본 월 복사 |
 | `getAllCostItems` | – | `CostItem[]` | 항목 관리 모달용 전체 목록 (비활성 포함) |
 | `getAvailableCostItems` | `yyyymm, item_type1` | `CostItem[]` | 해당 월에 아직 없는 항목 |
 | `addCostInfoItems` | `yyyymm, itemIds` | `void` | 선택 항목을 해당 월에 생성 |
 
+### 항목 삭제 시 주의 — `my_cost_info` 에 FK가 없다
+
+v016은 `my_cost_info.item_id INT NOT NULL REFERENCES my_cost_item(id)` 로 정의했지만
+`CREATE TABLE IF NOT EXISTS` 라서 앱 이전에 만들어진 테이블이 그대로 남았고, 실제 걸려 있는 제약은
+`my_shopping.card_item_id`(NO ACTION) 하나뿐이다.
+
+즉 **`my_cost_item` 만 지우면 DB가 막지 않고 `my_cost_info` 가 고아 레코드로 남는다.**
+화면 조회는 `JOIN my_cost_item` 이라 보이지 않을 뿐 데이터는 남으므로,
+`deleteCostItem` 은 트랜잭션 안에서 다음 순서로 처리한다.
+
+1. `my_shopping.card_item_id` 참조 건수 확인 → 1건이라도 있으면 예외를 던지고 중단 (FK가 막기도 한다)
+2. `DELETE FROM my_cost_info WHERE item_id = $1`
+3. `DELETE FROM my_cost_item WHERE id = $1`
+
+`getAllCostItems` 는 삭제 확인창에 쓸 의존 건수를 함께 돌려준다 —
+`info_cnt`, `first_ym`, `last_ym`, `shopping_cnt` (모두 파생값이라 새 이름 사용).
+
 ### 카드 마스터 액션 (v021 추가)
 
 | 함수 | 파라미터 | 반환 | 설명 |
 |------|---------|------|------|
 | `getCards` | – | `CardMaster[]` | `my_card` 목록. 카드번호는 `card_no_last4`만, CVC·유효기간은 `has_*` 플래그만 |
+| `addCard` | `data` | `void` | 카드 추가. `card_no`(PK·NOT NULL)와 `card_nm` 필수, 민감 3종은 암호화 후 저장하고 `sort` 는 `MAX+1` |
 | `getCardMaster` | `cardId: number` | `CardMaster \| null` | 카드 1건 상세 (암호문은 내리지 않음) |
 | `updateCardMaster` | `cardId, data` | `void` | 카드명·구분·결제일·정산기간·메모 수정. `card_no`/`cvc`/`limit_ym`이 오면 암호화 후 저장 + `card_no_last4` 갱신 |
-| `revealCardSecret` | `cardId, field` | `string \| null` | `'cvc' \| 'limit_ym' \| 'card_no'` 복호화. [보기] 클릭 시에만 호출 |
+| `revealCardSecret` | `cardId, field` | `RevealResult` | `'cvc' \| 'limit_ym' \| 'card_no'` 복호화. [보기] 클릭 시에만 호출. 프로덕션에서는 서버 액션 예외 메시지가 가려지므로 `{ok:true,value} \| {ok:false,error}` 로 원인을 돌려준다 (키 없음 / 키 불일치 / 카드 없음) |
 | `linkCardToItem` | `itemId, cardId \| null` | `void` | `my_cost_item.card_id` 연결·해제 |
 
 ---
 
-## 카테고리 분류
+## 카테고리 분류 (`item_type1`)
 
-| category | 화면 섹션 | sub_category 사용 |
-|----------|----------|------------------|
-| `고정지출` | 고정지출 섹션 | 없음 |
-| `고정이체` | 고정이체 & 금융 섹션 | 없음 |
-| `생활비` | 생활비 & 공과금 섹션 | 건물명 (탭 구분) |
-| `카드결재` | 카드결재 섹션 | 없음 |
-| `기타수입` | 수입 집계에 포함 | 없음 |
+| 값 | 화면 섹션 | `item_type2` 사용 |
+|----|----------|------------------|
+| `1` 고정지출 | 고정지출 | 없음 |
+| `2` 고정이체 | 고정이체 & 금융 | 없음 |
+| `3` 생활비/공과금 | 생활비 & 공과금 | 건물명 |
+| `4` 신용카드 | 신용카드 | 없음 |
+| `5` 수입 | 수입 집계 | 없음 |
 
 ---
 
 ## 집계 로직
 
-- **수입**: category = `기타수입` 합산 (고정 수입은 별도 필드 없이 항목으로 관리)
-- **지출**: category IN (`고정지출`, `고정이체`, `생활비`, `카드결재`) 합산
-- **잔액**: 수입 - 지출
-- **TOP 3**: 당월 amount DESC 상위 3개, 전월 동일 item_id와 차이 계산
-- **전월 대비 카드**: 카드별 전월 amount와 비교
+### 카드 사용액은 당월 지출에서 제외한다
+
+카드로 결제한 항목(`item_type1 <> '4' AND cost_type = '2'`)은 **다음 달 카드 청구액에 포함되어**
+`item_type1='4'` 섹션으로 들어온다. 당월 지출에 그대로 더하면 같은 돈을 두 번 세게 된다.
+
+```
+당월 지출 = 현금·계좌 출금 항목 + 당월 카드 청구액(item_type1='4')
+          ─ 카드 사용액(item_type1<>'4' AND cost_type='2') 은 제외
+```
+
+카드 사용액은 버리지 않고 "다음 달 청구" 참고값으로 별도 표시한다.
+
+| 값 | 산식 |
+|----|------|
+| 수입 | `item_type1 = '5'` 합산 |
+| 카드 사용액 (지출 제외) | `item_type1 <> '4' AND item_type1 <> '5' AND cost_type = '2'` 합산 |
+| 카드 청구액 | `item_type1 = '4'` 합산 |
+| 지출 | `item_type1 <> '5'` 중 **카드 사용액을 뺀** 나머지 |
+| 잔액 | 수입 − 지출 |
+
+`item_type1='4'` 항목은 카드 대금이 계좌에서 빠지므로 `cost_type='2'` 여도 제외 대상이 아니다 —
+그래서 조건에 `item_type1 <> '4'` 가 함께 붙는다.
+
+이 규칙은 **화면의 수입 대비 지출 현황과 서버의 `getRecentMonths`(최근 3개월 현황)에 동일하게** 적용한다.
+한쪽만 바꾸면 같은 달의 지출이 두 곳에서 다르게 보인다.
+
+### 그 외
+
+- **TOP 3**: 당월 `amount` DESC 상위 3개, 전월 동일 `item_id` 와 차이 계산.
+  "어디에 얼마 썼는지" 파악이 목적이라 카드 사용액도 포함한다 (지출 합계와 기준이 다름).
+- **섹션 합계·카드/현금 소계**: 각 섹션 안의 단순 합이라 위 제외 규칙과 무관하다.
 
 ---
 

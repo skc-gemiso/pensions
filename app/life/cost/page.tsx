@@ -9,6 +9,7 @@ import {
   addCostItem,
   deactivateCostItem,
   deleteCostInfo,
+  deleteCostItem,
   copyFromPrevMonth,
   getAllCostItems,
   updateCostItemFields,
@@ -17,12 +18,14 @@ import {
   addCostInfoItems,
   copyFromMonth,
   getCards,
+  addCard,
   getCardMaster,
   updateCardMaster,
   revealCardSecret,
   type MonthDataRow,
   type RecentMonthSummary,
   type CostItem,
+  type ManagedCostItem,
   type CardMaster,
   type CardSecretField,
 } from "./actions"
@@ -34,11 +37,6 @@ function fmt(n: number): string {
   return Math.round(n).toLocaleString("ko-KR")
 }
 
-const PAY_METHOD_OPTIONS = [
-  { label: "-",   value: "" },
-  { label: "현금", value: "1" },
-  { label: "카드", value: "2" },
-]
 const PAY_METHOD_COLOR: Record<string, string> = {
   "1": "text-emerald-600 font-medium",
   "2": "text-blue-600 font-medium",
@@ -47,6 +45,62 @@ function getPayMethodLabel(v: string | null) {
   if (v === "1") return "현금"
   if (v === "2") return "카드"
   return v || "-"
+}
+
+// ─────────────────────────────────────────────
+// 결제수단 — cost_type(현금/카드) + card_id(어느 카드)를 드롭다운 하나로 받는다.
+// 두 필드를 따로 받으면 "카드인데 카드 미선택" 불일치가 생긴다. (cost_task.md 결제수단 입력)
+// ─────────────────────────────────────────────
+type PayMethod = { cost_type: string | null; card_id: number | null }
+
+function toPayMethodValue(cost_type: string | null, card_id: number | null): string {
+  if (cost_type === "2") return card_id != null ? `card:${card_id}` : "card"
+  if (cost_type === "1") return "cash"
+  return ""
+}
+
+function fromPayMethodValue(v: string): PayMethod {
+  if (v === "cash") return { cost_type: "1", card_id: null }
+  if (v === "card") return { cost_type: "2", card_id: null }
+  if (v.startsWith("card:")) return { cost_type: "2", card_id: Number(v.slice(5)) }
+  return { cost_type: null, card_id: null }
+}
+
+/** 결제수단 표시 — 카드 결제 항목은 연결된 카드명으로. 신용카드 항목의 card_id는 자기 자신이라 제외 */
+function payMethodLabel(row: {
+  item_type1: string
+  cost_type: string | null
+  card_nm: string | null
+}): string {
+  if (row.cost_type !== "2") return getPayMethodLabel(row.cost_type)
+  if (row.item_type1 !== "4" && row.card_nm) return row.card_nm
+  return "카드"
+}
+
+/**
+ * cards 가 비면 현금/카드(미지정)만 노출한다.
+ * 신용카드 카테고리 항목은 카드 대금이 계좌에서 빠지므로 카드 목록을 주지 않는다.
+ */
+function PayMethodSelect({ value, cards, onChange, className }: {
+  value: string
+  cards: CardMaster[]
+  onChange: (v: string) => void
+  className: string
+}) {
+  return (
+    <select className={className} value={value} onChange={e => onChange(e.target.value)}>
+      <option value="">-</option>
+      <option value="cash">현금</option>
+      {cards.length > 0 && (
+        <optgroup label="카드">
+          {cards.map(c => (
+            <option key={c.id} value={`card:${c.id}`}>{c.card_nm}</option>
+          ))}
+        </optgroup>
+      )}
+      <option value="card">카드(미지정)</option>
+    </select>
+  )
 }
 
 const CARD_TYPE_OPTIONS = [
@@ -93,12 +147,16 @@ function getCurrentYearMonth(): string {
 }
 
 
+// Date.setMonth() 는 말일에 롤오버가 생긴다(7/30 → setMonth(1) → 3/2). 연·월 숫자로 계산한다.
 function buildMonthOptions(): string[] {
   const options: string[] = []
-  let d = new Date()
+  const now = new Date()
+  let y = now.getFullYear()
+  let m = now.getMonth() + 1
   for (let i = 0; i < 24; i++) {
-    options.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`)
-    d.setMonth(d.getMonth() - 1)
+    options.push(`${y}-${String(m).padStart(2, "0")}`)
+    m--
+    if (m === 0) { m = 12; y-- }
   }
   return options
 }
@@ -134,7 +192,7 @@ type TooltipProps = { row: MonthDataRow }
 
 function Tooltip({ row }: TooltipProps) {
   const lines: string[] = []
-  if (row.cost_type) lines.push(`결제수단: ${getPayMethodLabel(row.cost_type)}`)
+  if (row.cost_type) lines.push(`결제수단: ${payMethodLabel(row)}`)
   if (row.pay_dd) lines.push(`결제일: ${row.pay_dd}일`)
   if (row.amt) lines.push(`기본금액: ${fmt(row.amt)}`)
   if (row.memo) lines.push(`메모: ${row.memo}`)
@@ -227,9 +285,13 @@ function CostRow({ row, yearMonth, hidePayMethod, onSaved, onDelete }: RowProps)
         {payDayLabel(row)}
       </td>
       {!hidePayMethod && (
-        <td className="py-1.5 px-2 text-center">
+        <td className="py-1.5 px-2 text-center overflow-hidden">
           {row.cost_type === "2" ? (
-            <span className="inline-block px-1.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-600 rounded">카드</span>
+            // 연결된 카드가 있으면 카드명으로 (항목 관리 팝업과 같은 기준)
+            <span
+              className="inline-block max-w-full truncate align-middle px-1.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-600 rounded"
+              title={payMethodLabel(row)}
+            >{payMethodLabel(row)}</span>
           ) : row.cost_type === "1" ? (
             <span className="inline-block px-1.5 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-600 rounded">현금</span>
           ) : (
@@ -348,7 +410,7 @@ function EditItemModal({ item, onClose, onUpdated }: EditItemModalProps) {
   const [category, setCategory] = useState(item.item_type1)
   const [building, setBuilding] = useState(item.item_type2 ?? "")
   const [name, setName] = useState(item.item_nm)
-  const [payMethod, setPayMethod] = useState(item.cost_type ?? "")
+  const [payMethod, setPayMethod] = useState(toPayMethodValue(item.cost_type, item.card_id))
   const [payDay, setPayDay] = useState(item.pay_dd != null ? String(item.pay_dd) : "")
   const [amt, setAmt] = useState(Math.round(item.amt).toLocaleString("ko-KR"))
   const [memo, setMemo] = useState(item.memo ?? "")
@@ -356,23 +418,28 @@ function EditItemModal({ item, onClose, onUpdated }: EditItemModalProps) {
   const [cards, setCards] = useState<CardMaster[]>([])
   const [saving, setSaving] = useState(false)
 
-  // 신용카드 카테고리일 때 연결할 my_card 목록
+  // 결제수단 드롭다운과 연결 카드 select 양쪽에서 쓴다
+  useEffect(() => { getCards().then(setCards) }, [])
+
+  // 신용카드 카테고리로 바꾸면 결제수단에서 카드 목록이 사라지므로 선택값을 되돌린다
   useEffect(() => {
-    if (category === "4" && cards.length === 0) getCards().then(setCards)
-  }, [category, cards.length])
+    if (category === "4" && payMethod.startsWith("card:")) setPayMethod("card")
+  }, [category, payMethod])
 
   async function save(e: React.SyntheticEvent) {
     e.preventDefault()
     setSaving(true)
+    const pm = fromPayMethodValue(payMethod)
     await updateCostItemFields(item.id, {
       item_type1: category,
       item_type2: category === "3" ? (building || null) : null,
       item_nm: name,
-      cost_type: payMethod || null,
+      cost_type: pm.cost_type,
       pay_dd: payDay ? Number(payDay) : null,
       amt: Number(amt.replace(/,/g, "")) || 0,
       memo: memo || null,
-      card_id: category === "4" ? (cardId ? Number(cardId) : null) : null,
+      // 신용카드 항목은 별도 "연결 카드" 필드, 그 외는 결제수단에서 고른 카드
+      card_id: category === "4" ? (cardId ? Number(cardId) : null) : pm.card_id,
     })
     setSaving(false)
     onUpdated()
@@ -451,12 +518,12 @@ function EditItemModal({ item, onClose, onUpdated }: EditItemModalProps) {
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">결제수단</label>
-                <select
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-center text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
-                  value={payMethod} onChange={e => setPayMethod(e.target.value)}
-                >
-                  {PAY_METHOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+                <PayMethodSelect
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                  value={payMethod}
+                  cards={category === "4" ? [] : cards}
+                  onChange={setPayMethod}
+                />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">결제일</label>
@@ -524,11 +591,9 @@ function SecretField({ label, cardId, field, exists, mask }: {
   async function reveal() {
     setLoading(true)
     setError(null)
-    try {
-      setRevealed(await revealCardSecret(cardId, field))
-    } catch {
-      setError("복호화 실패 — CARD_ENC_KEY 확인 필요")
-    }
+    const res = await revealCardSecret(cardId, field)
+    if (res.ok) setRevealed(res.value)
+    else setError(res.error)
     setLoading(false)
   }
 
@@ -570,6 +635,7 @@ function CardDetailModal({ cardId, onClose, onUpdated }: {
     card_nm: "", card_type: "", pay_ymd: "", start_ymd: "", end_ymd: "", memo: "",
   })
   // 민감 항목은 새로 입력했을 때만 저장한다 (빈 값이면 기존 암호문 유지)
+  const [newCardNo, setNewCardNo] = useState("")
   const [newLimitYm, setNewLimitYm] = useState("")
   const [newCvc, setNewCvc] = useState("")
 
@@ -604,6 +670,7 @@ function CardDetailModal({ cardId, onClose, onUpdated }: {
       start_ymd: isCheckCard ? null : (form.start_ymd || null),
       end_ymd:   isCheckCard ? null : (form.end_ymd || null),
       memo:      form.memo || null,
+      ...(newCardNo ? { card_no: newCardNo } : {}),
       ...(newLimitYm ? { limit_ym: newLimitYm } : {}),
       ...(newCvc ? { cvc: newCvc } : {}),
     })
@@ -670,17 +737,20 @@ function CardDetailModal({ cardId, onClose, onUpdated }: {
 
               {/* 민감정보 — 암호화 저장, 조회는 [보기] 클릭 시 서버에서 복호화 */}
               <div className="border-t border-gray-100 pt-4 space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">카드번호</label>
-                  <span className="text-sm text-gray-900 font-mono">
-                    {card.has_card_no ? maskCardNo(card.card_no_last4) : <span className="text-gray-400">미등록</span>}
-                  </span>
-                </div>
+                <SecretField
+                  label="카드번호" cardId={cardId} field="card_no"
+                  exists={card.has_card_no} mask={maskCardNo(card.card_no_last4)}
+                />
                 <div className="grid grid-cols-2 gap-4">
                   <SecretField label="유효기간" cardId={cardId} field="limit_ym" exists={card.has_limit_ym} mask="****" />
                   <SecretField label="CVC" cardId={cardId} field="cvc" exists={card.has_cvc} mask="***" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">카드번호 변경</label>
+                    <input className={inputCls} placeholder="비우면 유지"
+                      value={newCardNo} onChange={e => setNewCardNo(e.target.value)} />
+                  </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">유효기간 변경</label>
                     <input className={inputCls} placeholder="비우면 유지" inputMode="numeric"
@@ -714,20 +784,263 @@ function CardDetailModal({ cardId, onClose, onUpdated }: {
 }
 
 // ─────────────────────────────────────────────
+// 카드 추가 모달
+// ─────────────────────────────────────────────
+function AddCardModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+  const [form, setForm] = useState({
+    card_nm: "", card_no: "", card_type: "1",
+    pay_ymd: "", start_ymd: "", end_ymd: "", limit_ym: "", cvc: "", memo: "",
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const set = (k: keyof typeof form, v: string) => setForm(f => ({ ...f, [k]: v }))
+  const isCheckCard = form.card_type === "2"
+  const inputCls = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+
+  async function submit(e: React.SyntheticEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      await addCard({
+        card_nm: form.card_nm,
+        card_no: form.card_no,
+        card_type: form.card_type || null,
+        pay_ymd: isCheckCard ? null : (form.pay_ymd || null),
+        start_ymd: isCheckCard ? null : (form.start_ymd || null),
+        end_ymd: isCheckCard ? null : (form.end_ymd || null),
+        limit_ym: form.limit_ym || null,
+        cvc: form.cvc || null,
+        memo: form.memo || null,
+      })
+      onAdded()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "카드를 추가하지 못했습니다.")
+    }
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
+          <h3 className="text-base font-bold text-gray-800">카드 추가</h3>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+        </div>
+
+        <form onSubmit={submit}>
+          <div className="px-6 py-5 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">카드명 <span className="text-red-400">*</span></label>
+                <input required className={inputCls} value={form.card_nm} onChange={e => set("card_nm", e.target.value)} placeholder="예: 현대카드(네이버)" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">구분</label>
+                <select className={inputCls} value={form.card_type} onChange={e => set("card_type", e.target.value)}>
+                  {CARD_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">카드번호 <span className="text-red-400">*</span></label>
+              <input required className={inputCls} value={form.card_no} onChange={e => set("card_no", e.target.value)} placeholder="0000-0000-0000-0000" />
+              <p className="text-xs text-gray-400 mt-1">암호화해 저장되며 목록에는 뒤 4자리만 표시됩니다.</p>
+            </div>
+
+            {isCheckCard ? (
+              <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                체크카드는 즉시결제라 결제일·정산기간을 사용하지 않습니다.
+              </p>
+            ) : (
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">결제일</label>
+                  <input type="number" min={1} max={31} placeholder="-" className={`${inputCls} text-right`} value={form.pay_ymd} onChange={e => set("pay_ymd", e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">정산 시작일</label>
+                  <input type="number" min={1} max={31} placeholder="-" className={`${inputCls} text-right`} value={form.start_ymd} onChange={e => set("start_ymd", e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">정산 종료일</label>
+                  <input type="number" min={1} max={31} placeholder="-" className={`${inputCls} text-right`} value={form.end_ymd} onChange={e => set("end_ymd", e.target.value)} />
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">유효기간</label>
+                <input className={inputCls} inputMode="numeric" placeholder="MMYY" value={form.limit_ym} onChange={e => set("limit_ym", e.target.value.replace(/\D/g, ""))} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">CVC</label>
+                <input className={inputCls} inputMode="numeric" placeholder="000" value={form.cvc} onChange={e => set("cvc", e.target.value.replace(/\D/g, ""))} />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">비고</label>
+              <input className={inputCls} placeholder="선택사항" value={form.memo} onChange={e => set("memo", e.target.value)} />
+            </div>
+
+            {error && <p className="text-xs text-red-500">{error}</p>}
+          </div>
+
+          <div className="flex justify-end gap-2 px-6 py-4 bg-gray-50 border-t border-gray-200">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">취소</button>
+            <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+              {saving ? "저장 중..." : "추가"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+// 카드 목록 모달 (my_card 전체)
+// ─────────────────────────────────────────────
+function CardListModal({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
+  const [cards, setCards] = useState<CardMaster[]>([])
+  const [loading, setLoading] = useState(true)
+  const [editingCardId, setEditingCardId] = useState<number | null>(null)
+  const [showAddCard, setShowAddCard] = useState(false)
+
+  const reload = useCallback(async () => {
+    setLoading(true)
+    setCards(await getCards())
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { reload() }, [reload])
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[55]">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+          <h3 className="text-base font-bold text-gray-700">카드 정보</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+        </div>
+        <div className="px-4 py-2 border-b border-gray-100 flex items-center">
+          <button
+            onClick={() => setShowAddCard(true)}
+            className="ml-auto text-sm text-blue-600 border border-blue-300 rounded px-3 py-1 hover:bg-blue-50"
+          >
+            카드 추가
+          </button>
+        </div>
+
+        <div className="overflow-auto flex-1 px-1">
+          {loading ? (
+            <div className="text-center py-10 text-gray-400 text-sm">불러오는 중...</div>
+          ) : cards.length === 0 ? (
+            <div className="text-center py-10 text-gray-400 text-sm">등록된 카드가 없습니다</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-white z-10">
+                <tr className="text-xs text-gray-500 border-b border-gray-200">
+                  <th className="px-3 py-2 text-left font-medium">카드명</th>
+                  <th className="px-3 py-2 text-center font-medium">구분</th>
+                  <th className="px-3 py-2 text-center font-medium">결제일</th>
+                  <th className="px-3 py-2 text-center font-medium">정산기간</th>
+                  <th className="px-3 py-2 text-left font-medium">카드번호</th>
+                  <th className="px-3 py-2 text-center font-medium">유효기간·CVC</th>
+                  <th className="px-3 py-2 text-center font-medium">수정</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cards.map(c => (
+                  <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="px-3 py-1.5 text-gray-800">{c.card_nm}</td>
+                    <td className="px-3 py-1.5 text-center">
+                      <span className={c.card_type === "2" ? "text-emerald-600 text-xs font-medium" : "text-blue-600 text-xs font-medium"}>
+                        {getCardTypeLabel(c.card_type)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-1.5 text-center text-gray-600 text-xs">
+                      {c.card_type === "2" ? "즉시" : c.pay_ymd ? `${c.pay_ymd}일` : "-"}
+                    </td>
+                    <td className="px-3 py-1.5 text-center text-gray-600 text-xs">
+                      {settlementLabel(c.start_ymd, c.end_ymd)}
+                    </td>
+                    <td className="px-3 py-1.5 text-gray-600 text-xs font-mono">
+                      {c.has_card_no ? maskCardNo(c.card_no_last4) : <span className="text-gray-300">미등록</span>}
+                    </td>
+                    <td className="px-3 py-1.5 text-center text-xs">
+                      <span className={c.has_limit_ym ? "text-gray-500" : "text-gray-300"}>{c.has_limit_ym ? "****" : "미등록"}</span>
+                      <span className="text-gray-300 mx-1">/</span>
+                      <span className={c.has_cvc ? "text-gray-500" : "text-gray-300"}>{c.has_cvc ? "***" : "미등록"}</span>
+                    </td>
+                    <td className="px-3 py-1.5 text-center">
+                      <button
+                        onClick={() => setEditingCardId(c.id)}
+                        className="text-xs px-2 py-0.5 border text-gray-600 rounded hover:bg-gray-50"
+                      >수정</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
+          <span className="text-xs text-gray-400">유효기간·CVC는 암호화 저장되며 [수정]에서 [보기]로만 확인할 수 있습니다.</span>
+          <button onClick={onClose} className="text-sm px-4 py-1.5 border rounded text-gray-600 hover:bg-gray-50">닫기</button>
+        </div>
+      </div>
+
+      {showAddCard && (
+        <AddCardModal
+          onClose={() => setShowAddCard(false)}
+          onAdded={async () => { await reload(); onChanged() }}
+        />
+      )}
+      {editingCardId != null && (
+        <CardDetailModal
+          cardId={editingCardId}
+          onClose={() => setEditingCardId(null)}
+          onUpdated={async () => { await reload(); onChanged() }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
 // 항목 관리 모달 행
 // ─────────────────────────────────────────────
 type ManageRowProps = {
-  item: CostItem
+  item: ManagedCostItem
   onEdit: (item: CostItem) => void
-  onEditCard: (cardId: number) => void
   onUpdated: () => void
 }
 
-function ManageRow({ item, onEdit, onEditCard, onUpdated }: ManageRowProps) {
+function ManageRow({ item, onEdit, onUpdated }: ManageRowProps) {
   async function toggleActive() {
     if (item.use_yn === 'Y') await deactivateCostItem(item.id)
     else await activateCostItem(item.id)
     onUpdated()
+  }
+
+  // 되돌릴 수 없으므로 월별 실적이 함께 지워지는 것을 확인창에 명시한다
+  async function handleDelete() {
+    const detail = item.info_cnt > 0
+      ? `\n\n⚠ 월별 실적 ${item.info_cnt}건(${item.first_ym} ~ ${item.last_ym})도 함께 삭제되며 되돌릴 수 없습니다.\n일시적으로 쓰지 않는 항목이라면 [비활성]을 이용하세요.`
+      : "\n\n연결된 월별 실적이 없습니다."
+    if (!confirm(`"${item.item_nm}" 항목을 삭제합니다.${detail}`)) return
+    try {
+      await deleteCostItem(item.id)
+      onUpdated()
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "삭제하지 못했습니다.")
+    }
   }
 
   const rowCls = `border-b border-gray-100 text-sm ${item.use_yn !== 'Y' ? "opacity-40" : "hover:bg-gray-50"}`
@@ -745,7 +1058,12 @@ function ManageRow({ item, onEdit, onEditCard, onUpdated }: ManageRowProps) {
         <span className="text-gray-800">{item.item_nm}</span>
       </td>
       <td className="px-2 py-1.5">
-        <span className={`text-sm ${PAY_METHOD_COLOR[item.cost_type ?? ""] ?? "text-gray-400"}`}>{getPayMethodLabel(item.cost_type)}</span>
+        <span className={`text-sm ${PAY_METHOD_COLOR[item.cost_type ?? ""] ?? "text-gray-400"}`}>
+          {payMethodLabel(item)}
+        </span>
+        {item.cost_type === "2" && item.item_type1 !== "4" && !item.card_nm && (
+          <span className="ml-1 text-xs text-gray-400">미지정</span>
+        )}
       </td>
       <td className="px-2 py-1.5 text-center">
         <span className="text-gray-600">{item.pay_dd ?? "-"}</span>
@@ -754,15 +1072,7 @@ function ManageRow({ item, onEdit, onEditCard, onUpdated }: ManageRowProps) {
         <span className="text-gray-700 font-medium">{item.amt ? fmt(item.amt) : "-"}</span>
       </td>
       <td className="px-2 py-1.5 text-center whitespace-nowrap">
-        <div className="flex items-center justify-center gap-1">
-          <button onClick={() => onEdit(item)} className="text-xs px-2 py-0.5 border text-gray-600 rounded hover:bg-gray-50">수정</button>
-          {item.item_type1 === "4" && item.card_id != null && (
-            <button
-              onClick={() => onEditCard(item.card_id!)}
-              className="text-xs px-2 py-0.5 border border-blue-300 text-blue-600 rounded hover:bg-blue-50"
-            >카드정보</button>
-          )}
-        </div>
+        <button onClick={() => onEdit(item)} className="text-xs px-2 py-0.5 border text-gray-600 rounded hover:bg-gray-50">수정</button>
       </td>
       <td className="px-2 py-1.5 text-center">
         <button
@@ -772,16 +1082,28 @@ function ManageRow({ item, onEdit, onEditCard, onUpdated }: ManageRowProps) {
           {item.use_yn === 'Y' ? "비활성" : "활성화"}
         </button>
       </td>
+      <td className="px-2 py-1.5 text-center">
+        <button
+          onClick={handleDelete}
+          disabled={item.shopping_cnt > 0}
+          title={item.shopping_cnt > 0
+            ? `쇼핑 구매 내역 ${item.shopping_cnt}건이 참조 중이라 삭제할 수 없습니다`
+            : item.info_cnt > 0
+              ? `월별 실적 ${item.info_cnt}건도 함께 삭제됩니다`
+              : "삭제"}
+          className="text-xs px-2 py-0.5 rounded border text-gray-500 border-gray-300 hover:bg-red-50 hover:text-red-600 hover:border-red-300 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-500 disabled:hover:border-gray-300"
+        >삭제</button>
+      </td>
     </tr>
   )
 }
 
 function ItemManageModal({ onClose, onChanged, defaultCategory = "" }: { onClose: () => void; onChanged: () => void; defaultCategory?: string }) {
-  const [items, setItems] = useState<CostItem[]>([])
+  const [items, setItems] = useState<ManagedCostItem[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [editingItem, setEditingItem] = useState<CostItem | null>(null)
-  const [editingCardId, setEditingCardId] = useState<number | null>(null)
+  const [showCardList, setShowCardList] = useState(false)
   const [filterCategory, setFilterCategory] = useState(defaultCategory)
 
   const reload = useCallback(async () => {
@@ -803,7 +1125,7 @@ function ItemManageModal({ onClose, onChanged, defaultCategory = "" }: { onClose
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
           <h3 className="text-base font-bold text-gray-700">입출금 항목 관리</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
@@ -826,6 +1148,12 @@ function ItemManageModal({ onClose, onChanged, defaultCategory = "" }: { onClose
           >
             입출금 항목 추가
           </button>
+          <button
+            onClick={() => setShowCardList(true)}
+            className="text-sm text-gray-600 border border-gray-300 rounded px-3 py-1 hover:bg-gray-50"
+          >
+            카드 정보
+          </button>
         </div>
         <div className="overflow-auto flex-1 px-1">
           {loading ? (
@@ -842,14 +1170,15 @@ function ItemManageModal({ onClose, onChanged, defaultCategory = "" }: { onClose
                   <th className="px-2 py-2 text-right font-medium">기본금액</th>
                   <th className="px-2 py-2 text-center font-medium">수정</th>
                   <th className="px-2 py-2 text-center font-medium">상태</th>
+                  <th className="px-2 py-2 text-center font-medium">삭제</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredItems.map(item => (
-                  <ManageRow key={item.id} item={item} onEdit={setEditingItem} onEditCard={setEditingCardId} onUpdated={handleUpdated} />
+                  <ManageRow key={item.id} item={item} onEdit={setEditingItem} onUpdated={handleUpdated} />
                 ))}
                 {filteredItems.length === 0 && (
-                  <tr><td colSpan={8} className="text-center py-8 text-gray-400 text-sm">항목 없음</td></tr>
+                  <tr><td colSpan={9} className="text-center py-8 text-gray-400 text-sm">항목 없음</td></tr>
                 )}
               </tbody>
             </table>
@@ -873,11 +1202,10 @@ function ItemManageModal({ onClose, onChanged, defaultCategory = "" }: { onClose
           onUpdated={async () => { setEditingItem(null); await handleUpdated() }}
         />
       )}
-      {editingCardId != null && (
-        <CardDetailModal
-          cardId={editingCardId}
-          onClose={() => setEditingCardId(null)}
-          onUpdated={handleUpdated}
+      {showCardList && (
+        <CardListModal
+          onClose={() => setShowCardList(false)}
+          onChanged={handleUpdated}
         />
       )}
     </div>
@@ -893,6 +1221,7 @@ type AddModalProps = {
 
 function AddItemModal({ defaultCategory, onClose, onAdded }: AddModalProps) {
   const [form, setForm] = useState<Partial<CostItem>>({ item_type1: defaultCategory })
+  const [payMethod, setPayMethod] = useState("")
   const [cards, setCards] = useState<CardMaster[]>([])
   const [saving, setSaving] = useState(false)
 
@@ -900,24 +1229,29 @@ function AddItemModal({ defaultCategory, onClose, onAdded }: AddModalProps) {
     setForm(f => ({ ...f, [k]: v }))
   }
 
-  // 신용카드 카테고리일 때 연결할 my_card 목록
+  // 결제수단 드롭다운과 연결 카드 select 양쪽에서 쓴다
+  useEffect(() => { getCards().then(setCards) }, [])
+
+  // 신용카드 카테고리로 바꾸면 결제수단에서 카드 목록이 사라지므로 선택값을 되돌린다
   useEffect(() => {
-    if (form.item_type1 === "4" && cards.length === 0) getCards().then(setCards)
-  }, [form.item_type1, cards.length])
+    if (form.item_type1 === "4" && payMethod.startsWith("card:")) setPayMethod("card")
+  }, [form.item_type1, payMethod])
 
   async function submit(e: React.SyntheticEvent) {
     e.preventDefault()
     if (!form.item_nm || !form.item_type1) return
     setSaving(true)
+    const pm = fromPayMethodValue(payMethod)
     await addCostItem({
       item_type1: form.item_type1!,
       item_type2: form.item_type2 ?? null,
       item_nm: form.item_nm!,
-      cost_type: form.cost_type ?? null,
+      cost_type: pm.cost_type,
       pay_dd: form.pay_dd ? Number(form.pay_dd) : null,
       amt: Number(form.amt) || 0,
       memo: form.memo ?? null,
-      card_id: form.item_type1 === "4" ? (form.card_id ?? null) : null,
+      // 신용카드 항목은 별도 "연결 카드" 필드, 그 외는 결제수단에서 고른 카드
+      card_id: form.item_type1 === "4" ? (form.card_id ?? null) : pm.card_id,
     })
     setSaving(false)
     onAdded()
@@ -990,9 +1324,12 @@ function AddItemModal({ defaultCategory, onClose, onAdded }: AddModalProps) {
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">결제수단</label>
-                <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-center text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent" value={form.cost_type ?? ""} onChange={e => set("cost_type", e.target.value)}>
-                  {PAY_METHOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+                <PayMethodSelect
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                  value={payMethod}
+                  cards={form.item_type1 === "4" ? [] : cards}
+                  onChange={setPayMethod}
+                />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">결제일</label>
@@ -1009,10 +1346,10 @@ function AddItemModal({ defaultCategory, onClose, onAdded }: AddModalProps) {
                 <input
                   type="text" inputMode="numeric"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
-                  value={form.amt !== undefined && form.amt !== null ? String(form.amt) : ""}
+                  value={form.amt ? Number(form.amt).toLocaleString("ko-KR") : ""}
                   onChange={e => {
                     const raw = e.target.value.replace(/[^0-9]/g, "")
-                    set("amt", raw ? Number(raw) : "")
+                    set("amt", raw ? Number(raw) : null)
                   }}
                   placeholder="0"
                 />
@@ -1307,7 +1644,7 @@ function SectionTable({ rows, yearMonth, showSettlement, hidePayMethod, compact,
         <tr className="text-xs text-gray-500 border-b border-gray-200">
           <th className={`py-1 px-2 text-left ${compact ? "" : "w-[200px]"}`}>항목명</th>
           <th className="py-1 px-2 text-center w-[50px]">날짜</th>
-          {!hidePayMethod && <th className="py-1 px-2 text-center w-[68px]">결제수단</th>}
+          {!hidePayMethod && <th className="py-1 px-2 text-center w-[112px]">결제수단</th>}
           <th className="py-1 px-2 text-right w-[100px]">금액</th>
           {showSettlement && <th className="py-1 px-2 text-center w-[90px]">전월대비</th>}
           {showSettlement && <th className="py-1 px-2 text-center w-[90px]">정산기간</th>}
@@ -1370,12 +1707,20 @@ export default function CostPage() {
     load()
   }
 
-  // 집계
+  // 집계 (cost_task.md 집계 로직)
+  // 카드로 결제한 항목은 다음 달 카드 청구액에 포함되어 신용카드 섹션으로 들어오므로 당월 지출에서 뺀다.
+  // 신용카드 항목(4)은 카드 대금이 계좌에서 빠지는 것이라 제외 대상이 아니다.
+  const isCardUsage = (r: MonthDataRow) =>
+    r.item_type1 !== "4" && r.item_type1 !== "5" && r.cost_type === "2"
+
   const income = rows.filter(r => r.item_type1 === "5").reduce((s, r) => s + r.amount, 0)
-  const expense = rows.filter(r => r.item_type1 !== "5").reduce((s, r) => s + r.amount, 0)
+  const cardUsage = rows.filter(isCardUsage).reduce((s, r) => s + r.amount, 0)
+  const expense = rows
+    .filter(r => r.item_type1 !== "5" && !isCardUsage(r))
+    .reduce((s, r) => s + r.amount, 0)
   const balance = income - expense
-  const expenseCard = rows.filter(r => r.item_type1 !== "5" && r.cost_type === "2").reduce((s, r) => s + r.amount, 0)
-  const expenseCash = rows.filter(r => r.item_type1 !== "5" && r.cost_type === "1").reduce((s, r) => s + r.amount, 0)
+  const cardBill = rows.filter(r => r.item_type1 === "4").reduce((s, r) => s + r.amount, 0)
+  const expenseCash = expense - cardBill
 
   // 카테고리별 그룹
   const fixedRows = rows.filter(r => r.item_type1 === "1")
@@ -1458,7 +1803,7 @@ export default function CostPage() {
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-700">지출</span>
                     <div className="flex items-center gap-3">
-                      {expenseCard > 0 && <span className="text-xs text-blue-500">카드 <span className="font-semibold text-blue-600">{fmt(expenseCard)}</span></span>}
+                      {cardBill > 0 && <span className="text-xs text-blue-500">카드청구 <span className="font-semibold text-blue-600">{fmt(cardBill)}</span></span>}
                       {expenseCash > 0 && <span className="text-xs text-emerald-600">현금 <span className="font-semibold text-emerald-600">{fmt(expenseCash)}</span></span>}
                       <span className="text-sm font-medium text-red-500">₩{fmt(expense)}</span>
                     </div>
@@ -1469,6 +1814,12 @@ export default function CostPage() {
                       ₩{fmt(balance)}
                     </span>
                   </div>
+                  {cardUsage > 0 && (
+                    <div className="border-t border-gray-100 pt-1.5 flex justify-between items-center">
+                      <span className="text-xs text-gray-400">카드 사용액 <span className="text-gray-300">· 다음 달 청구</span></span>
+                      <span className="text-xs text-gray-400">₩{fmt(cardUsage)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 

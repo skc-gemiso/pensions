@@ -44,7 +44,9 @@ export async function getCardItems(): Promise<CardItem[]> {
   const pool = getPensionPool()
   // 카드명은 my_card.card_nm 기준 (docs/life/cost/cost_task.md 연결 구조)
   const { rows } = await pool.query<CardItem>(
-    `SELECT i.id, COALESCE(cd.card_nm, i.item_nm) AS item_nm
+    `SELECT i.id,
+            CASE WHEN i.item_type1 = '4' THEN COALESCE(cd.card_nm, i.item_nm)
+                 ELSE i.item_nm END AS item_nm
      FROM my_cost_item i
      LEFT JOIN my_card cd ON cd.id = i.card_id
      WHERE i.item_type1 = '4' AND i.use_yn = 'Y'
@@ -60,7 +62,9 @@ export async function getShoppingList(category?: string): Promise<Shopping[]> {
   const { rows } = await pool.query<Shopping>(
     `SELECT
        s.id, s.item_type, s.category, s.purchase_date::text, s.product_nm,
-       s.card_item_id, COALESCE(cd.card_nm, c.item_nm) AS card_item_nm,
+       s.card_item_id,
+       CASE WHEN c.item_type1 = '4' THEN COALESCE(cd.card_nm, c.item_nm)
+            ELSE c.item_nm END AS card_item_nm,
        s.original_price, s.purchase_price, s.purchase_place,
        s.content,
        s.created_at::text, s.updated_at::text
