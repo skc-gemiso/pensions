@@ -167,7 +167,7 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 
 ---
 
-### 글로벌 ETF (`/invest/etf`) — 이전 예정
+### 글로벌 ETF (`/invest/etf`) — 구현 완료
 
 | 기능 | 설명 |
 |------|------|
@@ -177,8 +177,8 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 | 수량 변동 분석 | 보유 수량 변동폭 TOP 20 바차트 |
 | 추천 종목 | 비중·수량·주가 모멘텀 기반 스코어링 카드 |
 
-- 참고 파일: [app/invest/etf/](../app/invest/etf/) (이전 예정)
-- 수집기: [collector/etf/](../collector/etf/) (이전 예정)
+- 참고 파일: [app/invest/etf/](../app/invest/etf/), [lib/etf-collector.ts](../lib/etf-collector.ts)
+- 수집기: [collector/etf/](../collector/etf/) — Python. 수동 실행은 프로세스 spawn 방식이라 Vercel에서는 동작하지 않음
 - 상세 문서: [invest/etf/etf_project.md](invest/etf/etf_project.md), [invest/etf/etf_task.md](invest/etf/etf_task.md)
 
 ---
@@ -260,8 +260,9 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 
 ### 데이터베이스
 
-- 일반 DB: `lib/auth-db.ts` (사용자 관리), `lib/pension-db.ts` (연금 데이터)
-- 시뮬레이션 DB: Supabase PostgreSQL (`pension_sim_savings_fund` 테이블)
+- **DB는 Supabase PostgreSQL 하나뿐**이다. 인증·연금·주식·ETF·생활비·쇼핑이 모두 같은 DB를 쓰고,
+  연결은 [lib/pension-db.ts](../lib/pension-db.ts) 의 `getPensionPool()` 싱글턴 하나로 통일돼 있다
+- 스키마 마이그레이션: [lib/auth-db.ts](../lib/auth-db.ts) 의 `ensureMigrations()` (v001~v022, 로그인 시 실행)
 - 기술 상세: [environment.md](environment.md)
 
 ### 서버 액션
@@ -271,7 +272,12 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 | [app/actions/auth.ts](../app/actions/auth.ts) | 로그인·로그아웃 |
 | [app/actions/visitor.ts](../app/actions/visitor.ts) | 방문자 기록 |
 | [app/pension/nat/actions.ts](../app/pension/nat/actions.ts) | 국민연금 스냅샷 CRUD |
-| [app/sim/actions.ts](../app/sim/actions.ts) | 시뮬레이션 저장·조회·삭제, IP 기록 |
+| [app/sim/actions.ts](../app/sim/actions.ts) | 시뮬레이션 저장·조회·삭제, IP 기록, 시세 조회 |
+| [app/assets/stock/actions.ts](../app/assets/stock/actions.ts) | 주식 거래·보유·계좌·분배금, 네이버 주가 수집 |
+| [app/invest/etf/actions.ts](../app/invest/etf/actions.ts) | ETF 보유종목 분석·추천, 수집기 실행 |
+| [app/invest/usa/actions.ts](../app/invest/usa/actions.ts) | 미국 지표·국채·환율 조회, 수집기 실행 |
+| [app/life/cost/actions.ts](../app/life/cost/actions.ts) | 생활비 항목·월별 실적, 카드 마스터(암호화 포함) |
+| [app/shopping/actions.ts](../app/shopping/actions.ts) | 쇼핑 구매·참고자료·첨부파일 Signed URL |
 
 ---
 
@@ -289,9 +295,9 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 
 | 항목 | 설명 |
 |------|------|
-| Vercel 배포 | GitHub 연동, 환경 변수 등록, E2E 검증 |
 | 모바일 UI 개선 | 반응형 레이아웃 최적화 |
 | 시뮬레이션 공유 | 저장된 시뮬레이션 URL 공유 기능 |
+| 수집기 서버리스 대응 | Python spawn 방식이라 Vercel에서 수동 실행 불가 — 외부 워커나 API 방식 검토 |
 
 ### 장기
 

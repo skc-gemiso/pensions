@@ -139,8 +139,23 @@ CREATE TABLE pension_sim_savings_fund (
 ```
 
 - `ensureTable()` 로 런타임에 테이블/컬럼 자동 생성 (ALTER TABLE ADD COLUMN IF NOT EXISTS)
-- `loadSimulations`: admin은 전체 조회, 일반 사용자는 `saved_by = userName` 필터
-- `deleteSimulation`: ID 기준 삭제
+
+---
+
+## 서버 액션 (`app/sim/actions.ts`)
+
+계산 로직(`calculateRows` / `calculateIRPRows`)은 서버가 아니라 `page.tsx` 안의 클라이언트 함수다.
+서버 액션은 저장·조회와 외부 데이터 공급만 담당한다.
+
+| 함수 | 반환 | 설명 |
+|------|------|------|
+| `checkAndRecordIpUsage()` | 사용 가능 여부 | 비로그인 사용 제한 — 접속 IP를 기록하고 한도 초과 여부 판정 |
+| `saveSimulation(data)` | `void` | 입력값·결과를 `inputs`/`results` JSONB 로 저장 |
+| `loadSimulations()` | `SavedSim[]` | admin은 전체, 일반 사용자는 `saved_by = userName` 필터 |
+| `deleteSimulation(id)` | `void` | ID 기준 삭제 (권한 체크 없음 — 알려진 제약 참고) |
+| `getKodex200Series(months?)` | `Kodex200Row[]` | KODEX 200 주가 시계열 |
+| `getCoveredCallSeries(months?)` | `CoveredCallRow[]` | 커버드콜 ETF 시계열 (일반형 대비 비교용) |
+| `getEtfDividendHistory(...)` | `EtfDividendRow[]` | ETF 분배금 지급 이력 |
 
 ---
 

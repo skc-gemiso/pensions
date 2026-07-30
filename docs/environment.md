@@ -42,6 +42,9 @@ pensions/
 │   │   └── stock/
 │   │       ├── page.tsx                  주식 투자 (포트폴리오·차트·거래내역)
 │   │       └── actions.ts               주식 CRUD + 네이버 주가 수집 Server Actions
+│   │   └── shopping/
+│   │       ├── upload/route.ts            첨부파일 업로드 (Supabase Storage)
+│   │       └── content-image/route.ts     본문 인라인 이미지 업로드
 │   ├── pension/
 │   │   ├── page.tsx                      /pension/my 리다이렉트
 │   │   ├── my/page.tsx                   나의 연금 현황 대시보드
@@ -51,26 +54,51 @@ pensions/
 │   │   ├── ret/page.tsx                  퇴직연금
 │   │   ├── per/page.tsx                  개인연금 (진행 중)
 │   │   └── seni/page.tsx                노령연금 (진행 중)
+│   ├── invest/
+│   │   ├── page.tsx                      /invest/etf 리다이렉트
+│   │   ├── etf/                          글로벌 ETF — page/holdings/recommend/analysis + actions.ts
+│   │   └── usa/                          미국 경제 지표 — page/indicator/treasury/fx + actions.ts
+│   ├── life/
+│   │   ├── page.tsx                      /life/cost 리다이렉트
+│   │   └── cost/
+│   │       ├── page.tsx                  생활비 관리
+│   │       └── actions.ts               생활비·카드 마스터 Server Actions
+│   ├── shopping/
+│   │   ├── page.tsx                      쇼핑 관리 (구매·참고자료·첨부파일)
+│   │   └── actions.ts                   쇼핑 CRUD + Signed URL 발급
+│   ├── magic/page.tsx                    복리의 마법
 │   └── sim/
 │       ├── page.tsx                      연금저축펀드 시뮬레이션
-│       └── actions.ts                   시뮬레이션 CRUD + IP 기록
+│       ├── Kodex200Panel.tsx             KODEX 200 주가 사이드 패널
+│       └── actions.ts                   시뮬레이션 CRUD + IP 기록 + 시세 조회
 ├── components/
 │   ├── AppLayout.tsx                     공통 사이드바 레이아웃
 │   ├── NationalPensionDashboardCard.tsx  국민연금 카드
 │   ├── RetirementDashboardCard.tsx       퇴직연금 카드
-│   └── Providers.tsx                    Redux/Context 제공자
+│   ├── RichEditor.tsx                    쇼핑 본문 리치 에디터 (TipTap)
+│   └── Providers.tsx                    세션 Provider
 ├── lib/
-│   ├── auth-db.ts                        인증 DB (사용자 관리)
-│   ├── pension-db.ts                    연금 데이터 DB
-│   ├── etf-db.ts                         ETF DB Pool (pension-db와 동일 DB)
-│   └── fmt.ts                            공유 숫자 유틸 — fmt(n, dec?) / cc(v)
+│   ├── auth-db.ts                        인증 DB + 스키마 마이그레이션 (v001~v022)
+│   ├── pension-db.ts                    Supabase DB Pool 싱글턴 (전 화면 공용)
+│   ├── etf-collector.ts                  ETF Python 수집기 기동·상태 관리
+│   ├── usa-collector.ts                  미국 지표·환율 수집기 기동·상태 관리
+│   ├── supabase-storage.ts               Supabase Storage 업로드·Signed URL·삭제
+│   ├── card-crypto.ts                    카드 민감정보 AES-256-GCM 암/복호화
+│   └── fmt.ts                            공유 숫자 유틸 — fmt / cc / fmtKRW / fmtShares
 ├── auth.ts                               NextAuth v5 설정
-├── middleware.ts (또는 proxy.ts)         라우트 보호 미들웨어
+├── middleware.ts                         라우트 보호 미들웨어
+├── instrumentation.ts                    수집 스케줄 등록 (Vercel에서는 비활성)
+├── collector/                            Python 수집기 (etf / usa)
 ├── scripts/
-│   └── sync-stock-prices.mjs             독립 실행 주가 수집 스크립트 (Node.js)
+│   ├── sync-stock-prices.mjs             독립 실행 주가 수집 스크립트 (Node.js)
+│   ├── run-sql.mjs                       SQL 파일 실행
+│   └── check-tables.mjs                  테이블 점검
 ├── vercel.json                           Vercel Cron 스케줄 + 보안 헤더(CSP)
-└── .env.local                            환경 변수 (git 제외)
+└── config/.env                           환경 변수 (git 제외 — next.config.ts 가 로드)
 ```
+
+> 환경 변수 파일은 `config/.env` 다. [next.config.ts](../next.config.ts) 가 `dotenv` 로 읽어
+> `process.env` 에 주입하며 **서버 기동 시 한 번만** 로드한다 — 값을 바꾸면 dev 서버를 재시작해야 한다.
 
 ---
 
@@ -78,9 +106,10 @@ pensions/
 
 ### 구조
 
-- NextAuth v5 Credentials Provider
-- JWT 세션: 사용자명(name), 역할(role), 메뉴 권한이 JWT에 포함
-- DB 기반 사용자 관리 (`lib/auth-db.ts`)
+- NextAuth v5 — **Google OAuth + Credentials** 두 Provider
+- JWT 세션 (`strategy: "jwt"`, `maxAge` 30일): 사용자명(name), 역할(role), 메뉴 권한이 JWT에 포함
+- DB 기반 사용자·메뉴 관리 (`lib/auth-db.ts`) — 로그인 시 `ensureMigrations()` 가 실행돼
+  스키마 마이그레이션(v001~v022)이 적용된다
 
 ### 역할(role)
 
@@ -91,25 +120,22 @@ pensions/
 
 ### 라우트 보호
 
-- `middleware.ts` (Next.js 16 미들웨어, named export)
+- `middleware.ts` (Next.js 16 미들웨어, named export) — 현재 파일명은 `middleware.ts` 다 (`proxy.ts` 아님)
 - `/login` 이외 모든 경로: 미인증 시 `/login` 리다이렉트
-- **이전 이슈**: Next.js 16에서 미들웨어 파일명이 `proxy.ts`로 변경된 버전 있음 → 현재 상태 확인 필요
 
 ---
 
 ## 데이터베이스
 
-### 일반 DB (`lib/auth-db.ts`, `lib/pension-db.ts`)
+**DB는 Supabase PostgreSQL 하나뿐이다.** 인증·연금·주식·ETF·생활비·쇼핑이 모두 같은 DB를 쓴다.
 
-- `pg` Pool 싱글턴 패턴
-- Server Actions에서만 호출 (`"use server"`)
-- 환경 변수: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
-
-### 시뮬레이션 DB (Supabase PostgreSQL)
-
-- 연결: Supabase 세션 풀러 (포트 5432)
-- 환경 변수: `PENSION_SIM_DB_*`
-- `ensureTable()`: 런타임에 테이블/컬럼 자동 생성
+- 연결: [lib/pension-db.ts](../lib/pension-db.ts) 의 `getPensionPool()` — `pg` Pool 싱글턴,
+  Supabase 세션 풀러(포트 5432). 화면별 전용 Pool은 두지 않는다
+- 호출은 Server Actions (`"use server"`) 또는 API Route 안에서만
+- 환경 변수: `PENSION_SIM_DB_*` (이름은 시뮬레이션 화면에서 처음 쓰던 흔적이고, 현재는 전 화면 공용)
+- 스키마 관리 두 갈래
+  - `lib/auth-db.ts` 의 `ensureAuthTables()` / `ensureMigrations()` — 로그인 시 실행되는 번호식 마이그레이션
+  - `ensureTable()` (`app/sim/actions.ts`) — 런타임에 테이블/컬럼 자동 생성
 
 #### `pension_sim_savings_fund` 테이블
 
@@ -167,17 +193,14 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 
 ---
 
-## 환경 변수 (`.env.local`)
+## 환경 변수 (`config/.env`)
 
 | 변수 | 설명 | 비고 |
 |------|------|------|
-| `DB_HOST` | 일반 DB 호스트 | |
-| `DB_PORT` | 일반 DB 포트 | |
-| `DB_NAME` | 일반 DB명 | |
-| `DB_USER` | 일반 DB 사용자 | |
-| `DB_PASSWORD` | 일반 DB 비밀번호 | `#` 포함 시 `"..."` 필수 |
-| `NEXTAUTH_SECRET` | JWT 서명 시크릿 | |
-| `NEXTAUTH_URL` | 앱 URL | `http://localhost:3000` |
+| `AUTH_SECRET` | JWT 서명 시크릿 | NextAuth v5 규격 (`NEXTAUTH_SECRET` 아님) |
+| `AUTH_URL` | 앱 URL | `http://localhost:3000` |
+| `GOOGLE_CLIENT_ID` | Google OAuth 클라이언트 ID | 구글 로그인 |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth 시크릿 | 구글 로그인 |
 | `PENSION_SIM_DB_HOST` | Supabase 세션 풀러 호스트 | |
 | `PENSION_SIM_DB_PORT` | Supabase 포트 | `5432` |
 | `PENSION_SIM_DB_NAME` | Supabase DB명 | `postgres` |
@@ -187,8 +210,13 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `SUPABASE_URL` | Supabase 프로젝트 URL | `https://PROJECT_REF.supabase.co` (쇼핑 Storage) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase 서비스 롤 키 | 대시보드 > Settings > API (쇼핑 Storage 서버 사이드 업로드) |
 | `CARD_ENC_KEY` | 카드 민감정보 암호화 키 (32바이트 base64) | `my_card`의 `card_no`·`cvc`·`limit_ym` AES-256-GCM 암/복호화. **분실 시 복호화 불가 — 반드시 백업** |
+| `FRED_API_KEY` | FRED API 키 | Python 수집기(`collector/usa`) 전용 — Next.js 코드에서는 참조하지 않음 |
 
 > **주의**: 특수문자(`#` 등) 포함 패스워드는 반드시 `"..."` 로 감싸야 dotenv 정상 파싱.
+>
+> 값을 추가·수정하면 **dev 서버를 재시작**해야 반영된다 (`next.config.ts` 가 기동 시 1회만 로드).
+> 서버가 뜬 뒤 추가한 키는 `process.env` 에 없어, 예컨대 카드 상세의 `[보기]` 가
+> "서버에 CARD_ENC_KEY 가 없습니다" 로 실패한다.
 
 ### `CARD_ENC_KEY` 생성
 
@@ -250,9 +278,9 @@ Vercel 프로젝트 Settings > Environment Variables 에 아래 변수 등록:
 
 | 변수 | 비고 |
 |------|------|
-| `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | 일반 DB |
-| `NEXTAUTH_SECRET` / `NEXTAUTH_URL` | NextAuth |
-| `PENSION_SIM_DB_*` | Supabase 연결 |
+| `AUTH_SECRET` / `AUTH_URL` | NextAuth v5 |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | 구글 로그인 |
+| `PENSION_SIM_DB_*` | Supabase DB 연결 |
 | `CRON_SECRET` | Cron 인증 시크릿 |
 | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | 쇼핑 첨부파일 Storage |
 | `CARD_ENC_KEY` | 카드 민감정보 암호화 키 — 로컬 `config/.env`와 **동일한 값**을 등록해야 기존 데이터 복호화 가능 |
@@ -263,6 +291,8 @@ Vercel 프로젝트 Settings > Environment Variables 에 아래 변수 등록:
 
 | 이슈 | 원인 | 해결책 |
 |------|------|--------|
-| `/api/auth/session` 첫 요청 404 | Turbopack lazy compilation | `--webpack` 플래그 사용 |
-| 미들웨어 파일명 혼선 | Next.js 16 breaking change | `proxy.ts` → `middleware.ts` 명 확인 |
-| 패스워드 파싱 오류 | `#` 등 특수문자 | `.env.local`에서 `"..."` 감싸기 |
+| `/api/auth/session` 첫 요청 404 | Turbopack lazy compilation | `--webpack` 플래그 사용 (`npm run dev` 에 이미 적용) |
+| 패스워드 파싱 오류 | `#` 등 특수문자 | `config/.env` 에서 `"..."` 감싸기 |
+| 새 환경 변수가 적용되지 않음 | `next.config.ts` 가 기동 시 1회만 dotenv 로드 | dev 서버 재시작 |
+| 배포에서만 이미지·리소스가 깨짐 | `vercel.json` CSP는 배포에만 적용 | `img-src` 등 화이트리스트에 호스트 추가 |
+| 수집기 수동 실행이 Vercel에서 동작하지 않음 | Python 프로세스 spawn 불가 (서버리스) | 로컬/상시 구동 환경에서 실행 (`instrumentation.ts` 도 Vercel에서 스케줄 비활성) |

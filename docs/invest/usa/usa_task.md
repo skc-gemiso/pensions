@@ -41,6 +41,7 @@ app/invest/usa/
 | `getTreasurySeries(months?)` | `{ stat_date, country_code, amount_usd_billion, fx_rate, amount_krw_trillion }[]` | 국채 보유 시계열 (t_fx_rate LATERAL JOIN — 단, 화면에서는 fx_rate·amount_krw_trillion 미사용, FIXED_FX=1400으로 재계산) |
 | `getFxSeries(months?)` | `{ stat_date, exchange_rate }[]` | 환율 시계열 (t_fx_rate, 일별) |
 | `getCollectLastRun()` | `{ collector_name, last_run, last_status }[]` | 수집기별 마지막 실행 이력 |
+| `getCollectLogRecent(limit?)` | 수집 로그 행 배열 | 최근 수집 로그 (수집 이력 표시용) |
 | `triggerUsaCollect()` | `{ started, reason? }` | admin 전용 — FRED + TIC 수집 트리거 |
 | `getUsaCollectStatusAction()` | `CollectStatus` | FRED+TIC 수집 진행 상태 조회 |
 | `triggerFxCollect()` | `{ started, reason? }` | admin 전용 — 환율 수집 트리거 |

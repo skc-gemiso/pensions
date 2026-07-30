@@ -71,6 +71,10 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `getDailyPrices(stockCode)` | 일별 주가 조회 (`t_stock_amt`) | 세션 필요 |
 | `fetchAndSaveNaverPrices(stockCode, stockType)` | 네이버 `sise_day.naver` 수집 → `t_stock_amt` 저장, 저장 건수 반환 | 세션 필요 |
 | `getDefaultStockList()` | `t_stock_list`에서 `default_yn='Y'` 전체 목록 반환 | 없음 |
+| `getAccounts()` | 계좌 목록 (`my_account`) — 계좌번호·계좌명 | 세션 필요 |
+| `getAccountInfo()` | 계좌 입출금 내역 (`my_account_info` + `my_account` JOIN) | 세션 필요 |
+| `addAccountInfo(data)` | 계좌 입출금 내역 INSERT (`account_no`, `trade_date`, `in_out`, `amt`, `memo`) | 세션 필요 |
+| `getMonthlyDividendByAccount(stockCode)` | 분배금 지급기준일별 계좌 보유수량·분배금·세금. 각 기준일의 **해당 월 13일까지 누적 순수량** 기준 | 세션 필요 |
 
 ### 타입 정의
 

@@ -82,17 +82,21 @@ FK(`card_item_id → my_cost_item.id`)는 그대로 유지하되, **표시되는
 | 함수 | 설명 |
 |------|------|
 | `getShoppingList(category?)` | 구매 목록 최근 30건 (category 없으면 전체) |
-| `getShoppingDetail(id)` | 구매 상세 + 첨부파일 목록 |
+| `getShoppingFiles(shoppingId)` | 구매 항목의 첨부파일 목록 + 각 파일의 Signed URL |
 | `addShopping(data)` | 구매 항목 추가 |
 | `updateShopping(id, data)` | 구매 항목 수정 |
 | `deleteShopping(id)` | 구매 항목 삭제 (첨부파일 Storage 삭제 포함) |
 | `getRefList()` | 참고 자료 최근 30건 |
-| `getRefDetail(id)` | 참고 자료 상세 + 첨부파일 목록 |
+| `getRefFiles(refId)` | 참고 자료의 첨부파일 목록 + Signed URL |
 | `addRef(data)` | 참고 자료 추가 |
 | `updateRef(id, data)` | 참고 자료 수정 |
 | `deleteRef(id)` | 참고 자료 삭제 (첨부파일 Storage 삭제 포함) |
-| `deleteFile(fileId)` | 첨부파일 단건 삭제 |
+| `deleteShoppingFile(fileId)` | 첨부파일 단건 삭제 (Storage + DB) |
 | `getCardItems()` | 결제수단 목록 (my_cost_item item_type1='4') |
+
+상세 조회 액션은 없다 — 목록(`getShoppingList`/`getRefList`)이 필요한 필드를 모두 담아 오고,
+첨부파일만 상세 화면에서 `getShoppingFiles`/`getRefFiles` 로 따로 가져온다.
+Signed URL 은 조회 시점에 1시간짜리로 새로 발급된다.
 
 ### `app/api/shopping/upload/route.ts` (POST)
 
@@ -110,6 +114,11 @@ FK(`card_item_id → my_cost_item.id`)는 그대로 유지하되, **표시되는
 |------|------|------|----------|
 | `shopping` | Private | 첨부파일 | Signed URL (1시간) |
 | `shopping-images` | **Public** | 본문 인라인 이미지 | 영구 Public URL |
+
+> **CSP 주의**: 두 버킷 모두 `*.supabase.co` 에서 이미지를 내려받으므로
+> [vercel.json](../../vercel.json) 의 `img-src` 에 `https://*.supabase.co` 가 있어야 한다.
+> `vercel.json` 헤더는 배포에서만 적용돼, 빠져 있으면 **로컬은 정상인데 배포에서만 이미지가 깨진다.**
+> 자세한 내용은 [environment.md](../environment.md) 보안 헤더/CSP 절.
 
 - 클라이언트: `lib/supabase-storage.ts` (service role key 사용)
 - 환경 변수:

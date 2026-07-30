@@ -17,7 +17,8 @@ app/invest/etf/
 └── actions.ts                      서버 액션 (DB 조회 + 수집 실행)
 
 lib/
-└── etf-db.ts                       DB Pool (pension-db.ts 와 동일 패턴)
+├── pension-db.ts                   DB Pool (ETF 전용 Pool 없이 이걸 그대로 사용)
+└── etf-collector.ts                Python 수집기 프로세스 기동·상태 관리
 
 collector/etf/                      Python 수집기 (별도)
 ```
@@ -50,8 +51,8 @@ collector/etf/                      Python 수집기 (별도)
 | `getRecommend(etf, country?, days?)` | 비중·수량·주가 변화 기반 스코어 종목 목록 + 최근14일 변화 + full_days. days=null이면 전체 |
 | `getStockEtfWeights(tickers)` | 각 ticker의 ETF별 최신 비중(weight_pct) 반환. 전체 ETF 대상, 최신 영업일 기준 |
 | `getEtfSummary(days?)` | ETF별 기간 내 총 보유금액(KRW), 증감, 종목수. 국가 필터 없이 ETF 전체 집계 |
-| `triggerCollect()` | Python 수집기 child_process.spawn 실행 |
-| `getCollectStatus()` | 실행 중 / 완료 / 오류 상태 (global._collectState) |
+| `triggerCollect()` | Python 수집기 실행 (`lib/etf-collector.ts` 의 `startCollection()`) |
+| `getCollectStatusAction()` | 실행 중 / 완료 / 오류 상태 폴링 (`getCollectStatus()` 래핑) |
 
 ### 추천 스코어링 로직
 
@@ -83,23 +84,14 @@ decay_value = 0.7 × (최근 14일 변화 / 14일)
 
 ---
 
-## DB 연결 (`lib/etf-db.ts`)
+## DB 연결
+
+ETF 전용 Pool은 두지 않는다. 같은 Supabase DB라 [lib/pension-db.ts](../../../lib/pension-db.ts) 의
+`getPensionPool()` 을 그대로 쓴다.
 
 ```typescript
-// config/.env 의 PENSION_SIM_DB_* 환경변수 재사용
-// lib/pension-db.ts 와 동일한 pg.Pool 싱글턴 패턴
-import { Pool } from "pg"
-
-const pool = new Pool({
-  host:     process.env.PENSION_SIM_DB_HOST,
-  port:     Number(process.env.PENSION_SIM_DB_PORT),
-  database: process.env.PENSION_SIM_DB_NAME,
-  user:     process.env.PENSION_SIM_DB_USER,
-  password: process.env.PENSION_SIM_DB_PASSWORD,
-})
+import { getPensionPool } from "@/lib/pension-db"
 ```
-
-동일 DB를 사용하므로 `lib/pension-db.ts` Pool 직접 재사용 가능.
 
 ---
 
@@ -133,20 +125,21 @@ import { fmt, cc } from "@/lib/fmt"
 
 ## 수집기 실행 방식
 
-stock_analysis에서는 API Route (`/api/collect`) + `lib/collector.ts`로 구현.
-pensions로 이전 시 Server Action으로 전환:
+Server Action + [lib/etf-collector.ts](../../../lib/etf-collector.ts) 로 구현돼 있다.
 
 ```typescript
-// app/invest/etf/actions.ts
-"use server"
-import { spawn } from "child_process"
+// lib/etf-collector.ts — 프로세스 기동과 상태를 모듈에서 관리
+export function startCollection(): { started: boolean; reason?: string }
+export function getCollectStatus(): CollectStatus
 
-export async function triggerCollect() {
-  // admin 권한 확인 후 실행
-  const proc = spawn("python", ["collector/etf/fetch_holdings.py"])
-  // global._collectState 에 상태 저장
-}
+// app/invest/etf/actions.ts — 화면은 서버 액션으로만 접근
+triggerCollect()            // startCollection() 호출
+getCollectStatusAction()    // getCollectStatus() 폴링용
 ```
+
+- `spawn(pythonCmd, ["fetch_holdings.py"], { cwd: collector/etf })` 로 실행하고 종료 시 로그를 DB에 적재
+- 실행 상태는 모듈 전역에 보관하므로 **서버리스(Vercel)에서는 동작하지 않는다** —
+  로컬/상시 구동 환경 전용 (`instrumentation.ts` 의 스케줄도 동일한 이유로 Vercel에서 비활성)
 
 ---
 

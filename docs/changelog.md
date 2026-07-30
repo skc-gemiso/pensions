@@ -2,6 +2,37 @@
 
 ---
 
+## 2026-07-30
+
+### 문서 현행화
+- 전 문서를 코드와 대조해 갱신 — 존재하지 않는 파일 참조(`lib/etf-db.ts`, `lib/collector.ts`),
+  쓰이지 않는 환경 변수(`DB_*`, `NEXTAUTH_*`), 미구현으로 적혀 있던 완료 기능, 누락된 서버 액션 정리
+- `docs/life/cost/PLAN.md`·`PROGRESS.md` 삭제 — 최초 구현 세션의 일회성 산출물이고
+  PLAN.md 의 DB 설계는 실제로 구현되지 않은 초안이라 현행 문서와 충돌했다.
+  역할은 `cost_project.md`·`cost_task.md` 가 대체한다
+
+### 생활비 관리 — 카드 마스터 연결 (v021·v022)
+- `my_cost_item.card_id → my_card.id` 연결. 원장(`my_cost_info`)은 그대로 두고 카드명·결제일·
+  정산기간을 `my_card` 에서 JOIN. 카드번호 원문 복제를 피해 PK 대신 surrogate `id` 사용
+- `my_card` 의 `card_no`·`cvc`·`limit_ym` AES-256-GCM 암호화 (`lib/card-crypto.ts`, `CARD_ENC_KEY`)
+  — 목록은 뒤 4자리만, 복호화는 `revealCardSecret` 명시 호출 시에만
+- 카드 목록/추가/상세 모달 신설, 카드명 기준 통일 (생활비·쇼핑 공통)
+
+### 생활비 관리 — 집계·편집
+- **카드 사용액을 당월 지출에서 제외** — 다음 달 카드 청구액에 포함되므로 이중 계상이었다.
+  화면과 `getRecentMonths` 에 동일 기준 적용
+- 결제수단을 통합 드롭다운(현금 / 카드별 / 카드 미지정)으로 변경
+- 행 ✕ 는 항목 비활성화 → **해당 월 실적만 삭제**로 변경, 항목 마스터 삭제(`deleteCostItem`) 별도 추가
+- 금액·메모 인라인 편집에서 blur 자동저장 제거, `[적용]`/`[취소]` 버튼으로 확정
+
+### 버그 수정
+- 쇼핑 첨부파일 이미지가 배포에서만 깨지던 문제 — `vercel.json` CSP `img-src` 에
+  `https://*.supabase.co` 누락 (`vercel.json` 헤더는 `next dev` 에 적용되지 않아 로컬은 정상이었다)
+- 월 선택 드롭다운 중복 key — `Date.setMonth()` 말일 롤오버 (7/30 → 2월 없음 → 3/2)
+- 카드가 아닌 항목까지 항목명이 카드명으로 덮이던 조회 버그 (5곳)
+
+---
+
 ## 2026-06-16
 
 ### 보안
