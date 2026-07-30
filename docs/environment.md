@@ -68,7 +68,7 @@ pensions/
 ├── middleware.ts (또는 proxy.ts)         라우트 보호 미들웨어
 ├── scripts/
 │   └── sync-stock-prices.mjs             독립 실행 주가 수집 스크립트 (Node.js)
-├── vercel.json                           Vercel Cron 스케줄 설정
+├── vercel.json                           Vercel Cron 스케줄 + 보안 헤더(CSP)
 └── .env.local                            환경 변수 (git 제외)
 ```
 
@@ -217,6 +217,27 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
   ]
 }
 ```
+
+### 보안 헤더 / CSP (`vercel.json`)
+
+`vercel.json` 의 `headers` 는 **Vercel 배포에서만 적용되고 `next dev` 에는 적용되지 않는다.**
+그래서 CSP에 막히는 리소스는 로컬에서 멀쩡하고 배포에서만 깨진다 — 외부 호스트를 새로 쓰기 시작하면
+반드시 여기 화이트리스트에 추가해야 한다.
+
+| 지시어 | 허용 대상 | 이유 |
+|--------|----------|------|
+| `img-src` | `'self' data: blob:` | 인라인·로컬 이미지 |
+| | `https://lh3.googleusercontent.com` | 구글 로그인 프로필 사진 |
+| | `https://*.supabase.co` | 쇼핑 첨부파일(서명 URL)·본문 인라인 이미지 |
+| `connect-src` | `'self' https://accounts.google.com` | 구글 인증 |
+| `script-src` | `'self' 'unsafe-inline' 'unsafe-eval'` | Next.js 런타임 |
+
+> 증상 구분: 이미지가 **깨져 보이면** CSP `img-src` 차단일 가능성이 높고(브라우저 콘솔에
+> `Refused to load the image ... violates Content Security Policy` 출력),
+> **목록 자체가 안 나오면** `SUPABASE_URL`·`SUPABASE_SERVICE_ROLE_KEY` 누락으로
+> 서명 URL 생성이 실패한 것이다.
+
+### Cron 실행 주기
 
 - `30 11 * * *` = UTC 11:30 = **KST 20:30** (매일 장 마감 후)
 - Vercel이 자동으로 `Authorization: Bearer {CRON_SECRET}` 헤더를 주입하여 호출
