@@ -1,5 +1,6 @@
 import { createHash } from "crypto"
 import { getPensionPool } from "./pension-db"
+import { decryptField, encryptField, extractLast4 } from "./card-crypto"
 
 export type DbUser = {
   id: string
@@ -543,6 +544,117 @@ async function _applyMigrations(): Promise<void> {
     await pool.query(`DELETE FROM my_shopping_file WHERE ref_type = 'ref'`)
     await pool.query(`DROP TABLE IF EXISTS my_shopping_ref`)
     await pool.query("INSERT INTO app_migrations (name) VALUES ('v020_merge_shopping_ref')")
+  }
+
+  // v021: 카드 상세 마스터(my_card) 연결 — 원장(my_cost_item/my_cost_info)은 그대로 두고
+  //        카드명·결제일·정산기간을 my_card에서 읽도록 surrogate id로 연결한다.
+  const { rows: v021 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v021_link_my_card'"
+  )
+  if (v021.length === 0) {
+    // 1) 연결 키 — PK(card_no)는 카드번호 원문이라 다른 테이블로 복제하지 않고 surrogate id를 쓴다
+    await pool.query(`ALTER TABLE my_card ADD COLUMN IF NOT EXISTS id SERIAL`)
+    await pool.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'my_card_id_key') THEN
+          ALTER TABLE my_card ADD CONSTRAINT my_card_id_key UNIQUE (id);
+        END IF;
+      END $$
+    `)
+    await pool.query(`ALTER TABLE my_card ADD COLUMN IF NOT EXISTS card_no_last4 VARCHAR`)
+    await pool.query(`ALTER TABLE my_cost_item ADD COLUMN IF NOT EXISTS card_id INT`)
+    await pool.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'my_cost_item_card_id_fkey') THEN
+          ALTER TABLE my_cost_item ADD CONSTRAINT my_cost_item_card_id_fkey
+            FOREIGN KEY (card_id) REFERENCES my_card(id);
+        END IF;
+      END $$
+    `)
+
+    // 2) 기존 카드 항목을 my_card와 연결하고 항목명을 my_card.card_nm 기준으로 통일
+    //    (좌: my_cost_item.item_nm 기존값, 우: my_card.card_nm)
+    const cardNameMap: [string, string][] = [
+      ["우리카드(체크)",   "우리카드(체크)"],
+      ["현대카드(네이버)", "현대카드(네비어)"],
+      ["국민카드(D-Live)", "국민 D-Live"],
+    ]
+    for (const [itemNm, cardNm] of cardNameMap) {
+      await pool.query(`
+        UPDATE my_cost_item i
+        SET card_id = cd.id, item_nm = cd.card_nm, updated_at = NOW()
+        FROM my_card cd
+        WHERE i.item_type1 = '4' AND i.item_nm = $1 AND cd.card_nm = $2
+      `, [itemNm, cardNm])
+    }
+
+    // 3) my_card 에만 있는 카드는 원장 항목을 새로 만들어 연결 (카드 목록을 my_card 기준으로 맞춤)
+    await pool.query(`
+      INSERT INTO my_cost_item (item_nm, item_type1, cost_type, pay_dd, amt, use_yn, card_id)
+      SELECT cd.card_nm, '4', '1', NULLIF(cd.pay_ymd, ''), 0, 'Y', cd.id
+      FROM my_card cd
+      WHERE NOT EXISTS (
+        SELECT 1 FROM my_cost_item i WHERE i.item_type1 = '4' AND i.card_id = cd.id
+      )
+    `)
+
+    // 4) my_card 에 대응이 없는 카드 항목은 비활성화 — 월별 실적·쇼핑 참조가 없는 것만 (데이터 보존)
+    await pool.query(`
+      UPDATE my_cost_item i
+      SET use_yn = 'N', updated_at = NOW()
+      WHERE i.item_type1 = '4' AND i.card_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM my_cost_info c WHERE c.item_id = i.id)
+        AND NOT EXISTS (SELECT 1 FROM my_shopping s WHERE s.card_item_id = i.id)
+    `)
+
+    await pool.query("INSERT INTO app_migrations (name) VALUES ('v021_link_my_card')")
+  }
+
+  // v022: my_card 민감정보 암호화 (card_no, cvc, limit_ym) + 표시용 뒤 4자리 추출
+  //       CARD_ENC_KEY 가 없으면 기록하지 않고 건너뛴다 → 키 등록 후 다음 기동에서 재시도
+  const { rows: v022 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v022_encrypt_card_secrets'"
+  )
+  if (v022.length === 0) {
+    if (!process.env.CARD_ENC_KEY) {
+      console.warn("[migration] v022 건너뜀 — CARD_ENC_KEY 환경변수가 없습니다.")
+    } else {
+      const { rows: cards } = await pool.query<{
+        id: number
+        card_no: string | null
+        cvc: string | null
+        limit_ym: string | null
+        card_no_last4: string | null
+      }>(`SELECT id, card_no, cvc, limit_ym, card_no_last4 FROM my_card`)
+
+      for (const c of cards) {
+        // card_no 는 PK(NOT NULL) — 빈 값이면 암호화 결과가 null 이 되므로 원본을 유지
+        const encCardNo = c.card_no ? (encryptField(c.card_no) ?? c.card_no) : c.card_no
+
+        // 되돌릴 수 없는 변환이므로 UPDATE 전에 암→복호화 왕복을 검증한다
+        for (const [col, plain, enc] of [
+          ["card_no",  c.card_no,  encCardNo],
+          ["cvc",      c.cvc,      encryptField(c.cvc)],
+          ["limit_ym", c.limit_ym, encryptField(c.limit_ym)],
+        ] as [string, string | null, string | null][]) {
+          if (plain && decryptField(enc) !== plain) {
+            throw new Error(`v022 중단: my_card.id=${c.id} ${col} 암/복호화 왕복 검증 실패`)
+          }
+        }
+
+        await pool.query(`
+          UPDATE my_card SET card_no = $2, cvc = $3, limit_ym = $4, card_no_last4 = $5
+          WHERE id = $1
+        `, [
+          c.id,
+          encCardNo,
+          encryptField(c.cvc),
+          encryptField(c.limit_ym),
+          c.card_no_last4 ?? extractLast4(c.card_no),
+        ])
+      }
+      await pool.query("INSERT INTO app_migrations (name) VALUES ('v022_encrypt_card_secrets')")
+    }
   }
 
   // v010: 메뉴 ID 단축 (savings-fund→sim, compound-magic→magic, personal-pension→per 등)

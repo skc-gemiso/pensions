@@ -186,8 +186,20 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `CRON_SECRET` | Vercel Cron 엔드포인트 인증 시크릿 | `Authorization: Bearer {CRON_SECRET}` 헤더 또는 `?secret=` 파라미터로 검증 |
 | `SUPABASE_URL` | Supabase 프로젝트 URL | `https://PROJECT_REF.supabase.co` (쇼핑 Storage) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase 서비스 롤 키 | 대시보드 > Settings > API (쇼핑 Storage 서버 사이드 업로드) |
+| `CARD_ENC_KEY` | 카드 민감정보 암호화 키 (32바이트 base64) | `my_card`의 `card_no`·`cvc`·`limit_ym` AES-256-GCM 암/복호화. **분실 시 복호화 불가 — 반드시 백업** |
 
 > **주의**: 특수문자(`#` 등) 포함 패스워드는 반드시 `"..."` 로 감싸야 dotenv 정상 파싱.
+
+### `CARD_ENC_KEY` 생성
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+- 구현: [lib/card-crypto.ts](../lib/card-crypto.ts) — `encryptField()` / `decryptField()` / `isEncrypted()`
+- 저장 형식: `enc:v1:<iv_b64>:<tag_b64>:<cipher_b64>`
+- 키를 교체하면 기존 암호문을 복호화할 수 없다. 교체 시 구 키로 복호화 → 신 키로 재암호화하는 마이그레이션이 필요하다.
+- 상세: [life/cost/cost_task.md](life/cost/cost_task.md) 민감정보 암호화 절
 
 ---
 
@@ -222,6 +234,7 @@ Vercel 프로젝트 Settings > Environment Variables 에 아래 변수 등록:
 | `PENSION_SIM_DB_*` | Supabase 연결 |
 | `CRON_SECRET` | Cron 인증 시크릿 |
 | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | 쇼핑 첨부파일 Storage |
+| `CARD_ENC_KEY` | 카드 민감정보 암호화 키 — 로컬 `config/.env`와 **동일한 값**을 등록해야 기존 데이터 복호화 가능 |
 
 ---
 

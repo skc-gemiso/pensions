@@ -8,6 +8,7 @@ import {
   upsertCostInfo,
   addCostItem,
   deactivateCostItem,
+  deleteCostInfo,
   copyFromPrevMonth,
   getAllCostItems,
   updateCostItemFields,
@@ -15,9 +16,15 @@ import {
   getAvailableCostItems,
   addCostInfoItems,
   copyFromMonth,
+  getCards,
+  getCardMaster,
+  updateCardMaster,
+  revealCardSecret,
   type MonthDataRow,
   type RecentMonthSummary,
   type CostItem,
+  type CardMaster,
+  type CardSecretField,
 } from "./actions"
 
 // ─────────────────────────────────────────────
@@ -40,6 +47,36 @@ function getPayMethodLabel(v: string | null) {
   if (v === "1") return "현금"
   if (v === "2") return "카드"
   return v || "-"
+}
+
+const CARD_TYPE_OPTIONS = [
+  { label: "신용", value: "1" },
+  { label: "체크", value: "2" },
+]
+function getCardTypeLabel(v: string | null) {
+  if (v === "1") return "신용"
+  if (v === "2") return "체크"
+  return "-"
+}
+
+/** 카드번호는 뒤 4자리만 표시 (원문은 my_card에 암호화 저장) */
+function maskCardNo(last4: string | null): string {
+  return last4 ? `**** **** **** ${last4}` : "****"
+}
+
+/** 결제일 — 카드 항목은 my_card.pay_ymd 기준, 체크카드는 즉시결제 */
+function payDayLabel(row: MonthDataRow): string {
+  if (row.item_type1 === "4") {
+    if (row.card_type === "2") return "즉시"
+    return row.pay_ymd ? `${row.pay_ymd}일` : "-"
+  }
+  return row.pay_dd ? `${row.pay_dd}일` : "-"
+}
+
+/** 정산기간 — my_card.start_ymd ~ end_ymd */
+function settlementLabel(start: string | null, end: string | null): string {
+  if (!start || !end) return "-"
+  return `${start}일~${end}일`
 }
 
 const CATEGORY_COLOR: Record<string, string> = {
@@ -117,36 +154,65 @@ type RowProps = {
   yearMonth: string
   hidePayMethod?: boolean
   onSaved: () => void
-  onDeactivate: (id: number) => void
+  onDelete: (id: number) => void
 }
 
-function CostRow({ row, yearMonth, hidePayMethod, onSaved, onDeactivate }: RowProps) {
+function amountToInput(n: number): string {
+  return n ? fmt(n) : ""
+}
+
+function CostRow({ row, yearMonth, hidePayMethod, onSaved, onDelete }: RowProps) {
   const [editing, setEditing] = useState(false)
-  const [val, setVal] = useState(String(row.amount))
+  const [focusTarget, setFocusTarget] = useState<"amount" | "memo">("amount")
+  const [saving, setSaving] = useState(false)
+  const [val, setVal] = useState(amountToInput(row.amount))
   const [memo, setMemo] = useState(row.memo ?? "")
   const [hover, setHover] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const amountRef = useRef<HTMLInputElement>(null)
+  const memoRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    setVal(String(row.amount))
+    setVal(amountToInput(row.amount))
     setMemo(row.memo ?? "")
   }, [row.amount, row.memo])
 
   useEffect(() => {
-    if (editing) inputRef.current?.focus()
-  }, [editing])
+    if (!editing) return
+    if (focusTarget === "memo") memoRef.current?.focus()
+    else { amountRef.current?.focus(); amountRef.current?.select() }
+  }, [editing, focusTarget])
 
+  // 클릭한 셀에 포커스를 두고 행 전체를 편집 모드로 전환
+  function startEdit(target: "amount" | "memo" = "amount") {
+    if (editing) return
+    setFocusTarget(target)
+    setEditing(true)
+  }
+
+  // 자동 저장 없음 — [적용] 버튼 또는 Enter로만 확정
   async function save() {
+    setSaving(true)
     await upsertCostInfo(yearMonth, row.id, Number(val.replace(/,/g, "")) || 0, memo || null)
+    setSaving(false)
     setEditing(false)
     onSaved()
   }
 
+  function cancel() {
+    setVal(amountToInput(row.amount))
+    setMemo(row.memo ?? "")
+    setEditing(false)
+  }
+
+  function onEditKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") save()
+    if (e.key === "Escape") cancel()
+  }
 
   return (
     <tr
       className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${editing ? "bg-blue-50" : ""}`}
-      onClick={() => !editing && setEditing(true)}
+      onClick={() => startEdit("amount")}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
@@ -158,7 +224,7 @@ function CostRow({ row, yearMonth, hidePayMethod, onSaved, onDeactivate }: RowPr
         {hover && <Tooltip row={row} />}
       </td>
       <td className="py-1.5 px-2 text-xs text-gray-500 text-center">
-        {row.pay_dd ? `${row.pay_dd}일` : "-"}
+        {payDayLabel(row)}
       </td>
       {!hidePayMethod && (
         <td className="py-1.5 px-2 text-center">
@@ -171,49 +237,80 @@ function CostRow({ row, yearMonth, hidePayMethod, onSaved, onDeactivate }: RowPr
           )}
         </td>
       )}
-      <td className="py-1.5 px-2 text-right" onClick={e => e.stopPropagation()}>
+      <td
+        className="py-1.5 px-2 text-right"
+        onClick={e => { e.stopPropagation(); startEdit("amount") }}
+      >
         {editing ? (
           <input
-            ref={inputRef}
-            className="w-24 text-right border border-blue-400 rounded px-1 py-0.5 text-sm focus:outline-none"
+            ref={amountRef}
+            type="text"
+            inputMode="numeric"
+            placeholder="0"
+            className="w-24 text-right text-gray-900 bg-white border border-blue-400 rounded px-1 py-0.5 text-sm placeholder:text-gray-400 focus:outline-none"
             value={val}
-            onChange={e => setVal(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === "Enter") save()
-              if (e.key === "Escape") setEditing(false)
-              if (e.key === "Tab") { e.preventDefault(); save() }
+            onChange={e => {
+              const raw = e.target.value.replace(/[^0-9]/g, "")
+              setVal(raw ? Number(raw).toLocaleString("ko-KR") : "")
             }}
-            onBlur={save}
+            onKeyDown={onEditKeyDown}
           />
         ) : (
-          <span className="text-sm font-medium text-gray-800">
+          <span className="inline-block text-sm font-medium text-gray-800 px-1 py-0.5 rounded hover:bg-blue-50 hover:ring-1 hover:ring-blue-300">
             {row.amount === 0 ? <span className="text-gray-400">-</span> : fmt(row.amount)}
           </span>
         )}
       </td>
       {row.item_type1 === "4" && (
-        <td className="py-1.5 px-2 text-xs text-center">
-          {(() => { const d = diffLabel(row.amount, row.prev_amount); return <span className={d.cls}>{d.text}</span> })()}
-        </td>
+        <>
+          <td className="py-1.5 px-2 text-xs text-center">
+            {(() => { const d = diffLabel(row.amount, row.prev_amount); return <span className={d.cls}>{d.text}</span> })()}
+          </td>
+          <td className="py-1.5 px-2 text-xs text-gray-500 text-center">
+            {settlementLabel(row.start_ymd, row.end_ymd)}
+          </td>
+        </>
       )}
-      <td className="py-1.5 px-2 text-xs text-gray-500 overflow-hidden truncate">
+      <td
+        className="py-1.5 px-2 text-xs text-gray-500 overflow-hidden truncate"
+        onClick={e => { e.stopPropagation(); startEdit("memo") }}
+      >
         {editing ? (
           <input
-            className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs focus:outline-none"
+            ref={memoRef}
+            placeholder="메모"
+            className="w-full text-gray-900 bg-white border border-blue-400 rounded px-1 py-0.5 text-xs placeholder:text-gray-400 focus:outline-none"
             value={memo}
             onChange={e => setMemo(e.target.value)}
-            onClick={e => e.stopPropagation()}
-            onBlur={save}
+            onKeyDown={onEditKeyDown}
           />
         ) : (
-          row.memo
+          <span className="inline-block px-1 py-0.5 rounded hover:bg-blue-50 hover:ring-1 hover:ring-blue-300">
+            {row.memo || <span className="text-gray-300">-</span>}
+          </span>
         )}
       </td>
       <td className="py-1.5 px-2 text-right" onClick={e => e.stopPropagation()}>
-        <button
-          className="text-xs text-gray-400 hover:text-red-500"
-          onClick={() => { if (confirm(`"${row.item_nm}" 항목을 비활성화하시겠습니까?`)) onDeactivate(row.id) }}
-        >✕</button>
+        <div className="flex items-center justify-end gap-1.5">
+          {editing && (
+            <>
+              <button
+                disabled={saving}
+                className="text-xs px-1.5 py-0.5 text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
+                onClick={save}
+              >{saving ? "저장중" : "적용"}</button>
+              <button
+                className="text-xs text-gray-400 hover:text-gray-600"
+                onClick={cancel}
+                title="취소 (Esc)"
+              >취소</button>
+            </>
+          )}
+          <button
+            className="text-xs text-gray-400 hover:text-red-500"
+            onClick={() => { if (confirm(`"${row.item_nm}" 항목의 ${fmtYM(yearMonth)} 데이터를 삭제하시겠습니까?`)) onDelete(row.id) }}
+          >✕</button>
+        </div>
       </td>
     </tr>
   )
@@ -255,7 +352,14 @@ function EditItemModal({ item, onClose, onUpdated }: EditItemModalProps) {
   const [payDay, setPayDay] = useState(item.pay_dd != null ? String(item.pay_dd) : "")
   const [amt, setAmt] = useState(Math.round(item.amt).toLocaleString("ko-KR"))
   const [memo, setMemo] = useState(item.memo ?? "")
+  const [cardId, setCardId] = useState(item.card_id != null ? String(item.card_id) : "")
+  const [cards, setCards] = useState<CardMaster[]>([])
   const [saving, setSaving] = useState(false)
+
+  // 신용카드 카테고리일 때 연결할 my_card 목록
+  useEffect(() => {
+    if (category === "4" && cards.length === 0) getCards().then(setCards)
+  }, [category, cards.length])
 
   async function save(e: React.SyntheticEvent) {
     e.preventDefault()
@@ -268,6 +372,7 @@ function EditItemModal({ item, onClose, onUpdated }: EditItemModalProps) {
       pay_dd: payDay ? Number(payDay) : null,
       amt: Number(amt.replace(/,/g, "")) || 0,
       memo: memo || null,
+      card_id: category === "4" ? (cardId ? Number(cardId) : null) : null,
     })
     setSaving(false)
     onUpdated()
@@ -320,6 +425,27 @@ function EditItemModal({ item, onClose, onUpdated }: EditItemModalProps) {
                 value={name} onChange={e => setName(e.target.value)}
               />
             </div>
+
+            {/* 연결 카드 (신용카드 카테고리만) */}
+            {category === "4" && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">연결 카드</label>
+                <select
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                  value={cardId} onChange={e => setCardId(e.target.value)}
+                >
+                  <option value="">연결 없음</option>
+                  {cards.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.card_nm} ({getCardTypeLabel(c.card_type)})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-400 mt-1">
+                  카드명·결제일·정산기간은 연결된 카드 정보를 사용합니다.
+                </p>
+              </div>
+            )}
 
             {/* 결제수단 · 결제일 · 기본금액 */}
             <div className="grid grid-cols-3 gap-4">
@@ -381,15 +507,223 @@ function EditItemModal({ item, onClose, onUpdated }: EditItemModalProps) {
 }
 
 // ─────────────────────────────────────────────
+// 카드 상세 모달 (my_card)
+// ─────────────────────────────────────────────
+/** 민감 컬럼 1개 — 마스킹 표시 + [보기] 클릭 시 서버에서 복호화 */
+function SecretField({ label, cardId, field, exists, mask }: {
+  label: string
+  cardId: number
+  field: CardSecretField
+  exists: boolean
+  mask: string
+}) {
+  const [revealed, setRevealed] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function reveal() {
+    setLoading(true)
+    setError(null)
+    try {
+      setRevealed(await revealCardSecret(cardId, field))
+    } catch {
+      setError("복호화 실패 — CARD_ENC_KEY 확인 필요")
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{label}</label>
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-gray-900 font-mono">
+          {!exists ? <span className="text-gray-400">미등록</span> : revealed ?? mask}
+        </span>
+        {exists && (
+          revealed === null ? (
+            <button
+              type="button" onClick={reveal} disabled={loading}
+              className="text-xs px-1.5 py-0.5 text-blue-600 border border-blue-300 rounded hover:bg-blue-50 disabled:opacity-50"
+            >{loading ? "..." : "보기"}</button>
+          ) : (
+            <button
+              type="button" onClick={() => setRevealed(null)}
+              className="text-xs px-1.5 py-0.5 text-gray-500 border border-gray-300 rounded hover:bg-gray-50"
+            >가리기</button>
+          )
+        )}
+      </div>
+      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+    </div>
+  )
+}
+
+function CardDetailModal({ cardId, onClose, onUpdated }: {
+  cardId: number
+  onClose: () => void
+  onUpdated: () => void
+}) {
+  const [card, setCard] = useState<CardMaster | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    card_nm: "", card_type: "", pay_ymd: "", start_ymd: "", end_ymd: "", memo: "",
+  })
+  // 민감 항목은 새로 입력했을 때만 저장한다 (빈 값이면 기존 암호문 유지)
+  const [newLimitYm, setNewLimitYm] = useState("")
+  const [newCvc, setNewCvc] = useState("")
+
+  const reload = useCallback(async () => {
+    const data = await getCardMaster(cardId)
+    setCard(data)
+    if (data) {
+      setForm({
+        card_nm:   data.card_nm ?? "",
+        card_type: data.card_type ?? "",
+        pay_ymd:   data.pay_ymd ?? "",
+        start_ymd: data.start_ymd ?? "",
+        end_ymd:   data.end_ymd ?? "",
+        memo:      data.memo ?? "",
+      })
+    }
+    setLoading(false)
+  }, [cardId])
+
+  useEffect(() => { reload() }, [reload])
+
+  const isCheckCard = form.card_type === "2"
+
+  async function save(e: React.SyntheticEvent) {
+    e.preventDefault()
+    setSaving(true)
+    await updateCardMaster(cardId, {
+      card_nm:   form.card_nm,
+      card_type: form.card_type || null,
+      // 체크카드는 즉시결제 → 결제일·정산기간을 비운다
+      pay_ymd:   isCheckCard ? null : (form.pay_ymd || null),
+      start_ymd: isCheckCard ? null : (form.start_ymd || null),
+      end_ymd:   isCheckCard ? null : (form.end_ymd || null),
+      memo:      form.memo || null,
+      ...(newLimitYm ? { limit_ym: newLimitYm } : {}),
+      ...(newCvc ? { cvc: newCvc } : {}),
+    })
+    setSaving(false)
+    onUpdated()
+    onClose()
+  }
+
+  const set = (k: keyof typeof form, v: string) => setForm(f => ({ ...f, [k]: v }))
+  const inputCls = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
+          <h3 className="text-base font-bold text-gray-800">카드 정보</h3>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+        </div>
+
+        {loading ? (
+          <div className="text-center py-10 text-gray-400 text-sm">불러오는 중...</div>
+        ) : !card ? (
+          <div className="text-center py-10 text-gray-400 text-sm">카드 정보를 찾을 수 없습니다</div>
+        ) : (
+          <form onSubmit={save}>
+            <div className="px-6 py-5 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">카드명 <span className="text-red-400">*</span></label>
+                  <input required className={inputCls} value={form.card_nm} onChange={e => set("card_nm", e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">구분</label>
+                  <select className={inputCls} value={form.card_type} onChange={e => set("card_type", e.target.value)}>
+                    <option value="">-</option>
+                    {CARD_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {isCheckCard ? (
+                <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                  체크카드는 즉시결제라 결제일·정산기간을 사용하지 않습니다.
+                </p>
+              ) : (
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">결제일</label>
+                    <input type="number" min={1} max={31} placeholder="-" className={`${inputCls} text-right`}
+                      value={form.pay_ymd} onChange={e => set("pay_ymd", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">정산 시작일</label>
+                    <input type="number" min={1} max={31} placeholder="-" className={`${inputCls} text-right`}
+                      value={form.start_ymd} onChange={e => set("start_ymd", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">정산 종료일</label>
+                    <input type="number" min={1} max={31} placeholder="-" className={`${inputCls} text-right`}
+                      value={form.end_ymd} onChange={e => set("end_ymd", e.target.value)} />
+                  </div>
+                </div>
+              )}
+
+              {/* 민감정보 — 암호화 저장, 조회는 [보기] 클릭 시 서버에서 복호화 */}
+              <div className="border-t border-gray-100 pt-4 space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">카드번호</label>
+                  <span className="text-sm text-gray-900 font-mono">
+                    {card.has_card_no ? maskCardNo(card.card_no_last4) : <span className="text-gray-400">미등록</span>}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <SecretField label="유효기간" cardId={cardId} field="limit_ym" exists={card.has_limit_ym} mask="****" />
+                  <SecretField label="CVC" cardId={cardId} field="cvc" exists={card.has_cvc} mask="***" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">유효기간 변경</label>
+                    <input className={inputCls} placeholder="비우면 유지" inputMode="numeric"
+                      value={newLimitYm} onChange={e => setNewLimitYm(e.target.value.replace(/\D/g, ""))} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">CVC 변경</label>
+                    <input className={inputCls} placeholder="비우면 유지" inputMode="numeric"
+                      value={newCvc} onChange={e => setNewCvc(e.target.value.replace(/\D/g, ""))} />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">비고</label>
+                <input className={inputCls} placeholder="선택사항" value={form.memo} onChange={e => set("memo", e.target.value)} />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 px-6 py-4 bg-gray-50 border-t border-gray-200">
+              <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">취소</button>
+              <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                {saving ? "저장 중..." : "저장"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
 // 항목 관리 모달 행
 // ─────────────────────────────────────────────
 type ManageRowProps = {
   item: CostItem
   onEdit: (item: CostItem) => void
+  onEditCard: (cardId: number) => void
   onUpdated: () => void
 }
 
-function ManageRow({ item, onEdit, onUpdated }: ManageRowProps) {
+function ManageRow({ item, onEdit, onEditCard, onUpdated }: ManageRowProps) {
   async function toggleActive() {
     if (item.use_yn === 'Y') await deactivateCostItem(item.id)
     else await activateCostItem(item.id)
@@ -420,7 +754,15 @@ function ManageRow({ item, onEdit, onUpdated }: ManageRowProps) {
         <span className="text-gray-700 font-medium">{item.amt ? fmt(item.amt) : "-"}</span>
       </td>
       <td className="px-2 py-1.5 text-center whitespace-nowrap">
-        <button onClick={() => onEdit(item)} className="text-xs px-2 py-0.5 border text-gray-600 rounded hover:bg-gray-50">수정</button>
+        <div className="flex items-center justify-center gap-1">
+          <button onClick={() => onEdit(item)} className="text-xs px-2 py-0.5 border text-gray-600 rounded hover:bg-gray-50">수정</button>
+          {item.item_type1 === "4" && item.card_id != null && (
+            <button
+              onClick={() => onEditCard(item.card_id!)}
+              className="text-xs px-2 py-0.5 border border-blue-300 text-blue-600 rounded hover:bg-blue-50"
+            >카드정보</button>
+          )}
+        </div>
       </td>
       <td className="px-2 py-1.5 text-center">
         <button
@@ -439,6 +781,7 @@ function ItemManageModal({ onClose, onChanged, defaultCategory = "" }: { onClose
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [editingItem, setEditingItem] = useState<CostItem | null>(null)
+  const [editingCardId, setEditingCardId] = useState<number | null>(null)
   const [filterCategory, setFilterCategory] = useState(defaultCategory)
 
   const reload = useCallback(async () => {
@@ -503,7 +846,7 @@ function ItemManageModal({ onClose, onChanged, defaultCategory = "" }: { onClose
               </thead>
               <tbody>
                 {filteredItems.map(item => (
-                  <ManageRow key={item.id} item={item} onEdit={setEditingItem} onUpdated={handleUpdated} />
+                  <ManageRow key={item.id} item={item} onEdit={setEditingItem} onEditCard={setEditingCardId} onUpdated={handleUpdated} />
                 ))}
                 {filteredItems.length === 0 && (
                   <tr><td colSpan={8} className="text-center py-8 text-gray-400 text-sm">항목 없음</td></tr>
@@ -530,6 +873,13 @@ function ItemManageModal({ onClose, onChanged, defaultCategory = "" }: { onClose
           onUpdated={async () => { setEditingItem(null); await handleUpdated() }}
         />
       )}
+      {editingCardId != null && (
+        <CardDetailModal
+          cardId={editingCardId}
+          onClose={() => setEditingCardId(null)}
+          onUpdated={handleUpdated}
+        />
+      )}
     </div>
   )
 }
@@ -543,11 +893,17 @@ type AddModalProps = {
 
 function AddItemModal({ defaultCategory, onClose, onAdded }: AddModalProps) {
   const [form, setForm] = useState<Partial<CostItem>>({ item_type1: defaultCategory })
+  const [cards, setCards] = useState<CardMaster[]>([])
   const [saving, setSaving] = useState(false)
 
   function set(k: string, v: string | number | null) {
     setForm(f => ({ ...f, [k]: v }))
   }
+
+  // 신용카드 카테고리일 때 연결할 my_card 목록
+  useEffect(() => {
+    if (form.item_type1 === "4" && cards.length === 0) getCards().then(setCards)
+  }, [form.item_type1, cards.length])
 
   async function submit(e: React.SyntheticEvent) {
     e.preventDefault()
@@ -561,6 +917,7 @@ function AddItemModal({ defaultCategory, onClose, onAdded }: AddModalProps) {
       pay_dd: form.pay_dd ? Number(form.pay_dd) : null,
       amt: Number(form.amt) || 0,
       memo: form.memo ?? null,
+      card_id: form.item_type1 === "4" ? (form.card_id ?? null) : null,
     })
     setSaving(false)
     onAdded()
@@ -609,6 +966,25 @@ function AddItemModal({ defaultCategory, onClose, onAdded }: AddModalProps) {
                 placeholder="항목명 입력"
               />
             </div>
+
+            {/* 연결 카드 (신용카드 카테고리만) */}
+            {form.item_type1 === "4" && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">연결 카드</label>
+                <select
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                  value={form.card_id != null ? String(form.card_id) : ""}
+                  onChange={e => set("card_id", e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">연결 없음</option>
+                  {cards.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.card_nm} ({getCardTypeLabel(c.card_type)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* 결제수단 · 결제일 · 기본금액 */}
             <div className="grid grid-cols-3 gap-4">
@@ -915,15 +1291,16 @@ type SectionTableProps = {
   hidePayMethod?: boolean
   compact?: boolean
   onSaved: () => void
-  onDeactivate: (id: number) => void
+  onDelete: (id: number) => void
 }
 
-function SectionTable({ rows, yearMonth, showSettlement, hidePayMethod, compact, onSaved, onDeactivate }: SectionTableProps) {
+function SectionTable({ rows, yearMonth, showSettlement, hidePayMethod, compact, onSaved, onDelete }: SectionTableProps) {
   const total = rows.reduce((s, r) => s + r.amount, 0)
   const cardTotal = rows.filter(r => r.cost_type === "2").reduce((s, r) => s + r.amount, 0)
   const cashTotal = rows.filter(r => r.cost_type === "1").reduce((s, r) => s + r.amount, 0)
   const baseCols = hidePayMethod ? 2 : 3
-  const trailCols = showSettlement ? 3 : 2
+  // 금액 뒤 컬럼 수: (전월대비 + 정산기간) + 메모 + 버튼
+  const trailCols = showSettlement ? 4 : 2
   return (
     <table className="w-full table-fixed text-sm">
       <thead>
@@ -932,14 +1309,15 @@ function SectionTable({ rows, yearMonth, showSettlement, hidePayMethod, compact,
           <th className="py-1 px-2 text-center w-[50px]">날짜</th>
           {!hidePayMethod && <th className="py-1 px-2 text-center w-[68px]">결제수단</th>}
           <th className="py-1 px-2 text-right w-[100px]">금액</th>
-          {showSettlement && <th className="py-1 px-2 text-center w-[100px]">전월대비</th>}
+          {showSettlement && <th className="py-1 px-2 text-center w-[90px]">전월대비</th>}
+          {showSettlement && <th className="py-1 px-2 text-center w-[90px]">정산기간</th>}
           <th className={`py-1 px-2 text-left ${compact ? "w-[80px]" : ""}`}>메모</th>
-          <th className="py-1 px-2 w-8"></th>
+          <th className="py-1 px-2 w-[100px]"></th>
         </tr>
       </thead>
       <tbody>
         {rows.map(row => (
-          <CostRow key={row.id} row={row} yearMonth={yearMonth} hidePayMethod={hidePayMethod} onSaved={onSaved} onDeactivate={onDeactivate} />
+          <CostRow key={row.id} row={row} yearMonth={yearMonth} hidePayMethod={hidePayMethod} onSaved={onSaved} onDelete={onDelete} />
         ))}
       </tbody>
       {rows.length > 0 && (
@@ -981,8 +1359,8 @@ export default function CostPage() {
 
   useEffect(() => { load() }, [load])
 
-  async function handleDeactivate(id: number) {
-    await deactivateCostItem(id)
+  async function handleDelete(itemId: number) {
+    await deleteCostInfo(yearMonth, itemId)
     load()
   }
 
@@ -1149,7 +1527,7 @@ export default function CostPage() {
                 {incomeRows.length === 0 ? (
                   <p className="text-xs text-gray-400 px-3 py-3">항목 없음</p>
                 ) : (
-                  <SectionTable rows={incomeRows} yearMonth={yearMonth} hidePayMethod compact onSaved={load} onDeactivate={handleDeactivate} />
+                  <SectionTable rows={incomeRows} yearMonth={yearMonth} hidePayMethod compact onSaved={load} onDelete={handleDelete} />
                 )}
               </div>
             </div>
@@ -1161,7 +1539,7 @@ export default function CostPage() {
                 {fixedRows.length === 0 ? (
                   <p className="text-xs text-gray-400 px-3 py-3">항목 없음</p>
                 ) : (
-                  <SectionTable rows={fixedRows} yearMonth={yearMonth} onSaved={load} onDeactivate={handleDeactivate} />
+                  <SectionTable rows={fixedRows} yearMonth={yearMonth} onSaved={load} onDelete={handleDelete} />
                 )}
               </SectionCard>
 
@@ -1170,7 +1548,7 @@ export default function CostPage() {
                 {transferRows.length === 0 ? (
                   <p className="text-xs text-gray-400 px-3 py-3">항목 없음</p>
                 ) : (
-                  <SectionTable rows={transferRows} yearMonth={yearMonth} onSaved={load} onDeactivate={handleDeactivate} />
+                  <SectionTable rows={transferRows} yearMonth={yearMonth} onSaved={load} onDelete={handleDelete} />
                 )}
               </SectionCard>
 
@@ -1179,7 +1557,7 @@ export default function CostPage() {
                 {livingRows.length === 0 ? (
                   <p className="text-xs text-gray-400 px-3 py-3">항목 없음</p>
                 ) : (
-                  <SectionTable rows={livingRows} yearMonth={yearMonth} onSaved={load} onDeactivate={handleDeactivate} />
+                  <SectionTable rows={livingRows} yearMonth={yearMonth} onSaved={load} onDelete={handleDelete} />
                 )}
               </SectionCard>
 
@@ -1188,7 +1566,7 @@ export default function CostPage() {
                 {cardRows.length === 0 ? (
                   <p className="text-xs text-gray-400 px-3 py-3">항목 없음</p>
                 ) : (
-                  <SectionTable rows={cardRows} yearMonth={yearMonth} showSettlement onSaved={load} onDeactivate={handleDeactivate} />
+                  <SectionTable rows={cardRows} yearMonth={yearMonth} showSettlement onSaved={load} onDelete={handleDelete} />
                 )}
               </SectionCard>
             </div>

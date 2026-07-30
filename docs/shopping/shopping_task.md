@@ -68,6 +68,11 @@ CREATE TABLE my_shopping_file (
 `my_cost_item WHERE item_type1 = '4'` 행을 SELECT해서 드롭다운 목록 구성.
 별도 테이블 없이 생활비 관리 신용카드 섹션 재사용.
 
+FK(`card_item_id → my_cost_item.id`)는 그대로 유지하되, **표시되는 카드명은 `my_card.card_nm` 기준**이다
+(v021). `my_cost_item.card_id → my_card.id` 를 LEFT JOIN해 `COALESCE(cd.card_nm, i.item_nm)`로 조회하므로
+`my_card`에서 카드명을 고치면 쇼핑 화면 드롭다운·목록에 함께 반영된다.
+상세: [life/cost/cost_task.md](../life/cost/cost_task.md) 연결 구조 절.
+
 ---
 
 ## API / 서버 액션

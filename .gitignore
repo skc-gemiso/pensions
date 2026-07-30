@@ -46,3 +46,6 @@ collector/usa/config/__pycache__/*
 collector/usa/logs/*
 collector/usa/repositories/__pycache__/*
 collector/usa/utils/__pycache__/*
+
+.vercel
+.env*
