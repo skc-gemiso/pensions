@@ -1,10 +1,12 @@
 "use client"
 
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import AppLayout from "@/components/AppLayout"
+import { getProfile, type ProfileView } from "@/app/actions/profile"
 
-const JOIN_DATE = new Date(2015, 1, 23) // 2015-02-23
-const LEGAL_RETIRE_YEAR = 2034
+// 프로필(my_profile)을 못 읽었을 때만 쓰는 값
+const FALLBACK_JOIN = "2015-02-23"
+const FALLBACK_RETIRE = "2034-06-30"
 const ANNUAL_SALARY_INCREASE_MAN = 240 // 만원/년
 
 // 사용자 제공 예상 데이터 (2030~2034)
@@ -92,9 +94,24 @@ function calcCurrentSeverance(monthlyWon: number, tenureDays: number) {
   return { grossMan, netMan, taxMan, irpMonthlyMan }
 }
 
+/** 'YYYY-MM-DD' → Date (UTC 밀림 방지) */
+function toDate(iso: string): Date {
+  const [y, m, d] = iso.split("-").map(Number)
+  return new Date(y, m - 1, d)
+}
+
 export default function RetirementPensionPage() {
   const today = useMemo(() => new Date(), [])
-  const tenure = useMemo(() => calcTenure(JOIN_DATE, today), [today])
+  const [profile, setProfile] = useState<ProfileView | null>(null)
+
+  useEffect(() => { getProfile().then(setProfile).catch(() => {}) }, [])
+
+  // 입사일·정년은 공통 프로필에서 온다 (정년 규정: 만 60세가 되는 달의 말일 등)
+  const JOIN_DATE = useMemo(() => toDate(profile?.join_date ?? FALLBACK_JOIN), [profile])
+  const retireDate = useMemo(() => toDate(profile?.retire_date ?? FALLBACK_RETIRE), [profile])
+  const LEGAL_RETIRE_YEAR = retireDate.getFullYear()
+
+  const tenure = useMemo(() => calcTenure(JOIN_DATE, today), [JOIN_DATE, today])
 
   // 현재 기준 추정 퇴직금 (급여명세서 지급액 기준: 6,900,000원/월)
   const currentSeverance = useMemo(
@@ -103,7 +120,6 @@ export default function RetirementPensionPage() {
   )
 
   // 정년까지 남은 기간
-  const retireDate = useMemo(() => new Date(LEGAL_RETIRE_YEAR, 1, 23), [])
   const remaining = useMemo(() => calcTenure(today, retireDate), [today, retireDate])
 
   // 진행률 (입사~정년)
@@ -169,7 +185,7 @@ export default function RetirementPensionPage() {
   }), [tableRows])
 
   const joinStr = "2015.02.23"
-  const retireStr = `${LEGAL_RETIRE_YEAR}년 02월`
+  const retireStr = `${LEGAL_RETIRE_YEAR}년 ${String(retireDate.getMonth() + 1).padStart(2, "0")}월`
 
   return (
     <AppLayout>

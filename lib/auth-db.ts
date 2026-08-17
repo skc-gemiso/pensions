@@ -781,6 +781,61 @@ async function _applyMigrations(): Promise<void> {
     await pool.query("INSERT INTO app_migrations (name) VALUES ('v026_normal_menu_minimal')")
   }
 
+  // v027: 개인연금 계획 설정 (연금저축펀드 시뮬레이션 전제값)
+  const { rows: v027 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v027_add_pension_per'"
+  )
+  if (v027.length === 0) {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS my_pension_per_config (
+        id             INT  PRIMARY KEY DEFAULT 1,
+        birth_ym       TEXT NOT NULL,
+        retire_age     INT  NOT NULL DEFAULT 60,
+        payout_age     INT  NOT NULL DEFAULT 63,
+        monthly_amount INT  NOT NULL DEFAULT 500000,
+        account_no     TEXT NOT NULL,
+        stock_code     TEXT NOT NULL,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CHECK (id = 1)
+      )
+    `)
+    await pool.query(`
+      INSERT INTO my_pension_per_config (id, birth_ym, account_no, stock_code)
+      VALUES (1, '1974-06', '201-04-931585', '498400')
+      ON CONFLICT (id) DO NOTHING
+    `)
+    await pool.query("INSERT INTO app_migrations (name) VALUES ('v027_add_pension_per')")
+  }
+
+  // v028: 개인 프로필 공통화 — 화면마다 하드코딩돼 있던 생년월일·입사일·정년을 한 곳으로
+  const { rows: v028 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v028_add_profile'"
+  )
+  if (v028.length === 0) {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS my_profile (
+        id          INT  PRIMARY KEY DEFAULT 1,
+        birth_date  DATE NOT NULL,
+        join_date   DATE NOT NULL,
+        retire_age  INT  NOT NULL DEFAULT 60,
+        retire_rule TEXT NOT NULL DEFAULT 'month_end',  -- birthday | month_end | year_end
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CHECK (id = 1)
+      )
+    `)
+    await pool.query(`
+      INSERT INTO my_profile (id, birth_date, join_date, retire_age, retire_rule)
+      VALUES (1, '1974-06-04', '2015-02-23', 60, 'month_end')
+      ON CONFLICT (id) DO NOTHING
+    `)
+    // 개인연금 설정에서 프로필로 옮겨간 컬럼 제거
+    await pool.query(`ALTER TABLE my_pension_per_config DROP COLUMN IF EXISTS birth_ym`)
+    await pool.query(`ALTER TABLE my_pension_per_config DROP COLUMN IF EXISTS retire_age`)
+    await pool.query("INSERT INTO app_migrations (name) VALUES ('v028_add_profile')")
+  }
+
   // v010: 메뉴 ID 단축 (savings-fund→sim, compound-magic→magic, personal-pension→per 등)
   const { rows: v010 } = await pool.query<{ name: string }>(
     "SELECT name FROM app_migrations WHERE name = 'v010_shorten_menu_ids'"

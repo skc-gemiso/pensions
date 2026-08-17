@@ -28,6 +28,7 @@ pensions/
 │   ├── register/page.tsx                 회원가입 화면
 │   ├── actions/
 │   │   ├── auth.ts                       로그인·로그아웃 Server Actions
+│   │   ├── profile.ts                    개인 정보(my_profile) 조회·수정 — 연금 메뉴 공통
 │   │   └── visitor.ts                    방문자 기록 Server Action
 │   ├── api/
 │   │   ├── auth/[...nextauth]/route.ts   NextAuth 라우트 핸들러
@@ -52,7 +53,9 @@ pensions/
 │   │   │   ├── page.tsx                  국민연금
 │   │   │   └── actions.ts               국민연금 스냅샷 CRUD
 │   │   ├── ret/page.tsx                  퇴직연금
-│   │   ├── per/page.tsx                  개인연금 (진행 중)
+│   │   ├── per/
+│   │   │   ├── page.tsx                  개인연금 (수령액 시뮬레이션 + 표별 도움말)
+│   │   │   └── actions.ts               개인연금 설정·현황·시뮬레이션 Server Actions
 │   │   └── seni/page.tsx                노령연금 (진행 중)
 │   ├── invest/
 │   │   ├── page.tsx                      /invest/etf 리다이렉트
@@ -81,8 +84,11 @@ pensions/
 │   ├── RichEditor.tsx                    쇼핑 본문 리치 에디터 (TipTap)
 │   └── Providers.tsx                    세션 Provider
 ├── lib/
-│   ├── auth-db.ts                        인증 DB + 스키마 마이그레이션 (v001~v022)
+│   ├── auth-db.ts                        인증 DB + 스키마 마이그레이션 (v001~v028)
 │   ├── pension-db.ts                    Supabase DB Pool 싱글턴 (전 화면 공용)
+│   ├── guard.ts                          접근 통제 — requireUser / requireAdmin / guardApi
+│   ├── profile.ts                        정년일 계산 등 개인 정보 헬퍼 (calcRetireDate / ageOn / ymAtAge)
+│   ├── pension-per-calc.ts               개인연금 월 단위 복리 시뮬레이션 (적립·거치·수령)
 │   ├── etf-collector.ts                  ETF Python 수집기 기동·상태 관리
 │   ├── usa-collector.ts                  미국 지표·환율 수집기 기동·상태 관리
 │   ├── supabase-storage.ts               Supabase Storage 업로드·Signed URL·삭제
@@ -215,6 +221,27 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
   PRIMARY KEY (e_date, stock_code)
 );
 ```
+
+#### `my_profile` 테이블 — 개인 정보 공통 설정 (v028)
+
+생년월일·입사일·정년은 개인연금·퇴직연금·국민연금이 함께 쓰므로 한 곳에 둔다.
+
+```sql
+CREATE TABLE IF NOT EXISTS my_profile (
+  id          INT  PRIMARY KEY DEFAULT 1,        -- 항상 1행
+  birth_date  DATE NOT NULL,
+  join_date   DATE NOT NULL,
+  retire_age  INT  NOT NULL DEFAULT 60,
+  retire_rule TEXT NOT NULL DEFAULT 'month_end', -- birthday | month_end | year_end
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (id = 1)
+);
+```
+
+- 조회·수정: [app/actions/profile.ts](../app/actions/profile.ts) (`requireAdmin()` 보호)
+- 정년일 계산: [lib/profile.ts](../lib/profile.ts) `calcRetireDate()`
+- 수정 UI 는 현재 개인연금 화면의 계획 설정 팝업에만 있다
 
 > `my_stock` 테이블은 `ensureStockTables()` 로 런타임 자동 생성.
 > `t_stock_amt` 는 실제 스키마 기준으로 사전 생성 필요 (e_date/stock_code PK, e_amt/c_amt/e_rate/e_trade 컬럼).

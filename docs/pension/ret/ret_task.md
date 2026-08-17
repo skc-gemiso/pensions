@@ -17,14 +17,22 @@ app/pension/ret/
 
 ### 날짜 계산
 
-```typescript
-const START_DATE = new Date("2015-02-23")   // 입사일 (하드코딩)
-const RETIRE_YEAR = 2034                     // 정년 (하드코딩)
+입사일·정년은 **공통 프로필 `my_profile`** 에서 읽는다 (개인연금 화면과 공유).
+`getProfile()` 이 실패했을 때만 `FALLBACK_JOIN` / `FALLBACK_RETIRE` 상수를 쓴다.
 
-const totalMonths = monthDiff(START_DATE, new Date(RETIRE_YEAR, 1, 23))
-const elapsedMonths = monthDiff(START_DATE, today)
-const progress = (elapsedMonths / totalMonths) * 100
+```typescript
+const profile = await getProfile()          // app/actions/profile.ts
+const JOIN_DATE   = toDate(profile.join_date)    // 2015-02-23
+const retireDate  = toDate(profile.retire_date)  // retire_rule 로 계산된 정년일
+
+const progress = monthDiff(JOIN_DATE, today) / monthDiff(JOIN_DATE, retireDate) * 100
 ```
+
+`retire_date` 는 `lib/profile.ts` 의 `calcRetireDate()` 결과다.
+현재 규정은 `month_end` — 만 60세 생일이 속한 달의 말일이므로 **2034-06-30**.
+과거에는 입사 기념일(2034-02-23)로 잘못 잡혀 있었다.
+
+정년 표기는 `retireDate` 의 연·월을 그대로 쓴다 (`2034년 06월`).
 
 ---
 
@@ -136,7 +144,7 @@ interface ComputedRetirement {
 
 ## 알려진 제약 사항
 
-- 입사일·정년·평균임금이 코드에 하드코딩됨
+- 평균임금이 코드에 하드코딩됨 (입사일·정년은 `my_profile` 로 이전 완료)
 - `USER_PROJECTIONS` 수동 관리 필요 (DB 연동 미구현)
 - 퇴직금 기준이 되는 평균임금은 추정값 사용
 - IRP 의무 비율(안전자산 30%)을 무시한 자유 운용 가정

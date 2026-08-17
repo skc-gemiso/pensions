@@ -15,7 +15,7 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
     ├── /pension/my              대시보드 (각 연금 네비게이션)
     ├── /pension/nat             국민연금
     ├── /pension/ret             퇴직연금
-    ├── /pension/per             개인연금 (진행 중)
+    ├── /pension/per             개인연금 (연금저축펀드 수령액 시뮬레이션)
     └── /pension/seni            노령연금 (진행 중)
 /sim                             연금투자 시뮬레이션 (ETF 비교)
 /magic                           복리의 마법 (복리 계산기)
@@ -84,17 +84,25 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 
 ---
 
-### 개인연금 (`/pension/per`) — 진행 중
+### 개인연금 (`/pension/per`)
+
+연금저축펀드 계좌(`201-04-931585`) 하나가 재원. IRP·ISA 는 다루지 않는다.
 
 | 기능 | 설명 |
 |------|------|
-| 연금저축펀드 평가액 | 미구현 (UI 골조만) |
-| IRP 평가액 | 미구현 |
-| ISA 평가액 | 미구현 |
+| 계좌 현황 | 보유수량·평가액·매입금액·손익 (`my_stock`·`t_stock_amt` 실시간 조회) |
+| 누적 수령 분배금 | 분배금 지급 이력 기준 실적치, 클릭 시 지급기준일별 상세 |
+| 수령액 시뮬레이션 | 적립 → 거치 → 수령 3구간 월 단위 복리 계산 |
+| 퇴직 시점별 비교 | 퇴직 나이만 바꿔 재계산, 기준(정년) 대비 차이 표시 |
+| 연도별 추이 | 매년 12월 말 스냅샷 (수량·평가액·월 분배금) |
+| 계획 설정 | 생년월일·입사일·정년(공통 프로필) + 수령 나이·월 적립액 |
+| 도움말 | 페이지 전체 `!` + 표별 전용 `읽는 법` 2종 |
 | 시뮬레이터 링크 | `/sim` 이동 |
 | 복리의 마법 링크 | `/magic` 이동 |
 
-- 참고 파일: [app/pension/per/page.tsx](../app/pension/per/page.tsx)
+- 참고 파일: [app/pension/per/page.tsx](../app/pension/per/page.tsx),
+  [app/pension/per/actions.ts](../app/pension/per/actions.ts),
+  [lib/pension-per-calc.ts](../lib/pension-per-calc.ts)
 - 상세 문서: [pension/per/per_project.md](pension/per/per_project.md)
 
 ---
