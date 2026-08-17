@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import AppLayout from "@/components/AppLayout"
 import HelpModal, { H, Box, ColTable } from "@/components/HelpModal"
 import { getProfile, type ProfileView } from "@/app/actions/profile"
@@ -32,6 +32,9 @@ const FIN_INCOME_LIMIT_MAN = 2_000    // 금융소득종합과세 기준 (연 2,
 // 실제 과세되는 금액은 주당 과세표준액(tax_base_amt) 뿐이고, 분배금의 5% 안팎이다.
 // 세금도 종합과세 판정도 이 과세표준액 기준으로 한다.
 const TAX_BASE_RATIO_FALLBACK = 0.05
+
+// DB형 퇴직연금을 개인이 수령·운용할 수 있게 되는 나이
+const DB_ACCESS_AGE = 55
 
 // 퇴직소득세 계산 (2023년 개정 기준, 만원 단위, 근사치)
 function calcRetirementTax(grossMan: number, tenureYears: number): number {
@@ -104,7 +107,7 @@ function calcCurrentSeverance(
   const tenureYears = Math.max(1, Math.round(tenureDays / 365))
   const taxMan = calcRetirementTax(grossMan, tenureYears)
   const netMan = grossMan - taxMan
-  // 정년에 매입해 수령 개시까지 재투자한 뒤 받는 세후 월 분배금
+  // 매입 시점부터 수령 개시까지 재투자한 뒤 받는 세후 월 분배금
   const grown = grownValue(netMan, ccAnnualRate, taxBaseRatio, holdMonths)
   const ccMonthlyMan = Math.round(afterDividendTax(grown * ccAnnualRate, taxBaseRatio) / 12)
   return { grossMan, netMan, taxMan, ccMonthlyMan }
@@ -164,23 +167,40 @@ export default function RetirementPensionPage() {
   const retireDate = useMemo(() => toDate(profile?.retire_date ?? FALLBACK_RETIRE), [profile])
   const LEGAL_RETIRE_YEAR = retireDate.getFullYear()
 
-  // 수령 개시 시점 — 만 payoutAge 세가 되는 연·월 (생년월일 기준)
-  const payoutIdx = useMemo(() => {
+  const birthIdx = useMemo(() => {
     const b = toDate(profile?.birth_date ?? "1974-06-04")
-    return (b.getFullYear() + payoutAge) * 12 + b.getMonth()
-  }, [profile, payoutAge])
+    return b.getFullYear() * 12 + b.getMonth()
+  }, [profile])
 
-  // 재투자 기간 — DB형이라 정년에 퇴직금을 받아 그때 매입한다. 그 전에는 ETF 를 살 수 없다
-  const holdMonths = useMemo(() => Math.max(
-    0, payoutIdx - (retireDate.getFullYear() * 12 + retireDate.getMonth())
-  ), [payoutIdx, retireDate])
+  /** 수령 개시 시점 — 만 payoutAge 세가 되는 연·월 */
+  const payoutIdx = birthIdx + payoutAge * 12
+  /** 퇴직연금을 개인이 운용할 수 있게 되는 시점 — 만 55세 */
+  const accessIdx = birthIdx + DB_ACCESS_AGE * 12
+
+  /**
+   * 매입 시점 = max(퇴직 시점, 만 55세)
+   *
+   * DB형이라 두 가지 제약이 함께 걸린다.
+   *   1. 퇴직 전에는 회사가 적립금을 운용하므로 손댈 수 없다
+   *   2. 만 55세 전에는 퇴직연금을 수령해 개인이 운용할 수 없다
+   */
+  const buyIdxOf = useCallback(
+    (retireIdx: number) => Math.max(retireIdx, accessIdx),
+    [accessIdx]
+  )
+  const holdMonthsOf = useCallback(
+    (retireIdx: number) => Math.max(0, payoutIdx - buyIdxOf(retireIdx)),
+    [payoutIdx, buyIdxOf]
+  )
 
   const tenure = useMemo(() => calcTenure(JOIN_DATE, today), [JOIN_DATE, today])
 
   // 현재 기준 추정 퇴직금 (급여명세서 지급액 기준: 6,900,000원/월)
+  // 지금 그만두면 만 55세가 되어야 굴릴 수 있다
+  const currentHoldMonths = holdMonthsOf(today.getFullYear() * 12 + today.getMonth())
   const currentSeverance = useMemo(
-    () => calcCurrentSeverance(6_900_000, tenure.totalDays, ccAnnualRate, taxBaseRatio, holdMonths),
-    [tenure.totalDays, ccAnnualRate, taxBaseRatio, holdMonths]
+    () => calcCurrentSeverance(6_900_000, tenure.totalDays, ccAnnualRate, taxBaseRatio, currentHoldMonths),
+    [tenure.totalDays, ccAnnualRate, taxBaseRatio, currentHoldMonths]
   )
 
   // 정년까지 남은 기간
@@ -239,13 +259,18 @@ export default function RetirementPensionPage() {
   }, [today])
 
   /**
-   * 실수령 퇴직금을 정년에 커버드콜로 매입 → 수령 개시까지 분배금 전액 재투자
+   * 실수령 퇴직금을 커버드콜로 매입 → 수령 개시까지 분배금 전액 재투자
    * → 그 뒤부터 분배금만 수령.
    *
-   * DB형이라 정년 전에는 회사가 적립금을 운용하므로 ETF 를 매입할 수 없다.
-   * 정년 이전에 발생하는 분배금은 없다.
+   * 매입 시점은 퇴직 시점과 만 55세 중 늦은 쪽이다 (buyIdxOf 주석 참고).
+   * 그 전에 발생하는 분배금은 없다.
    */
   const ccRows = useMemo(() => tableRows.map(row => {
+    // 퇴직 시점은 그 해 정년월로 잡는다 — 행 간 개월 차이가 정확히 12의 배수가 된다
+    const retireIdx  = row.year * 12 + retireDate.getMonth()
+    const buyIdx     = buyIdxOf(retireIdx)
+    const holdMonths = holdMonthsOf(retireIdx)
+
     const valueMan      = grownValue(row.netMan, ccAnnualRate, taxBaseRatio, holdMonths)
     const yearlyGross   = Math.round(valueMan * ccAnnualRate)
     const monthlyGross  = Math.round(yearlyGross / 12)
@@ -254,17 +279,25 @@ export default function RetirementPensionPage() {
     const monthlyNet    = Math.round(yearlyNet / 12)
     return {
       ...row,
+      holdMonths,
+      buyYm: `${Math.floor(buyIdx / 12)}.${String((buyIdx % 12) + 1).padStart(2, "0")}`,
+      // 퇴직보다 만 55세가 늦어 기다려야 하는 경우
+      waiting: buyIdx > retireIdx,
       valueMan: Math.round(valueMan),
       yearlyGross, monthlyGross, yearlyTaxBase, yearlyNet, monthlyNet,
       // 종합과세 판정도 분배금 전액이 아니라 과세표준액 기준이다
       overFinLimit: yearlyTaxBase > FIN_INCOME_LIMIT_MAN,
     }
-  }), [tableRows, ccAnnualRate, taxBaseRatio, holdMonths])
+  }), [tableRows, ccAnnualRate, taxBaseRatio, retireDate, buyIdxOf, holdMonthsOf])
 
   const joinStr = "2015.02.23"
   const retireStr = `${LEGAL_RETIRE_YEAR}년 ${String(retireDate.getMonth() + 1).padStart(2, "0")}월`
   const retireMonth = retireDate.getMonth() + 1
-  const growthMultiple = Math.pow(1 + ccAnnualRate / 12 * (1 - taxBaseRatio * DIVIDEND_TAX), holdMonths)
+  const monthlyNetRate = ccAnnualRate / 12 * (1 - taxBaseRatio * DIVIDEND_TAX)
+  /** 만 55세가 되는 연·월 표기 */
+  const accessStr = `${Math.floor(accessIdx / 12)}.${String((accessIdx % 12) + 1).padStart(2, "0")}`
+  /** 정년에 퇴직했을 때의 재투자 개월 — 도움말 예시로 쓴다 */
+  const retireHoldMonths = holdMonthsOf(retireDate.getFullYear() * 12 + retireDate.getMonth())
 
   return (
     <AppLayout>
@@ -476,8 +509,8 @@ export default function RetirementPensionPage() {
                       <H>마지막 값만 시점이 다릅니다</H>
                       <p className="text-xs text-gray-700 leading-relaxed">
                         앞의 세 값은 <b>오늘</b> 기준이지만, {payoutAge}세 월 분배금은
-                        <b> 정년 매입 → {holdMonths}개월 재투자 → {payoutAge}세 수령</b>을 거친 뒤의 값입니다.
-                        DB형이라 정년 전에는 ETF 를 매입할 수 없어 이 순서를 따릅니다.
+                        <b> 만 {DB_ACCESS_AGE}세({accessStr}) 매입 → {currentHoldMonths}개월 재투자 → {payoutAge}세 수령</b>을 거친 뒤의 값입니다.
+                        DB형이라 만 {DB_ACCESS_AGE}세 전에는 퇴직연금을 개인이 운용할 수 없어 이 순서를 따릅니다.
                       </p>
                     </Box>
                   </>
@@ -620,7 +653,7 @@ export default function RetirementPensionPage() {
               <h2 className="font-semibold text-gray-900">퇴직금 커버드콜 운용 시 분배금 시뮬레이션</h2>
               <HelpModal
                 title="퇴직금 커버드콜 운용 시 분배금"
-                lead={`정년 매입 → ${holdMonths}개월 재투자 → ${payoutAge}세부터 수령`}
+                lead={`퇴직·만 ${DB_ACCESS_AGE}세 중 늦은 쪽에 매입 → ${payoutAge}세까지 재투자 → 그 뒤 수령`}
                 tabs={[
                   { key: "what", label: "이 표가 뭔가요", body: (
                     <>
@@ -634,8 +667,8 @@ export default function RetirementPensionPage() {
                       <Box>
                         <H>시간 순서</H>
                         <div className="space-y-1.5 text-xs">
-                          <p><b className="text-gray-700">정년 {LEGAL_RETIRE_YEAR}년 {retireMonth}월</b> — 실수령 퇴직금 전액으로 KODEX 200 타겟위클리커버드콜 매입</p>
-                          <p><b className="text-gray-700">~ {payoutAge}세</b> — 분배금 전액 재투자 ({holdMonths}개월)</p>
+                          <p><b className="text-gray-700">퇴직 · 만 {DB_ACCESS_AGE}세 중 늦은 쪽</b> — 실수령 퇴직금 전액으로 KODEX 200 타겟위클리커버드콜 매입</p>
+                          <p><b className="text-gray-700">~ {payoutAge}세</b> — 분배금 전액 재투자 (정년 퇴직이면 {retireHoldMonths}개월)</p>
                           <p><b className="text-amber-600">{payoutAge}세부터</b> — 재투자를 멈추고 분배금 수령. 수량이 고정되므로 수령액이 유지됩니다</p>
                         </div>
                       </Box>
@@ -656,7 +689,7 @@ export default function RetirementPensionPage() {
                       <ColTable rows={[
                         ["투자 원금", <>그 해 퇴직 시 실수령액. 정년에 이 금액으로 매입한다고 봅니다</>],
                         [`${payoutAge}세 평가액`, <>재투자로 불어난 금액. 주가는 현재가 고정(상승률 0%)이라
-                          세후 분배금만큼만 늘어납니다 — {holdMonths}개월이면 약 <b>{growthMultiple.toFixed(2)}배</b></>],
+                          세후 분배금만큼만 늘어납니다 — 정년 퇴직 기준 {retireHoldMonths}개월이면 약 <b>{Math.pow(1 + monthlyNetRate, retireHoldMonths).toFixed(2)}배</b></>],
                         ["월 분배금(세전)", <>평가액 × 연 분배율 ÷ 12</>],
                         ["연 과세 대상", <>연 분배금 × 과표 비율. 실제로 세금이 붙는 금액이며,
                           2,000만원을 넘으면 <b className="text-red-500">종합과세</b> 배지가 붙습니다</>],
@@ -702,7 +735,7 @@ export default function RetirementPensionPage() {
                       <H>⚠️ 깔려 있는 가정</H>
                       <ul className="text-xs text-gray-700 space-y-2 list-disc pl-4 leading-relaxed">
                         <li><b>분배율이 유지된다고 봤습니다.</b> 최근 12회 평균(연 {(ccAnnualRate * 100).toFixed(1)}%)을
-                          {holdMonths}개월 내내 곱합니다. 회차별 편차가 커서 오차가 누적됩니다.</li>
+                          재투자 기간(최대 {payoutIdx - accessIdx}개월) 내내 곱합니다. 회차별 편차가 커서 오차가 누적됩니다.</li>
                         <li><b>과표 비율도 유지된다고 봤습니다.</b> 회차마다 0%~16%로 흔들리고,
                           운용사가 분배 재원 구성을 바꾸면 세금이 크게 늘 수 있습니다.</li>
                         <li><b>주가 변동이 없습니다.</b> 떨어지면 평가액이 줄고 분배금도 함께 줍니다.</li>
@@ -716,9 +749,10 @@ export default function RetirementPensionPage() {
               />
             </div>
             <p className="text-xs text-gray-400 mt-0.5">
-              정년({LEGAL_RETIRE_YEAR}년 {retireDate.getMonth() + 1}월)에 실수령 퇴직금 전액으로 KODEX 200 타겟위클리커버드콜을 매입 →
+              실수령 퇴직금 전액으로 KODEX 200 타겟위클리커버드콜 매입 →
               <b className="text-gray-500"> {payoutAge}세까지 분배금 전액 재투자</b> →
-              <b className="text-amber-600"> {payoutAge}세부터 분배금 수령</b>
+              <b className="text-amber-600"> {payoutAge}세부터 분배금 수령</b> ·
+              매입은 <b className="text-gray-500">퇴직 시점과 만 {DB_ACCESS_AGE}세({accessStr}) 중 늦은 쪽</b>부터
             </p>
           </div>
 
@@ -762,8 +796,8 @@ export default function RetirementPensionPage() {
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100 text-xs">
                   <th className="px-4 py-2 text-left font-medium text-gray-500" rowSpan={2}>퇴직 시점</th>
-                  <th className="px-4 py-2 text-center font-semibold text-gray-600 border-l border-gray-200" colSpan={2}>
-                    정년({LEGAL_RETIRE_YEAR}년) 매입 후 {holdMonths}개월 재투자
+                  <th className="px-4 py-2 text-center font-semibold text-gray-600 border-l border-gray-200" colSpan={4}>
+                    매입 후 {payoutAge}세까지 재투자
                   </th>
                   <th className="px-4 py-2 text-center font-semibold text-amber-700 bg-amber-50 border-l border-gray-200" colSpan={4}>
                     {payoutAge}세부터 매달 수령
@@ -771,6 +805,8 @@ export default function RetirementPensionPage() {
                 </tr>
                 <tr className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500">
                   <th className="px-4 py-2 text-right font-medium border-l border-gray-200">투자 원금</th>
+                  <th className="px-4 py-2 text-right font-medium">매입 시점</th>
+                  <th className="px-4 py-2 text-right font-medium">재투자</th>
                   <th className="px-4 py-2 text-right font-medium">{payoutAge}세 평가액</th>
                   <th className="px-4 py-2 text-right font-medium bg-amber-50 border-l border-gray-200">월 분배금(세전)</th>
                   <th className="px-4 py-2 text-right font-medium bg-amber-50">연 과세 대상</th>
@@ -802,6 +838,15 @@ export default function RetirementPensionPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right text-gray-500 text-xs border-l border-gray-100">{fmtMan(row.netMan)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="text-gray-500 text-xs">{row.buyYm}</span>
+                      {row.waiting && (
+                        <span className="ml-1 text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">만 {DB_ACCESS_AGE}세</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="text-gray-500 text-xs">{row.holdMonths}개월</span>
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <span className="text-gray-600">{fmtMan(row.valueMan)}</span>
                     </td>
@@ -840,15 +885,17 @@ export default function RetirementPensionPage() {
             </p>
             <p>• 세후 = 분배금 − (분배금 × 과표 비율 × 배당소득세 15.4%)</p>
             <p>
-              • <b>DB형이라 정년 전에는 ETF 를 매입할 수 없다.</b> 회사가 적립금을 운용하므로
-              퇴직금은 정년에 손에 들어오고, 그 전에 발생하는 분배금은 없다
+              • <b>DB형이라 매입 시점에 두 가지 제약이 걸린다.</b>
+              ① 퇴직 전에는 회사가 적립금을 운용하므로 손댈 수 없고,
+              ② 만 {DB_ACCESS_AGE}세({accessStr}) 전에는 퇴직연금을 수령해 개인이 운용할 수 없다 —
+              그래서 매입 시점은 <b>둘 중 늦은 쪽</b>이다
             </p>
             <p>
-              • 매입 시점은 <b>정년({LEGAL_RETIRE_YEAR}년 {retireDate.getMonth() + 1}월)</b>,
-              재투자 기간은 {payoutAge}세까지 <b>{holdMonths}개월</b>로 모든 행이 같다.
-              각 행은 &ldquo;그 해 퇴직했다면 퇴직금이 얼마인가&rdquo;의 차이만 반영한다
+              • 만 {DB_ACCESS_AGE}세 전에 퇴직하는 행은 <span className="text-gray-500">만 {DB_ACCESS_AGE}세</span> 배지가 붙는다.
+              퇴직금은 그 해에 받지만 {accessStr}까지 굴리지 못하고 기다리는 경우다
             </p>
-            <p>• 주가는 현재가 고정(상승률 0%)이라 평가액은 재투자한 분배금만큼만 늘어난다 — {holdMonths}개월 재투자로 약 {(Math.pow(1 + ccAnnualRate / 12 * (1 - taxBaseRatio * DIVIDEND_TAX), holdMonths)).toFixed(2)}배</p>
+            <p>• 각 행은 그 해 <b>{retireMonth}월</b>(정년월)에 퇴직한다고 가정 — 행 간 개월 차이가 정확히 12의 배수가 된다</p>
+            <p>• 주가는 현재가 고정(상승률 0%)이라 평가액은 재투자한 분배금만큼만 늘어난다 — 정년 퇴직 기준 {retireHoldMonths}개월이면 약 {Math.pow(1 + monthlyNetRate, retireHoldMonths).toFixed(2)}배</p>
             <p>• <span className="text-red-500 font-medium">금융소득종합과세</span>(연 2,000만원) 판정도 과세표준액 기준이라, 분배금이 커도 대상이 되기 어렵다</p>
             <p>• 과표 비율은 회차마다 0%~16%로 편차가 크다 — 위 값은 최근 12회 합계 기준 가중평균이다</p>
             <p>• 주가가 떨어지면 평가액이 줄고, 같은 분배율이어도 분배금이 함께 줄어든다</p>
