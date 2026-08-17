@@ -25,13 +25,10 @@ const USER_PROJECTIONS: Record<number, { salaryMan: number; grossMan: number; ne
 // 퇴직금 운용 시뮬레이션 기준 — IRP·ISA 는 운용하지 않으므로 일반 계좌 기준이다
 const CC_STOCK_CODE = "498400"        // KODEX 200 타겟위클리커버드콜
 const CC_FALLBACK_ANNUAL_RATE = 0.17  // 분배 이력을 못 읽었을 때만 쓰는 값
-const DIVIDEND_TAX = 0.154            // 배당소득세 (소득세 14% + 지방소득세 1.4%)
-const FIN_INCOME_LIMIT_MAN = 2_000    // 금융소득종합과세 기준 (연 2,000만원)
-
-// 커버드콜 분배금은 대부분 파생상품 매매이익이라 과세 대상이 아니다.
-// 실제 과세되는 금액은 주당 과세표준액(tax_base_amt) 뿐이고, 분배금의 5% 안팎이다.
-// 세금도 종합과세 판정도 이 과세표준액 기준으로 한다.
-const TAX_BASE_RATIO_FALLBACK = 0.05
+// 분배금 과세는 계산에서 뺐다.
+// 커버드콜 분배금은 대부분 파생상품 매매이익이라 실제 과세 대상은 주당 과세표준액뿐이고,
+// 그 비율이 분배금의 4~5% 수준이라 실효세율이 1%에 못 미친다.
+// 금융소득종합과세(연 2,000만원)도 과표 기준이면 연 분배금이 5억에 가까워야 걸린다.
 
 // DB형 퇴직연금을 개인이 수령·운용할 수 있게 되는 나이
 const DB_ACCESS_AGE = 55
@@ -94,34 +91,25 @@ function calcTenure(from: Date, to: Date): { years: number; months: number; days
   return { years, months, days: to.getDate(), totalDays }
 }
 
-/** 분배금 → 세후 분배금. 과세는 분배금 전액이 아니라 과세표준액에만 붙는다 */
-function afterDividendTax(gross: number, taxBaseRatio: number): number {
-  return gross - gross * taxBaseRatio * DIVIDEND_TAX
-}
-
 function calcCurrentSeverance(
-  monthlyWon: number, tenureDays: number,
-  ccAnnualRate: number, taxBaseRatio: number, holdMonths: number
+  monthlyWon: number, tenureDays: number, ccAnnualRate: number, holdMonths: number
 ) {
   const grossMan = Math.round((monthlyWon * (tenureDays / 365)) / 10_000)
   const tenureYears = Math.max(1, Math.round(tenureDays / 365))
   const taxMan = calcRetirementTax(grossMan, tenureYears)
   const netMan = grossMan - taxMan
-  // 매입 시점부터 수령 개시까지 재투자한 뒤 받는 세후 월 분배금
-  const grown = grownValue(netMan, ccAnnualRate, taxBaseRatio, holdMonths)
-  const ccMonthlyMan = Math.round(afterDividendTax(grown * ccAnnualRate, taxBaseRatio) / 12)
+  // 매입 시점부터 수령 개시까지 재투자한 뒤 받는 월 분배금
+  const grown = grownValue(netMan, ccAnnualRate, holdMonths)
+  const ccMonthlyMan = Math.round(grown * ccAnnualRate / 12)
   return { grossMan, netMan, taxMan, ccMonthlyMan }
 }
 
 /**
  * 분배금을 전액 재투자했을 때의 평가액.
- * 주가는 현재가 고정(상승률 0%)이라 세후 분배금만큼만 늘어난다.
+ * 주가는 현재가 고정(상승률 0%)이라 분배금만큼만 늘어난다.
  */
-function grownValue(
-  principal: number, ccAnnualRate: number, taxBaseRatio: number, months: number
-): number {
-  const monthlyNetRate = ccAnnualRate / 12 * (1 - taxBaseRatio * DIVIDEND_TAX)
-  return principal * Math.pow(1 + monthlyNetRate, months)
+function grownValue(principal: number, ccAnnualRate: number, months: number): number {
+  return principal * Math.pow(1 + ccAnnualRate / 12, months)
 }
 
 /** 'YYYY-MM-DD' → Date (UTC 밀림 방지) */
@@ -133,25 +121,18 @@ function toDate(iso: string): Date {
 export default function RetirementPensionPage() {
   const today = useMemo(() => new Date(), [])
   const [profile, setProfile] = useState<ProfileView | null>(null)
-  const [ccRate, setCcRate] = useState<{ annual: number; taxBaseRatio: number; count: number } | null>(null)
+  const [ccRate, setCcRate] = useState<{ annual: number; count: number } | null>(null)
 
   useEffect(() => { getProfile().then(setProfile).catch(() => {}) }, [])
 
-  // 커버드콜 분배율·과표비율 — 개인연금 화면과 같은 기준(최근 12회)을 쓴다
+  // 커버드콜 분배율 — 개인연금 화면과 같은 기준(최근 12회 평균)을 쓴다
   useEffect(() => {
     getEtfDividendHistory(CC_STOCK_CODE)
       .then(rows => {
         const recent = rows.slice(0, 12)
         if (recent.length === 0) return
         const monthly = recent.reduce((s, r) => s + r.dist_rate, 0) / recent.length / 100
-        const distSum = recent.reduce((s, r) => s + r.dist_amt, 0)
-        const baseSum = recent.reduce((s, r) => s + r.tax_base_amt, 0)
-        setCcRate({
-          annual: monthly * 12,
-          // 회차별 편차가 크므로 단순평균이 아니라 합계 대비 비율(가중평균)을 쓴다
-          taxBaseRatio: distSum > 0 ? baseSum / distSum : TAX_BASE_RATIO_FALLBACK,
-          count: recent.length,
-        })
+        setCcRate({ annual: monthly * 12, count: recent.length })
       })
       .catch(() => {})
   }, [])
@@ -160,7 +141,6 @@ export default function RetirementPensionPage() {
   useEffect(() => { getPerConfig().then(c => setPayoutAge(c.payout_age)).catch(() => {}) }, [])
 
   const ccAnnualRate = ccRate?.annual ?? CC_FALLBACK_ANNUAL_RATE
-  const taxBaseRatio = ccRate?.taxBaseRatio ?? TAX_BASE_RATIO_FALLBACK
 
   // 입사일·정년은 공통 프로필에서 온다 (정년 규정: 만 60세가 되는 달의 말일 등)
   const JOIN_DATE = useMemo(() => toDate(profile?.join_date ?? FALLBACK_JOIN), [profile])
@@ -199,8 +179,8 @@ export default function RetirementPensionPage() {
   // 지금 그만두면 만 55세가 되어야 굴릴 수 있다
   const currentHoldMonths = holdMonthsOf(today.getFullYear() * 12 + today.getMonth())
   const currentSeverance = useMemo(
-    () => calcCurrentSeverance(6_900_000, tenure.totalDays, ccAnnualRate, taxBaseRatio, currentHoldMonths),
-    [tenure.totalDays, ccAnnualRate, taxBaseRatio, currentHoldMonths]
+    () => calcCurrentSeverance(6_900_000, tenure.totalDays, ccAnnualRate, currentHoldMonths),
+    [tenure.totalDays, ccAnnualRate, currentHoldMonths]
   )
 
   // 정년까지 남은 기간
@@ -271,12 +251,9 @@ export default function RetirementPensionPage() {
     const buyIdx     = buyIdxOf(retireIdx)
     const holdMonths = holdMonthsOf(retireIdx)
 
-    const valueMan      = grownValue(row.netMan, ccAnnualRate, taxBaseRatio, holdMonths)
-    const yearlyGross   = Math.round(valueMan * ccAnnualRate)
-    const monthlyGross  = Math.round(yearlyGross / 12)
-    const yearlyTaxBase = Math.round(yearlyGross * taxBaseRatio)   // 실제 과세 대상
-    const yearlyNet     = Math.round(afterDividendTax(yearlyGross, taxBaseRatio))
-    const monthlyNet    = Math.round(yearlyNet / 12)
+    const valueMan     = grownValue(row.netMan, ccAnnualRate, holdMonths)
+    const yearlyDist   = Math.round(valueMan * ccAnnualRate)
+    const monthlyDist  = Math.round(yearlyDist / 12)
     return {
       ...row,
       holdMonths,
@@ -284,16 +261,13 @@ export default function RetirementPensionPage() {
       // 퇴직보다 만 55세가 늦어 기다려야 하는 경우
       waiting: buyIdx > retireIdx,
       valueMan: Math.round(valueMan),
-      yearlyGross, monthlyGross, yearlyTaxBase, yearlyNet, monthlyNet,
-      // 종합과세 판정도 분배금 전액이 아니라 과세표준액 기준이다
-      overFinLimit: yearlyTaxBase > FIN_INCOME_LIMIT_MAN,
+      yearlyDist, monthlyDist,
     }
-  }), [tableRows, ccAnnualRate, taxBaseRatio, retireDate, buyIdxOf, holdMonthsOf])
+  }), [tableRows, ccAnnualRate, retireDate, buyIdxOf, holdMonthsOf])
 
   const joinStr = "2015.02.23"
   const retireStr = `${LEGAL_RETIRE_YEAR}년 ${String(retireDate.getMonth() + 1).padStart(2, "0")}월`
   const retireMonth = retireDate.getMonth() + 1
-  const monthlyNetRate = ccAnnualRate / 12 * (1 - taxBaseRatio * DIVIDEND_TAX)
   /** 만 55세가 되는 연·월 표기 */
   const accessStr = `${Math.floor(accessIdx / 12)}.${String((accessIdx % 12) + 1).padStart(2, "0")}`
   /** 정년에 퇴직했을 때의 재투자 개월 — 도움말 예시로 쓴다 */
@@ -338,7 +312,7 @@ export default function RetirementPensionPage() {
                         ["연봉 인상", <>매년 <b>240만원</b> 균등 인상 가정</>],
                         ["2030~2034", <>사전 계산해 둔 값(<code>USER_PROJECTIONS</code>)을 그대로 씁니다</>],
                         ["2026~2029", <>법정 퇴직금 공식(연봉 ÷ 12 × 근속연수)으로 추정합니다</>],
-                        ["분배율 · 과표", <>KODEX 200 타겟위클리커버드콜의 실제 지급 이력 최근 12회</>],
+                        ["분배율", <>KODEX 200 타겟위클리커버드콜의 실제 지급 이력 최근 12회 평균</>],
                       ]} />
                     </Box>
 
@@ -347,7 +321,7 @@ export default function RetirementPensionPage() {
                       <p className="text-xs text-gray-700 leading-relaxed">
                         운용 계획이 없어 계산에서 뺐습니다. 퇴직금을 일시금으로 받아 <b>일반 계좌</b>에서
                         운용하는 기준이므로, 분배금에 연금소득세(3.3~5.5%)가 아니라 배당소득세(15.4%)가 붙습니다.
-                        IRP 로 이전하면 퇴직소득세도 이연·감면되므로, 이 화면의 세후 금액은 그만큼 보수적입니다.
+                        IRP 로 이전하면 퇴직소득세가 이연·감면되므로, 이 화면의 실수령액은 그만큼 보수적입니다.
                       </p>
                     </Box>
                   </>
@@ -385,7 +359,7 @@ export default function RetirementPensionPage() {
                         상여·수당 구성에 따라 달라집니다.</li>
                       <li><b>연봉 인상률은 가정입니다.</b> 매년 240만원 균등 인상을 전제로 했습니다.</li>
                       <li><b>2029~2030년 사이 금액이 크게 뜁니다.</b> 두 구간의 계산 방식이 달라서 생기는 현상입니다.</li>
-                      <li><b>분배율·과표 비율이 유지된다고 봤습니다.</b> 운용사가 분배 정책을 바꾸면 결과가 크게 달라집니다.</li>
+                      <li><b>분배율이 유지된다고 봤습니다.</b> 운용사가 분배 정책을 바꾸면 결과가 크게 달라집니다.</li>
                       <li><b>주가 변동을 반영하지 않았습니다.</b> 주가가 떨어지면 평가액도 분배금도 함께 줄어듭니다.</li>
                       <li><b>물가를 반영하지 않았습니다.</b></li>
                       <li><b>중도인출·회사 정책 변경</b>은 계산에 없습니다.</li>
@@ -492,7 +466,7 @@ export default function RetirementPensionPage() {
                       ["세전 퇴직금", <>월 690만원 × 근속일수({tenure.totalDays}일) ÷ 365. <b>근속 1년당 한 달치 급여</b>라는 법정 산식입니다</>],
                       ["퇴직소득세", <>2023년 개정 기준 근사치. 근속연수공제·환산급여공제를 적용합니다 — 자세한 식은 페이지 도움말의 <b>퇴직소득세</b> 탭에</>],
                       ["실수령액", <>세전 퇴직금 − 퇴직소득세. 아래 커버드콜 시뮬레이션의 <b>투자 원금</b>이 되는 금액입니다</>],
-                      [`${payoutAge}세 월 분배금(세후)`, <>실수령액을 정년에 커버드콜로 매입하고 {payoutAge}세까지 분배금을 재투자했을 때, {payoutAge}세부터 매달 받는 세후 금액</>],
+                      [`${payoutAge}세 월 분배금`, <>실수령액을 만 {DB_ACCESS_AGE}세에 커버드콜로 매입하고 {payoutAge}세까지 분배금을 재투자했을 때, {payoutAge}세부터 매달 받는 금액</>],
                     ]} />
                   </Box>
                 ) },
@@ -532,7 +506,7 @@ export default function RetirementPensionPage() {
               <p className="text-xl font-bold text-emerald-700">약 {fmtMan(currentSeverance.netMan)}</p>
             </div>
             <div>
-              <p className="text-xs text-blue-400 mb-0.5">{payoutAge}세 월 분배금(세후)</p>
+              <p className="text-xs text-blue-400 mb-0.5">{payoutAge}세 월 분배금</p>
               <p className="text-xl font-bold text-indigo-700">약 {fmtMan(currentSeverance.ccMonthlyMan)}</p>
             </div>
           </div>
@@ -689,43 +663,40 @@ export default function RetirementPensionPage() {
                       <ColTable rows={[
                         ["투자 원금", <>그 해 퇴직 시 실수령액. 정년에 이 금액으로 매입한다고 봅니다</>],
                         [`${payoutAge}세 평가액`, <>재투자로 불어난 금액. 주가는 현재가 고정(상승률 0%)이라
-                          세후 분배금만큼만 늘어납니다 — 정년 퇴직 기준 {retireHoldMonths}개월이면 약 <b>{Math.pow(1 + monthlyNetRate, retireHoldMonths).toFixed(2)}배</b></>],
-                        ["월 분배금(세전)", <>평가액 × 연 분배율 ÷ 12</>],
-                        ["연 과세 대상", <>연 분배금 × 과표 비율. 실제로 세금이 붙는 금액이며,
-                          2,000만원을 넘으면 <b className="text-red-500">종합과세</b> 배지가 붙습니다</>],
-                        ["월·연 분배금(세후)", <>세전 금액에서 (과세 대상 × 15.4%)를 뺀 값</>],
+                          분배금만큼만 늘어납니다 — 정년 퇴직 기준 {retireHoldMonths}개월이면 약 <b>{Math.pow(1 + ccAnnualRate / 12, retireHoldMonths).toFixed(2)}배</b></>],
+                        ["월 분배금", <>평가액 × 연 분배율 ÷ 12</>],
+                        ["연 분배금", <>평가액 × 연 분배율</>],
                       ]} />
                     </Box>
                   ) },
                   { key: "tax", label: "세금", body: (
                     <>
                       <Box tone="emerald">
-                        <H>분배금 전액에 세금이 붙지 않습니다</H>
+                        <H>세금을 계산에 넣지 않았습니다</H>
                         <p className="text-xs text-gray-700 leading-relaxed">
                           커버드콜 분배금은 대부분 <b>파생상품 매매이익</b>이라 국내 주식형 ETF 기준으로 비과세입니다.
-                          실제 과세 대상은 운용사가 공시하는 <b>주당 과세표준액</b>뿐이고,
-                          최근 12회 기준 분배금의 <b>{(taxBaseRatio * 100).toFixed(1)}%</b> 수준입니다.
+                          실제 과세 대상은 운용사가 공시하는 <b>주당 과세표준액</b>뿐인데,
+                          최근 12회 기준 분배금의 <b>4~5%</b> 수준입니다.
+                          배당소득세 15.4%를 그 4~5%에만 매기므로 <b>실효세율이 1%에 못 미칩니다.</b>
+                          표를 어지럽힐 뿐이라 계산에서 제외했습니다.
                         </p>
-                        <pre className="text-xs bg-white border border-emerald-200 rounded-lg p-3 overflow-x-auto text-gray-700 mt-2">{`과세 대상 = 분배금 × ${(taxBaseRatio * 100).toFixed(1)}%
-세금      = 과세 대상 × 15.4%
-실효세율  = ${(taxBaseRatio * DIVIDEND_TAX * 100).toFixed(2)}%`}</pre>
                       </Box>
 
                       <Box>
-                        <H>금융소득종합과세</H>
+                        <H>금융소득종합과세도 사실상 무관합니다</H>
                         <p className="text-xs text-gray-700 leading-relaxed">
-                          연 <b>과세 대상</b>이 2,000만원을 넘으면 종합과세 대상이 됩니다.
-                          분배금 전액이 아니라 과표 기준이라, 분배금이 커도 대상이 되기 어렵습니다.
-                          다만 실제 판정은 예금 이자·다른 배당을 <b>모두 합산</b>하므로
-                          이 표의 판정은 이 ETF 단독 기준입니다.
+                          연 2,000만원 기준은 <b>과세표준액</b>으로 따집니다.
+                          과표 비율이 4~5%라면 연 분배금이 <b>5억에 가까워야</b> 그 선에 닿습니다.
+                          평가액으로 환산하면 30억 규모라, 이 표의 어느 행도 해당되지 않습니다.
                         </p>
                       </Box>
 
-                      <Box tone="blue">
-                        <H>재투자도 세후 금액으로 합니다</H>
+                      <Box tone="amber">
+                        <H>⚠️ 다만 고정된 성질은 아닙니다</H>
                         <p className="text-xs text-gray-700 leading-relaxed">
-                          일반 계좌라 분배 시점에 원천징수되므로, 손에 들어온 만큼만 다시 삽니다.
-                          연금계좌처럼 과세이연이 되지 않습니다.
+                          과표 비율은 회차마다 0%~16%로 흔들리고, 운용사가 분배 재원 구성을 바꾸면
+                          과세 대상이 크게 늘 수 있습니다. 세법이 바뀔 가능성도 있습니다.
+                          지금 구조에서 무시할 만하다는 뜻이지, 세금이 없다는 뜻은 아닙니다.
                         </p>
                       </Box>
                     </>
@@ -736,12 +707,12 @@ export default function RetirementPensionPage() {
                       <ul className="text-xs text-gray-700 space-y-2 list-disc pl-4 leading-relaxed">
                         <li><b>분배율이 유지된다고 봤습니다.</b> 최근 12회 평균(연 {(ccAnnualRate * 100).toFixed(1)}%)을
                           재투자 기간(최대 {payoutIdx - accessIdx}개월) 내내 곱합니다. 회차별 편차가 커서 오차가 누적됩니다.</li>
-                        <li><b>과표 비율도 유지된다고 봤습니다.</b> 회차마다 0%~16%로 흔들리고,
-                          운용사가 분배 재원 구성을 바꾸면 세금이 크게 늘 수 있습니다.</li>
+                        <li><b>세금을 빼고 계산했습니다.</b> 실효세율이 1% 미만이라 무시했지만,
+                          과표 비율이나 세법이 바뀌면 달라집니다.</li>
                         <li><b>주가 변동이 없습니다.</b> 떨어지면 평가액이 줄고 분배금도 함께 줍니다.</li>
                         <li><b>상품이 청산되거나</b> 분배 정책이 바뀔 수 있습니다.</li>
                         <li><b>물가를 반영하지 않았습니다.</b></li>
-                        <li><b>IRP 를 쓰지 않는 전제</b>라 세후 금액이 보수적입니다.</li>
+                        <li><b>IRP 를 쓰지 않는 전제</b>입니다. 이전하면 퇴직소득세가 줄어 투자 원금이 더 커집니다.</li>
                       </ul>
                     </Box>
                   ) },
@@ -766,25 +737,14 @@ export default function RetirementPensionPage() {
                     IRP·ISA 는 운용하지 않으므로 일시금 수령 후 일반 계좌에서 운용하는 기준입니다.
                   </p>
                 </div>
-                <div className="flex gap-5 text-right">
-                  <div>
-                    <p className="text-xs text-emerald-600">연 분배율</p>
-                    <p className="text-lg font-bold text-emerald-700 tabular-nums">
-                      {(ccAnnualRate * 100).toFixed(1)}%
-                    </p>
-                    <p className="text-[10px] text-emerald-500">
-                      {ccRate ? `최근 ${ccRate.count}회 평균` : "기본 추정치"}
-                    </p>
-                  </div>
-                  <div className="border-l border-emerald-200 pl-5">
-                    <p className="text-xs text-emerald-600">과표 비율</p>
-                    <p className="text-lg font-bold text-emerald-700 tabular-nums">
-                      {(taxBaseRatio * 100).toFixed(1)}%
-                    </p>
-                    <p className="text-[10px] text-emerald-500">
-                      실효세율 {(taxBaseRatio * DIVIDEND_TAX * 100).toFixed(2)}%
-                    </p>
-                  </div>
+                <div className="text-right">
+                  <p className="text-xs text-emerald-600">연 분배율</p>
+                  <p className="text-lg font-bold text-emerald-700 tabular-nums">
+                    {(ccAnnualRate * 100).toFixed(1)}%
+                  </p>
+                  <p className="text-[10px] text-emerald-500">
+                    {ccRate ? `최근 ${ccRate.count}회 평균` : "기본 추정치"}
+                  </p>
                 </div>
               </div>
             </div>
@@ -799,7 +759,7 @@ export default function RetirementPensionPage() {
                   <th className="px-4 py-2 text-center font-semibold text-gray-600 border-l border-gray-200" colSpan={4}>
                     매입 후 {payoutAge}세까지 재투자
                   </th>
-                  <th className="px-4 py-2 text-center font-semibold text-amber-700 bg-amber-50 border-l border-gray-200" colSpan={4}>
+                  <th className="px-4 py-2 text-center font-semibold text-amber-700 bg-amber-50 border-l border-gray-200" colSpan={2}>
                     {payoutAge}세부터 매달 수령
                   </th>
                 </tr>
@@ -808,10 +768,8 @@ export default function RetirementPensionPage() {
                   <th className="px-4 py-2 text-right font-medium">매입 시점</th>
                   <th className="px-4 py-2 text-right font-medium">재투자</th>
                   <th className="px-4 py-2 text-right font-medium">{payoutAge}세 평가액</th>
-                  <th className="px-4 py-2 text-right font-medium bg-amber-50 border-l border-gray-200">월 분배금(세전)</th>
-                  <th className="px-4 py-2 text-right font-medium bg-amber-50">연 과세 대상</th>
-                  <th className="px-4 py-2 text-right font-medium bg-amber-50">월 분배금(세후)</th>
-                  <th className="px-4 py-2 text-right font-medium bg-amber-50">연 분배금(세후)</th>
+                  <th className="px-4 py-2 text-right font-medium bg-amber-50 border-l border-gray-200">월 분배금</th>
+                  <th className="px-4 py-2 text-right font-medium bg-amber-50">연 분배금</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -852,21 +810,11 @@ export default function RetirementPensionPage() {
                     </td>
 
                     <td className="px-4 py-3 text-right bg-amber-50/60 border-l border-gray-200">
-                      <span className="text-gray-600">{fmtMan(row.monthlyGross)}</span>
+                      <span className="font-bold text-amber-700">{fmtMan(row.monthlyDist)}</span>
                       <span className="text-xs text-gray-400">/월</span>
                     </td>
                     <td className="px-4 py-3 text-right bg-amber-50/60">
-                      <span className="text-gray-400 text-xs">{fmtMan(row.yearlyTaxBase)}</span>
-                      {row.overFinLimit && (
-                        <span className="ml-1 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-medium">종합과세</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right bg-amber-50/60">
-                      <span className="font-bold text-amber-700">{fmtMan(row.monthlyNet)}</span>
-                      <span className="text-xs text-gray-400">/월</span>
-                    </td>
-                    <td className="px-4 py-3 text-right bg-amber-50/60">
-                      <span className="font-bold text-blue-700">{fmtMan(row.yearlyNet)}</span>
+                      <span className="font-bold text-blue-700">{fmtMan(row.yearlyDist)}</span>
                       <span className="text-xs text-gray-400">/년</span>
                     </td>
                   </tr>
@@ -876,14 +824,13 @@ export default function RetirementPensionPage() {
           </div>
 
           <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 text-[11px] text-gray-400 space-y-1">
-            <p>• 분배율·과표 비율은 실제 지급 이력 최근 12회 기준 · 개인연금 화면과 같은 데이터</p>
+            <p>• 분배율은 실제 지급 이력 최근 12회 평균 · 개인연금 화면과 같은 데이터</p>
             <p>• 원금(수량)은 헐지 않고 분배금만 받는 구조 — 주가가 오르내려도 수량은 유지된다</p>
             <p>
-              • <span className="text-gray-500 font-medium">과세는 분배금 전액이 아니라 과세표준액에만 붙는다.</span>{" "}
-              커버드콜 분배금은 대부분 파생상품 매매이익이라 비과세이고, 과세 대상은 분배금의{" "}
-              {(taxBaseRatio * 100).toFixed(1)}% 수준이다 → 실효세율 {(taxBaseRatio * DIVIDEND_TAX * 100).toFixed(2)}%
+              • <span className="text-gray-500 font-medium">세금은 계산에 넣지 않았다.</span>{" "}
+              커버드콜 분배금은 대부분 파생상품 매매이익이라 실제 과세 대상(과세표준액)이 분배금의 4~5%뿐이고,
+              금융소득종합과세(연 2,000만원)도 그 기준이면 연 분배금이 5억에 가까워야 걸린다
             </p>
-            <p>• 세후 = 분배금 − (분배금 × 과표 비율 × 배당소득세 15.4%)</p>
             <p>
               • <b>DB형이라 매입 시점에 두 가지 제약이 걸린다.</b>
               ① 퇴직 전에는 회사가 적립금을 운용하므로 손댈 수 없고,
@@ -895,9 +842,7 @@ export default function RetirementPensionPage() {
               퇴직금은 그 해에 받지만 {accessStr}까지 굴리지 못하고 기다리는 경우다
             </p>
             <p>• 각 행은 그 해 <b>{retireMonth}월</b>(정년월)에 퇴직한다고 가정 — 행 간 개월 차이가 정확히 12의 배수가 된다</p>
-            <p>• 주가는 현재가 고정(상승률 0%)이라 평가액은 재투자한 분배금만큼만 늘어난다 — 정년 퇴직 기준 {retireHoldMonths}개월이면 약 {Math.pow(1 + monthlyNetRate, retireHoldMonths).toFixed(2)}배</p>
-            <p>• <span className="text-red-500 font-medium">금융소득종합과세</span>(연 2,000만원) 판정도 과세표준액 기준이라, 분배금이 커도 대상이 되기 어렵다</p>
-            <p>• 과표 비율은 회차마다 0%~16%로 편차가 크다 — 위 값은 최근 12회 합계 기준 가중평균이다</p>
+            <p>• 주가는 현재가 고정(상승률 0%)이라 평가액은 재투자한 분배금만큼만 늘어난다 — 정년 퇴직 기준 {retireHoldMonths}개월이면 약 {Math.pow(1 + ccAnnualRate / 12, retireHoldMonths).toFixed(2)}배</p>
             <p>• 주가가 떨어지면 평가액이 줄고, 같은 분배율이어도 분배금이 함께 줄어든다</p>
           </div>
         </div>
