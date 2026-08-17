@@ -17,6 +17,12 @@ function fmtYm(ym: string): string {
   return `${y}년 ${Number(m)}월`
 }
 
+/** 'YYYY-MM' 의 이전 달. 시뮬레이션 경계(적립을 멈추는 달)를 마지막 적립 월로 바꿔 보여줄 때 쓴다 */
+function prevYm(ym: string): string {
+  const [y, m] = ym.split("-").map(Number)
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`
+}
+
 // ─────────────────────────────────────────────
 // 도움말 모달 (연금투자 시뮬레이션과 같은 ! 아이콘)
 // ─────────────────────────────────────────────
@@ -327,10 +333,12 @@ function RetireCompareHelp({ payoutAge, retireAge, monthlyAmount }: {
             <Box>
               <ColTable rows={[
                 ["퇴직 나이", <>적립을 멈추는 나이. <b>기준</b> 배지가 붙은 행이 프로필 정년({retireAge}세)입니다.</>],
-                ["퇴직 시점", <>그 나이에 도달하는 달. 정년 행만 정년 규정(생일/말일/연말)을 반영한 실제 시점을 씁니다.</>],
-                ["적립 개월", <>지금부터 그 시점까지 월 적립액을 넣는 개월 수. 한 해 차이는 12개월입니다.</>],
-                [`${payoutAge}세 보유수량`, <>적립분과 분배금 재투자분이 모두 쌓인 주식 수. 이 표의 <b>실질적인 결과값</b>입니다.</>],
-                [`${payoutAge}세 평가액`, <>보유수량 × 현재 주가. 주가를 고정으로 두므로 보유수량에 비례합니다.</>],
+                ["마지막 적립", <><b>마지막으로 돈을 넣는 달</b>입니다. 그 다음 달부터는 분배금만 재투자합니다.
+                  정년 행은 정년 규정(생일/말일/연말)이 속한 달입니다.</>],
+                ["적립 개월", <>지금부터 그 달까지 월 적립액을 넣는 개월 수. 한 해 차이는 12개월입니다.</>],
+                ["보유수량", <><b>{payoutAge}세 수령 시작 시점</b>의 주식 수 — 적립분과 분배금 재투자분이 모두 쌓인 값.
+                  이 표의 <b>실질적인 결과값</b>입니다.</>],
+                ["평가액", <>같은 시점의 보유수량 × 현재 주가. 주가를 고정으로 두므로 보유수량에 비례합니다.</>],
                 ["월 수령액", <>보유수량 × 주가 × 월 분배율. 원금을 헐지 않고 분배금만 받는 금액입니다.</>],
                 ["기준 대비", <>정년까지 다녔을 때와의 월 수령액 차이.
                   <span className="text-blue-600 font-medium"> 파란색이 적음</span>,
@@ -619,6 +627,9 @@ export default function PersonalPensionPage() {
 
   useEffect(() => { load() }, [load])
 
+  // 마지막으로 적립하는 달 (= 정년이 속한 달). pj.retireYm 은 그 다음 달이라 헷갈린다
+  const accumEndYm = pj ? pj.retireDate.slice(0, 7) : ""
+
   return (
     <AppLayout>
       <div className="max-w-7xl mx-auto px-4 py-4">
@@ -720,7 +731,7 @@ export default function PersonalPensionPage() {
             {/* ── 수령 예상 ── */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="lg:col-span-2 bg-white border border-gray-200 rounded-lg overflow-hidden">
-                <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between flex-wrap gap-1">
                   <span className="text-sm font-semibold text-gray-700">
                     {config.payout_age}세 수령 예상
                   </span>
@@ -742,21 +753,22 @@ export default function PersonalPensionPage() {
                     </div>
                   </div>
                   <div className="flex justify-between text-[11px] text-gray-400 mt-1">
-                    <span>{fmtYm(pj.startYm)}</span>
-                    <span>{fmtYm(pj.retireYm)} 퇴직</span>
-                    <span>{fmtYm(pj.payoutYm)} 수령</span>
+                    <span>{fmtYm(pj.startYm)} 현재</span>
+                    <span>{fmtYm(accumEndYm)} 적립 종료</span>
+                    <span className="text-amber-600 font-medium">{fmtYm(pj.payoutYm)} 수령 시작</span>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-200 px-1 py-3">
                   {[
-                    { label: "예상 보유수량", value: `${fmt(pj.base.finalQuantity)}주`, cls: "text-gray-800" },
-                    { label: "예상 평가액", value: fmtKRW(pj.base.finalValue), cls: "text-gray-800" },
-                    { label: "총 납입 원금", value: fmtKRW(pj.base.totalContribution), cls: "text-gray-500" },
-                    { label: "재투자로 늘어난 수량", value: `${fmt(pj.base.reinvestedQuantity)}주`, cls: "text-emerald-600" },
+                    { label: "보유수량", when: `${fmtYm(pj.payoutYm)} 시점`, value: `${fmt(pj.base.finalQuantity)}주`, cls: "text-gray-800" },
+                    { label: "평가액", when: `${fmtYm(pj.payoutYm)} 시점`, value: fmtKRW(pj.base.finalValue), cls: "text-gray-800" },
+                    { label: "총 납입 원금", when: `${fmtYm(accumEndYm)}까지 누적`, value: fmtKRW(pj.base.totalContribution), cls: "text-gray-500" },
+                    { label: "재투자로 늘어난 수량", when: `${fmtYm(pj.payoutYm)}까지 누적`, value: `${fmt(pj.base.reinvestedQuantity)}주`, cls: "text-emerald-600" },
                   ].map(s => (
                     <div key={s.label} className="px-2 text-center">
-                      <p className="text-[11px] text-gray-500 mb-0.5">{s.label}</p>
+                      <p className="text-[11px] text-gray-500">{s.label}</p>
+                      <p className="text-[10px] text-gray-400 mb-1">{s.when}</p>
                       <p className={`text-sm font-bold tabular-nums ${s.cls}`}>{s.value}</p>
                     </div>
                   ))}
@@ -765,7 +777,9 @@ export default function PersonalPensionPage() {
 
               {/* 월 수령액 강조 */}
               <div className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-lg p-5 flex flex-col justify-center">
-                <p className="text-amber-100 text-xs mb-1">{config.payout_age}세부터 매달 받는 분배금</p>
+                <p className="text-amber-100 text-xs mb-1">
+                  {fmtYm(pj.payoutYm)}({config.payout_age}세)부터 매달 받는 분배금
+                </p>
                 <p className="text-white text-3xl font-bold tabular-nums leading-tight">
                   {fmt(pj.base.monthlyPayout)}<span className="text-lg font-normal ml-1">원</span>
                 </p>
@@ -800,10 +814,10 @@ export default function PersonalPensionPage() {
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr className="text-xs font-semibold text-gray-700">
                       <th className="px-3 py-2 text-left">퇴직 나이</th>
-                      <th className="px-3 py-2 text-left">퇴직 시점</th>
+                      <th className="px-3 py-2 text-left">마지막 적립</th>
                       <th className="px-3 py-2 text-right">적립 개월</th>
-                      <th className="px-3 py-2 text-right">{config.payout_age}세 보유수량</th>
-                      <th className="px-3 py-2 text-right">{config.payout_age}세 평가액</th>
+                      <th className="px-3 py-2 text-right">{fmtYm(pj.payoutYm)} 보유수량</th>
+                      <th className="px-3 py-2 text-right">{fmtYm(pj.payoutYm)} 평가액</th>
                       <th className="px-3 py-2 text-right">월 수령액</th>
                       <th className="px-3 py-2 text-right">기준 대비</th>
                     </tr>
@@ -817,7 +831,7 @@ export default function PersonalPensionPage() {
                           <td className={`px-3 py-2 font-medium ${isBase ? "text-blue-700" : "text-gray-800"}`}>
                             {s.retire_age}세{isBase && <span className="ml-1 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">기준</span>}
                           </td>
-                          <td className="px-3 py-2 text-xs text-gray-500">{fmtYm(s.retire_ym)}</td>
+                          <td className="px-3 py-2 text-xs text-gray-500">{fmtYm(prevYm(s.retire_ym))}</td>
                           <td className="px-3 py-2 text-right text-gray-700 tabular-nums">{s.accumMonths}</td>
                           <td className="px-3 py-2 text-right text-gray-700 tabular-nums">{fmt(s.finalQuantity)}주</td>
                           <td className="px-3 py-2 text-right text-gray-700 tabular-nums">{fmtKRW(s.finalValue)}</td>
