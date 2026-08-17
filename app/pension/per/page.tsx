@@ -828,8 +828,8 @@ export default function PersonalPensionPage() {
                   />
                 </div>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  그 나이에 적립을 멈췄다고 가정했을 때의 {config.payout_age}세 예상 금액입니다.
-                  절대 금액보다 <b>행 사이의 차이</b>를 보세요.
+                  조기 퇴직으로 퇴직 나이까지 적립 후 {config.payout_age}세까지 분배금 재투자 시
+                  {config.payout_age}세부터 매달 받게 되는 예상 분배금.
                 </p>
               </div>
               <div className="overflow-x-auto">
@@ -879,8 +879,7 @@ export default function PersonalPensionPage() {
                   <YearlyTrendHelp payoutAge={config.payout_age} retireAge={pj.retireAge} />
                 </div>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  매년 12월 말 기준 스냅샷입니다. 현재 주가·분배율이 그대로 유지된다는 가정이라
-                  <b> 먼 미래일수록 불확실</b>합니다.
+                  매년 12월 기준 월 분배금 예상.
                 </p>
               </div>
               <div className="overflow-x-auto max-h-80 overflow-y-auto">
