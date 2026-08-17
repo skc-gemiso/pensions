@@ -657,6 +657,112 @@ async function _applyMigrations(): Promise<void> {
     }
   }
 
+  // v023: 전기요금 관리 — 요금표(이력)·월별 청구·일별 사용량 + 메뉴 등록
+  const { rows: v023 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v023_add_power'"
+  )
+  if (v023.length === 0) {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS my_power_rate (
+        id            SERIAL PRIMARY KEY,
+        apply_start   DATE NOT NULL,
+        season        TEXT NOT NULL,              -- 'S'=여름(07.01~08.31), 'O'=기타
+        tier1_limit   INT  NOT NULL,
+        tier2_limit   INT  NOT NULL,
+        base1         INT  NOT NULL,
+        base2         INT  NOT NULL,
+        base3         INT  NOT NULL,
+        rate1         NUMERIC(8,2) NOT NULL,
+        rate2         NUMERIC(8,2) NOT NULL,
+        rate3         NUMERIC(8,2) NOT NULL,
+        welfare_limit INT  NOT NULL,
+        env_rate      NUMERIC(8,2) NOT NULL DEFAULT 9,
+        fuel_rate     NUMERIC(8,2) NOT NULL DEFAULT 5,
+        fund_rate     NUMERIC(6,4) NOT NULL DEFAULT 2.7,
+        vat_rate      NUMERIC(6,4) NOT NULL DEFAULT 10,
+        memo          TEXT,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (apply_start, season)
+      )
+    `)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS my_power_bill (
+        id              SERIAL PRIMARY KEY,
+        yyyymm          TEXT NOT NULL UNIQUE,
+        period_start    DATE NOT NULL,
+        period_end      DATE NOT NULL,
+        meter_now       INT,
+        usage_kwh       NUMERIC(10,1) NOT NULL DEFAULT 0,
+        season_discount INT NOT NULL DEFAULT 0,
+        target_kwh      NUMERIC(10,1),
+        memo            TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS my_power_daily (
+        id         SERIAL PRIMARY KEY,
+        yyyymm     TEXT NOT NULL,
+        use_date   DATE NOT NULL,
+        usage_kwh  NUMERIC(6,1),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (yyyymm, use_date)
+      )
+    `)
+
+    // 초기 요금표 — 2026-01-22 인상분은 시트 실측치로 검증됨.
+    // 2025년 1구간 기본요금(910)은 한전 표준값 추정치라 확인 후 수정 필요.
+    await pool.query(`
+      INSERT INTO my_power_rate
+        (apply_start, season, tier1_limit, tier2_limit, base1, base2, base3,
+         rate1, rate2, rate3, welfare_limit, memo)
+      VALUES
+        ('2025-01-01', 'O', 200, 200,  910, 1600, 7300, 120,   214.6, 307.3, 16000, '2025년 단가'),
+        ('2025-01-01', 'S', 300, 150,  910, 1600, 7300, 120,   214.6, 307.3, 20000, '2025년 단가'),
+        ('2026-01-22', 'O', 200, 200,  730, 1260, 6060, 105,   174.0, 242.3, 16000, '2026-01-22 인상'),
+        ('2026-01-22', 'S', 300, 150,  730, 1260, 6060, 105,   174.0, 242.3, 20000, '2026-01-22 인상')
+      ON CONFLICT (apply_start, season) DO NOTHING
+    `)
+
+    await pool.query(`
+      INSERT INTO app_menus (id, label, href, parent_id, sort_order)
+      VALUES ('life-power', '전기요금', '/life/power', 'life', 15)
+      ON CONFLICT (id) DO NOTHING
+    `)
+    await pool.query(`
+      INSERT INTO app_role_menus (role, menu_id)
+      SELECT r, 'life-power'
+      FROM unnest(ARRAY['admin','normal']::text[]) AS r
+      ON CONFLICT DO NOTHING
+    `)
+    await pool.query("INSERT INTO app_migrations (name) VALUES ('v023_add_power')")
+  }
+
+  // v024: 전기요금 — 복지할인 적용 여부 추가, 사용기간 컬럼 제거
+  //       사용기간은 항상 "전월 22일 ~ 당월 21일" 이라 요금월에서 유도한다 (lib/power-calc.ts derivePeriod)
+  const { rows: v024 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v024_power_welfare_flag'"
+  )
+  if (v024.length === 0) {
+    await pool.query(`ALTER TABLE my_power_bill ADD COLUMN IF NOT EXISTS welfare_yn TEXT NOT NULL DEFAULT 'Y'`)
+    await pool.query(`ALTER TABLE my_power_bill DROP COLUMN IF EXISTS period_start`)
+    await pool.query(`ALTER TABLE my_power_bill DROP COLUMN IF EXISTS period_end`)
+    await pool.query("INSERT INTO app_migrations (name) VALUES ('v024_power_welfare_flag')")
+  }
+
+  // v025: 전기요금 청구에서 쓰지 않는 컬럼 제거 (당월 지침·비고)
+  const { rows: v025 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v025_power_drop_unused'"
+  )
+  if (v025.length === 0) {
+    await pool.query(`ALTER TABLE my_power_bill DROP COLUMN IF EXISTS meter_now`)
+    await pool.query(`ALTER TABLE my_power_bill DROP COLUMN IF EXISTS memo`)
+    await pool.query("INSERT INTO app_migrations (name) VALUES ('v025_power_drop_unused')")
+  }
+
   // v010: 메뉴 ID 단축 (savings-fund→sim, compound-magic→magic, personal-pension→per 등)
   const { rows: v010 } = await pool.query<{ name: string }>(
     "SELECT name FROM app_migrations WHERE name = 'v010_shorten_menu_ids'"

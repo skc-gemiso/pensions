@@ -228,6 +228,22 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 
 ---
 
+### 전기요금 관리 (`/life/power`)
+
+| 기능 | 설명 |
+|------|------|
+| 월별 청구 | 사용량 입력 → 계절별 누진·부가항목·할인을 계산해 청구요금 산출. 계절 일수 분해와 구간별 내역을 펼쳐서 확인 |
+| 일할계산 | 청구기간이 계절 경계를 걸치면 사용량·구간상한·기본요금을 일수로 안분 (한전 방식) |
+| 복지할인 | 장애인 할인 한도액도 일수 안분 후 `-min(전기요금, 한도)` 자동 적용 |
+| 일별 사용량 | 사용기간을 날짜로 펼쳐 매일 입력. 합계·목표·잔여량·일평균·예상 사용량 표시, 주말 강조 |
+| 요금표 관리 | 적용시작일 × 계절 단위로 구간·기본요금·단가·복지한도·부가단가 관리 (인상 대응) |
+
+- 참고 파일: [app/life/power/page.tsx](../app/life/power/page.tsx), [app/life/power/actions.ts](../app/life/power/actions.ts), [lib/power-calc.ts](../lib/power-calc.ts)
+- DB 마이그레이션: `v023_add_power` (lib/auth-db.ts)
+- 상세 문서: [life/power/power_project.md](life/power/power_project.md), [life/power/power_task.md](life/power/power_task.md)
+
+---
+
 ### 미국 경제지표 (`/invest/usa`) — 구현 완료
 
 | 메뉴 ID | 경로 | 기능 |
@@ -280,6 +296,7 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 | [app/invest/etf/actions.ts](../app/invest/etf/actions.ts) | ETF 보유종목 분석·추천, 수집기 실행 |
 | [app/invest/usa/actions.ts](../app/invest/usa/actions.ts) | 미국 지표·국채·환율 조회, 수집기 실행 |
 | [app/life/cost/actions.ts](../app/life/cost/actions.ts) | 생활비 항목·월별 실적, 카드 마스터(암호화 포함) |
+| [app/life/power/actions.ts](../app/life/power/actions.ts) | 전기요금 청구·일별 사용량·요금표 |
 | [app/shopping/actions.ts](../app/shopping/actions.ts) | 쇼핑 구매·참고자료·첨부파일 Signed URL |
 
 ---

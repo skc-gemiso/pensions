@@ -60,9 +60,12 @@ pensions/
 │   │   └── usa/                          미국 경제 지표 — page/indicator/treasury/fx + actions.ts
 │   ├── life/
 │   │   ├── page.tsx                      /life/cost 리다이렉트
-│   │   └── cost/
-│   │       ├── page.tsx                  생활비 관리
-│   │       └── actions.ts               생활비·카드 마스터 Server Actions
+│   │   ├── cost/
+│   │   │   ├── page.tsx                  생활비 관리
+│   │   │   └── actions.ts               생활비·카드 마스터 Server Actions
+│   │   └── power/
+│   │       ├── page.tsx                  전기요금 관리 (청구·일별 사용량·요금표)
+│   │       └── actions.ts               전기요금 Server Actions
 │   ├── shopping/
 │   │   ├── page.tsx                      쇼핑 관리 (구매·참고자료·첨부파일)
 │   │   └── actions.ts                   쇼핑 CRUD + Signed URL 발급
@@ -84,6 +87,7 @@ pensions/
 │   ├── usa-collector.ts                  미국 지표·환율 수집기 기동·상태 관리
 │   ├── supabase-storage.ts               Supabase Storage 업로드·Signed URL·삭제
 │   ├── card-crypto.ts                    카드 민감정보 AES-256-GCM 암/복호화
+│   ├── power-calc.ts                     전기요금 계산 (계절 안분 일할계산·누진·복지할인)
 │   └── fmt.ts                            공유 숫자 유틸 — fmt / cc / fmtKRW / fmtShares
 ├── auth.ts                               NextAuth v5 설정
 ├── middleware.ts                         라우트 보호 미들웨어
