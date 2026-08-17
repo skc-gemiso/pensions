@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import AppLayout from "@/components/AppLayout"
 import { getProfile, type ProfileView } from "@/app/actions/profile"
+import { getEtfDividendHistory } from "@/app/sim/actions"
 
 // 프로필(config/.env → lib/settings.ts)을 못 읽었을 때만 쓰는 값
 const FALLBACK_JOIN = "2015-02-23"
@@ -18,12 +19,11 @@ const USER_PROJECTIONS: Record<number, { salaryMan: number; grossMan: number; ne
   2034: { salaryMan: 10_952, grossMan: 17_600, netMan: 16_700 },
 }
 
-// IRP 운용 시뮬레이션 기준
-const IRP_CC_RATIO = 0.70    // KODEX 200 커버드콜 비중
-const IRP_TDF_RATIO = 0.30   // TIGER TDF2045 비중
-const CC_ANNUAL_RATE = 0.15  // 커버드콜 연 배당률 목표 (IRP 내 과세이연)
-const TDF_ANNUAL_RATE = 0.05 // TDF 연 수익률 보수적 추정
-const PENSION_TAX = 0.055    // 연금소득세 (만 55~69세)
+// 퇴직금 운용 시뮬레이션 기준 — IRP·ISA 는 운용하지 않으므로 일반 계좌 기준이다
+const CC_STOCK_CODE = "498400"        // KODEX 200 타겟위클리커버드콜
+const CC_FALLBACK_ANNUAL_RATE = 0.17  // 분배 이력을 못 읽었을 때만 쓰는 값
+const DIVIDEND_TAX = 0.154            // 배당소득세 (소득세 14% + 지방소득세 1.4%)
+const FIN_INCOME_LIMIT_MAN = 2_000    // 금융소득종합과세 기준 (연 2,000만원)
 
 // 퇴직소득세 계산 (2023년 개정 기준, 만원 단위, 근사치)
 function calcRetirementTax(grossMan: number, tenureYears: number): number {
@@ -83,15 +83,14 @@ function calcTenure(from: Date, to: Date): { years: number; months: number; days
   return { years, months, days: to.getDate(), totalDays }
 }
 
-function calcCurrentSeverance(monthlyWon: number, tenureDays: number) {
+function calcCurrentSeverance(monthlyWon: number, tenureDays: number, ccAnnualRate: number) {
   const grossMan = Math.round((monthlyWon * (tenureDays / 365)) / 10_000)
   const tenureYears = Math.max(1, Math.round(tenureDays / 365))
   const taxMan = calcRetirementTax(grossMan, tenureYears)
   const netMan = grossMan - taxMan
-  const irpMonthlyMan = Math.round(
-    (netMan * IRP_CC_RATIO * CC_ANNUAL_RATE + netMan * IRP_TDF_RATIO * TDF_ANNUAL_RATE) / 12 * (1 - PENSION_TAX)
-  )
-  return { grossMan, netMan, taxMan, irpMonthlyMan }
+  // 실수령 퇴직금 전액을 커버드콜에 넣었을 때의 세후 월 분배금
+  const ccMonthlyMan = Math.round(netMan * ccAnnualRate / 12 * (1 - DIVIDEND_TAX))
+  return { grossMan, netMan, taxMan, ccMonthlyMan }
 }
 
 /** 'YYYY-MM-DD' → Date (UTC 밀림 방지) */
@@ -103,8 +102,23 @@ function toDate(iso: string): Date {
 export default function RetirementPensionPage() {
   const today = useMemo(() => new Date(), [])
   const [profile, setProfile] = useState<ProfileView | null>(null)
+  const [ccRate, setCcRate] = useState<{ annual: number; count: number } | null>(null)
 
   useEffect(() => { getProfile().then(setProfile).catch(() => {}) }, [])
+
+  // 커버드콜 분배율 — 개인연금 화면과 같은 기준(최근 12회 평균)을 쓴다
+  useEffect(() => {
+    getEtfDividendHistory(CC_STOCK_CODE)
+      .then(rows => {
+        const recent = rows.slice(0, 12)
+        if (recent.length === 0) return
+        const monthly = recent.reduce((s, r) => s + r.dist_rate, 0) / recent.length / 100
+        setCcRate({ annual: monthly * 12, count: recent.length })
+      })
+      .catch(() => {})
+  }, [])
+
+  const ccAnnualRate = ccRate?.annual ?? CC_FALLBACK_ANNUAL_RATE
 
   // 입사일·정년은 공통 프로필에서 온다 (정년 규정: 만 60세가 되는 달의 말일 등)
   const JOIN_DATE = useMemo(() => toDate(profile?.join_date ?? FALLBACK_JOIN), [profile])
@@ -115,8 +129,8 @@ export default function RetirementPensionPage() {
 
   // 현재 기준 추정 퇴직금 (급여명세서 지급액 기준: 6,900,000원/월)
   const currentSeverance = useMemo(
-    () => calcCurrentSeverance(6_900_000, tenure.totalDays),
-    [tenure.totalDays]
+    () => calcCurrentSeverance(6_900_000, tenure.totalDays, ccAnnualRate),
+    [tenure.totalDays, ccAnnualRate]
   )
 
   // 정년까지 남은 기간
@@ -174,15 +188,17 @@ export default function RetirementPensionPage() {
     return rows
   }, [today])
 
-  const irpRows = useMemo(() => tableRows.map(row => {
-    const ccMan    = Math.round(row.netMan * IRP_CC_RATIO)
-    const tdfMan   = row.netMan - ccMan
-    const ccMonthly     = Math.round(ccMan * CC_ANNUAL_RATE / 12)
-    const tdfAnnual     = Math.round(tdfMan * TDF_ANNUAL_RATE)
-    const totalMonthly  = Math.round((ccMan * CC_ANNUAL_RATE + tdfAnnual) / 12)
-    const afterTaxMonthly = Math.round(totalMonthly * (1 - PENSION_TAX))
-    return { ...row, ccMan, tdfMan, ccMonthly, tdfAnnual, totalMonthly, afterTaxMonthly }
-  }), [tableRows])
+  // 실수령 퇴직금 전액을 커버드콜에 넣고 분배금만 받는 경우
+  const ccRows = useMemo(() => tableRows.map(row => {
+    const yearlyGross     = Math.round(row.netMan * ccAnnualRate)
+    const monthlyGross    = Math.round(yearlyGross / 12)
+    const yearlyNet       = Math.round(yearlyGross * (1 - DIVIDEND_TAX))
+    const monthlyNet      = Math.round(yearlyNet / 12)
+    return {
+      ...row, yearlyGross, monthlyGross, yearlyNet, monthlyNet,
+      overFinLimit: yearlyGross > FIN_INCOME_LIMIT_MAN,
+    }
+  }), [tableRows, ccAnnualRate])
 
   const joinStr = "2015.02.23"
   const retireStr = `${LEGAL_RETIRE_YEAR}년 ${String(retireDate.getMonth() + 1).padStart(2, "0")}월`
@@ -263,8 +279,8 @@ export default function RetirementPensionPage() {
               <p className="text-xl font-bold text-emerald-700">약 {fmtMan(currentSeverance.netMan)}</p>
             </div>
             <div>
-              <p className="text-xs text-blue-400 mb-0.5">퇴직연금(월, 세후)</p>
-              <p className="text-xl font-bold text-indigo-700">약 {fmtMan(currentSeverance.irpMonthlyMan)}</p>
+              <p className="text-xs text-blue-400 mb-0.5">커버드콜 월 분배금(세후)</p>
+              <p className="text-xl font-bold text-indigo-700">약 {fmtMan(currentSeverance.ccMonthlyMan)}</p>
             </div>
           </div>
           <p className="text-[10px] text-blue-300 mt-3">
@@ -332,25 +348,34 @@ export default function RetirementPensionPage() {
           </div>
         </div>
 
-        {/* IRP 운용 배당 시뮬레이션 */}
+        {/* 퇴직금 커버드콜 운용 시뮬레이션 */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100">
-            <h2 className="font-semibold text-gray-900">IRP 운용 시 배당 수익 시뮬레이션</h2>
+            <h2 className="font-semibold text-gray-900">퇴직금 커버드콜 운용 시 분배금 시뮬레이션</h2>
             <p className="text-xs text-gray-400 mt-0.5">
-              실수령 퇴직금 IRP 전입 후 아래 비율로 계속 운용 가정
+              실수령 퇴직금 전액을 KODEX 200 타겟위클리커버드콜에 넣고 분배금만 받는 경우
             </p>
           </div>
 
-          {/* 포트폴리오 구성 바 */}
+          {/* 운용 기준 */}
           <div className="px-5 py-4 border-b border-gray-100">
-            <div className="flex rounded-xl overflow-hidden text-xs font-medium h-14">
-              <div className="bg-emerald-100 text-emerald-800 flex flex-col items-center justify-center flex-[7] gap-0.5">
-                <span>KODEX 200 타겟위클리커버드콜 <strong>70%</strong></span>
-                <span className="text-emerald-600 font-normal">연 15% 배당 목표 · IRP 내 과세이연</span>
-              </div>
-              <div className="bg-blue-100 text-blue-800 flex flex-col items-center justify-center flex-[3] gap-0.5">
-                <span>TIGER TDF2045 <strong>30%</strong></span>
-                <span className="text-blue-600 font-normal">연 5% 수익 추정</span>
+            <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-emerald-800">KODEX 200 타겟위클리커버드콜 100%</p>
+                  <p className="text-xs text-emerald-600 mt-0.5">
+                    IRP·ISA 는 운용하지 않으므로 일시금 수령 후 일반 계좌에서 운용하는 기준입니다.
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-emerald-600">연 분배율</p>
+                  <p className="text-lg font-bold text-emerald-700 tabular-nums">
+                    {(ccAnnualRate * 100).toFixed(1)}%
+                  </p>
+                  <p className="text-[10px] text-emerald-500">
+                    {ccRate ? `최근 ${ccRate.count}회 평균` : "기본 추정치"}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -361,15 +386,15 @@ export default function RetirementPensionPage() {
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500">
                   <th className="px-4 py-3 text-left font-medium">퇴직 시점</th>
-                  <th className="px-4 py-3 text-right font-medium">IRP 전입금</th>
-                  <th className="px-4 py-3 text-right font-medium">커버드콜 월배당</th>
-                  <th className="px-4 py-3 text-right font-medium">TDF 연수익</th>
-                  <th className="px-4 py-3 text-right font-medium">합산 월환산</th>
-                  <th className="px-4 py-3 text-right font-medium">퇴직연금(월, 세후)</th>
+                  <th className="px-4 py-3 text-right font-medium">투자 원금</th>
+                  <th className="px-4 py-3 text-right font-medium">월 분배금(세전)</th>
+                  <th className="px-4 py-3 text-right font-medium">연 분배금(세전)</th>
+                  <th className="px-4 py-3 text-right font-medium">월 분배금(세후)</th>
+                  <th className="px-4 py-3 text-right font-medium">연 분배금(세후)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {irpRows.map(row => (
+                {ccRows.map(row => (
                   <tr
                     key={row.year}
                     className={
@@ -393,20 +418,22 @@ export default function RetirementPensionPage() {
                     </td>
                     <td className="px-4 py-3 text-right text-gray-500 text-xs">{fmtMan(row.netMan)}</td>
                     <td className="px-4 py-3 text-right">
-                      <span className="font-medium text-emerald-700">{fmtMan(row.ccMonthly)}</span>
+                      <span className="text-gray-600">{fmtMan(row.monthlyGross)}</span>
                       <span className="text-xs text-gray-400">/월</span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <span className="text-blue-600">{fmtMan(row.tdfAnnual)}</span>
+                      <span className="text-gray-600">{fmtMan(row.yearlyGross)}</span>
+                      {row.overFinLimit && (
+                        <span className="ml-1 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-medium">종합과세</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="font-bold text-emerald-700">{fmtMan(row.monthlyNet)}</span>
+                      <span className="text-xs text-gray-400">/월</span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="font-bold text-blue-700">{fmtMan(row.yearlyNet)}</span>
                       <span className="text-xs text-gray-400">/년</span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="font-bold text-gray-900">{fmtMan(row.totalMonthly)}</span>
-                      <span className="text-xs text-gray-400">/월</span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="font-bold text-blue-700">{fmtMan(row.afterTaxMonthly)}</span>
-                      <span className="text-xs text-gray-400">/월</span>
                     </td>
                   </tr>
                 ))}
@@ -415,10 +442,11 @@ export default function RetirementPensionPage() {
           </div>
 
           <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 text-[11px] text-gray-400 space-y-1">
-            <p>• 커버드콜 배당은 IRP 내 과세이연으로 자동 재투자 (실제 현금 수령은 연금 개시 후)</p>
-            <p>• TDF 수익은 매월 분배되지 않고 복리 운용됨 — 합산 월환산은 참고용 수치</p>
-            <p>• 연금수령 세후: 연금소득세 5.5% 적용 (만 55~69세 기준) · 만 70세 이상은 4.4%</p>
-            <p>• IRP 연금 수령 조건: 만 55세 이상 + 가입 기간 5년 이상</p>
+            <p>• 분배율은 실제 지급 이력(`t_etf_dividend`) 최근 12회 평균 · 개인연금 화면과 같은 기준</p>
+            <p>• 원금(수량)은 헐지 않고 분배금만 받는 구조 — 주가가 오르내려도 수량은 유지된다</p>
+            <p>• 세후: 배당소득세 15.4%(소득세 14% + 지방소득세 1.4%) 적용</p>
+            <p>• 연 분배금이 2,000만원을 넘으면 <span className="text-red-500 font-medium">금융소득종합과세</span> 대상이라 실효세율이 더 높아진다</p>
+            <p>• 주가가 떨어지면 평가액이 줄고, 같은 분배율이어도 분배금이 함께 줄어든다</p>
           </div>
         </div>
 
@@ -431,6 +459,7 @@ export default function RetirementPensionPage() {
           <p>• 2030~2034년은 사전 계산값(법정 퇴직금보다 높을 수 있음), 2026~2029년은 법정 퇴직금 공식(연봉÷12×근속연수) 적용 추정치</p>
           <p>• 2029→2030년 사이 금액 차이가 크게 보일 수 있으며, 이는 두 구간의 계산 방식이 다르기 때문입니다</p>
           <p>• 실제 퇴직금은 운용수익, 중도인출, 회사 정책 등에 따라 달라질 수 있습니다</p>
+          <p>• IRP·ISA 는 운용 계획이 없어 다루지 않습니다. 퇴직금을 IRP 로 이전하면 퇴직소득세가 이연·감면되지만, 이 화면은 일시금 수령 후 일반 계좌에서 운용하는 기준입니다</p>
         </div>
 
       </div>
