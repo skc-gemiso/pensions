@@ -740,9 +740,31 @@ export default function PersonalPensionPage() {
                   </span>
                 </div>
 
-                {/* 구간 막대 */}
-                <div className="px-4 pt-3">
-                  <div className="flex h-6 rounded overflow-hidden border border-gray-200 text-[10px] font-medium">
+                {/* 지표 — 카드에서 가장 먼저 눈에 들어와야 하는 부분 */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100">
+                  {[
+                    { label: "보유수량", when: fmtYm(pj.payoutYm), tone: "amber",
+                      value: `${fmt(pj.base.finalQuantity)}주`, cls: "text-gray-900" },
+                    { label: "평가액", when: fmtYm(pj.payoutYm), tone: "amber",
+                      value: fmtKRW(pj.base.finalValue), cls: "text-gray-900" },
+                    { label: "총 납입 원금", when: `${fmtYm(accumEndYm)}까지`, tone: "blue",
+                      value: fmtKRW(pj.base.totalContribution), cls: "text-gray-500" },
+                    { label: "재투자로 늘어난 수량", when: `${fmtYm(pj.payoutYm)}까지`, tone: "amber",
+                      value: `${fmt(pj.base.reinvestedQuantity)}주`, cls: "text-emerald-600" },
+                  ].map(s => (
+                    <div key={s.label} className="px-3 py-4 text-center">
+                      <span className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded-full mb-1.5 ${
+                        s.tone === "amber" ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"
+                      }`}>{s.when}</span>
+                      <p className="text-xs text-gray-500 mb-1">{s.label}</p>
+                      <p className={`text-lg font-bold tabular-nums leading-tight ${s.cls}`}>{s.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* 구간 막대 — 위 숫자들이 어느 시점인지 짚어주는 보조 정보 */}
+                <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
+                  <div className="flex h-5 rounded overflow-hidden border border-gray-200 text-[10px] font-medium">
                     <div className="bg-blue-100 text-blue-700 flex items-center justify-center"
                       style={{ width: `${(pj.base.accumMonths / (pj.base.accumMonths + pj.base.holdMonths)) * 100}%` }}>
                       적립 {pj.base.accumMonths}개월
@@ -754,24 +776,9 @@ export default function PersonalPensionPage() {
                   </div>
                   <div className="flex justify-between text-[11px] text-gray-400 mt-1">
                     <span>{fmtYm(pj.startYm)} 현재</span>
-                    <span>{fmtYm(accumEndYm)} 적립 종료</span>
+                    <span className="text-blue-600">{fmtYm(accumEndYm)} 적립 종료</span>
                     <span className="text-amber-600 font-medium">{fmtYm(pj.payoutYm)} 수령 시작</span>
                   </div>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-200 px-1 py-3">
-                  {[
-                    { label: "보유수량", when: `${fmtYm(pj.payoutYm)} 시점`, value: `${fmt(pj.base.finalQuantity)}주`, cls: "text-gray-800" },
-                    { label: "평가액", when: `${fmtYm(pj.payoutYm)} 시점`, value: fmtKRW(pj.base.finalValue), cls: "text-gray-800" },
-                    { label: "총 납입 원금", when: `${fmtYm(accumEndYm)}까지 누적`, value: fmtKRW(pj.base.totalContribution), cls: "text-gray-500" },
-                    { label: "재투자로 늘어난 수량", when: `${fmtYm(pj.payoutYm)}까지 누적`, value: `${fmt(pj.base.reinvestedQuantity)}주`, cls: "text-emerald-600" },
-                  ].map(s => (
-                    <div key={s.label} className="px-2 text-center">
-                      <p className="text-[11px] text-gray-500">{s.label}</p>
-                      <p className="text-[10px] text-gray-400 mb-1">{s.when}</p>
-                      <p className={`text-sm font-bold tabular-nums ${s.cls}`}>{s.value}</p>
-                    </div>
-                  ))}
                 </div>
               </div>
 
