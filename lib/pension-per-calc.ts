@@ -36,7 +36,11 @@ export type PerResult = {
   holdMonths: number
   /** 총 납입 원금 (현재 평가액 + 앞으로 적립할 금액) */
   totalContribution: number
-  /** 수령 개시 시점 보유수량 */
+  /** 시작 시점 보유수량 (= 현재 보유수량) */
+  initialQuantity: number
+  /** 적립금으로 매수한 수량 */
+  contributedQuantity: number
+  /** 수령 개시 시점 보유수량 = initialQuantity + contributedQuantity + reinvestedQuantity */
   finalQuantity: number
   /** 수령 개시 시점 평가액 */
   finalValue: number
@@ -124,15 +128,23 @@ export function simulatePer(inputs: PerInputs, birthYm?: string): PerResult {
   const monthlyPayout = q * perShare
   pushSnapshot(payout, "수령")
 
+  // 화면에서 "현재 + 적립 + 재투자 = 최종" 이 항상 맞아떨어져야 하므로
+  // 적립분은 개별 반올림 대신 나머지로 구해 오차를 흡수한다
+  const initialQuantity = Math.round(quantity)
+  const reinvestedQuantity = Math.round(reinvested)
+  const finalQuantity = Math.round(q)
+
   return {
     accumMonths,
     holdMonths,
     totalContribution: Math.round(contributed),
-    finalQuantity: Math.round(q),
+    initialQuantity,
+    contributedQuantity: finalQuantity - initialQuantity - reinvestedQuantity,
+    finalQuantity,
     finalValue: Math.round(q * price),
     monthlyPayout: Math.round(monthlyPayout),
     yearlyPayout: Math.round(monthlyPayout * 12),
-    reinvestedQuantity: Math.round(reinvested),
+    reinvestedQuantity,
     yearly,
   }
 }

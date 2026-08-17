@@ -150,6 +150,21 @@ function PageHelpModal({ payoutAge }: { payoutAge: number }) {
                     </p>
                   </Box>
 
+                  <Box>
+                    <H>수령 시점 보유수량은 세 조각으로 나뉩니다</H>
+                    <table className="w-full text-xs">
+                      <tbody className="[&_td]:py-1 [&_td:first-child]:text-gray-500 [&_td:first-child]:w-28">
+                        <tr><td>현재</td><td className="text-gray-800">지금 계좌에 들어 있는 수량</td></tr>
+                        <tr><td>적립 매수</td><td className="text-gray-800">월 적립액 ÷ 주가 를 적립 개월만큼 더한 수량</td></tr>
+                        <tr><td>분배금 재투자</td><td className="text-gray-800">받은 분배금으로 다시 사들인 수량</td></tr>
+                      </tbody>
+                    </table>
+                    <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                      기간이 길수록 <b>재투자分이 적립分보다 훨씬 커집니다</b> — 적립은 매달 같은 금액이지만
+                      재투자는 불어난 수량에 비례해 늘기 때문입니다. 카드 하단에 세 값을 함께 표시합니다.
+                    </p>
+                  </Box>
+
                   <Box tone="blue">
                     <H>수령액</H>
                     <p className="text-xs text-gray-700">
@@ -749,7 +764,7 @@ export default function PersonalPensionPage() {
                       value: fmtKRW(pj.base.finalValue), cls: "text-gray-900" },
                     { label: "총 납입 원금", when: `${fmtYm(accumEndYm)}까지`, tone: "blue",
                       value: fmtKRW(pj.base.totalContribution), cls: "text-gray-500" },
-                    { label: "재투자로 늘어난 수량", when: `${fmtYm(pj.payoutYm)}까지`, tone: "amber",
+                    { label: "분배금 재투자로 늘어난 수량", when: `${fmtYm(pj.payoutYm)}까지`, tone: "amber",
                       value: `${fmt(pj.base.reinvestedQuantity)}주`, cls: "text-emerald-600" },
                   ].map(s => (
                     <div key={s.label} className="px-3 py-4 text-center">
@@ -760,6 +775,19 @@ export default function PersonalPensionPage() {
                       <p className={`text-lg font-bold tabular-nums leading-tight ${s.cls}`}>{s.value}</p>
                     </div>
                   ))}
+                </div>
+
+                {/* 보유수량의 구성 — 세 항목을 더하면 위의 보유수량이 된다 */}
+                <div className="px-4 py-2.5 border-t border-gray-100 flex items-center justify-center gap-2 flex-wrap text-xs tabular-nums">
+                  <span className="text-gray-500">보유수량 구성</span>
+                  <span className="text-gray-300">|</span>
+                  <span className="text-gray-600">현재 <b className="text-gray-800">{fmt(pj.base.initialQuantity)}</b></span>
+                  <span className="text-gray-400">+</span>
+                  <span className="text-gray-600">적립 매수 <b className="text-blue-600">{fmt(pj.base.contributedQuantity)}</b></span>
+                  <span className="text-gray-400">+</span>
+                  <span className="text-gray-600">분배금 재투자 <b className="text-emerald-600">{fmt(pj.base.reinvestedQuantity)}</b></span>
+                  <span className="text-gray-400">=</span>
+                  <b className="text-gray-900">{fmt(pj.base.finalQuantity)}주</b>
                 </div>
 
                 {/* 구간 막대 — 위 숫자들이 어느 시점인지 짚어주는 보조 정보 */}
