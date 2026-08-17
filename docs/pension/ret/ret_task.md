@@ -17,7 +17,7 @@ app/pension/ret/
 
 ### 날짜 계산
 
-입사일·정년은 **공통 프로필 `my_profile`** 에서 읽는다 (개인연금 화면과 공유).
+입사일·정년은 **공통 프로필 환경 변수**(`PROFILE_*`, `config/.env`)에서 읽는다 (개인연금 화면과 공유).
 `getProfile()` 이 실패했을 때만 `FALLBACK_JOIN` / `FALLBACK_RETIRE` 상수를 쓴다.
 
 ```typescript
@@ -144,7 +144,7 @@ interface ComputedRetirement {
 
 ## 알려진 제약 사항
 
-- 평균임금이 코드에 하드코딩됨 (입사일·정년은 `my_profile` 로 이전 완료)
+- 평균임금이 코드에 하드코딩됨 (입사일·정년은 `PROFILE_*` 환경 변수로 이전 완료)
 - `USER_PROJECTIONS` 수동 관리 필요 (DB 연동 미구현)
 - 퇴직금 기준이 되는 평균임금은 추정값 사용
 - IRP 의무 비율(안전자산 30%)을 무시한 자유 운용 가정

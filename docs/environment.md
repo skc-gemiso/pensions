@@ -28,7 +28,7 @@ pensions/
 │   ├── register/page.tsx                 회원가입 화면
 │   ├── actions/
 │   │   ├── auth.ts                       로그인·로그아웃 Server Actions
-│   │   ├── profile.ts                    개인 정보(my_profile) 조회·수정 — 연금 메뉴 공통
+│   │   ├── profile.ts                    개인 정보 조회 (PROFILE_* 환경 변수) — 연금 메뉴 공통
 │   │   └── visitor.ts                    방문자 기록 Server Action
 │   ├── api/
 │   │   ├── auth/[...nextauth]/route.ts   NextAuth 라우트 핸들러
@@ -84,9 +84,10 @@ pensions/
 │   ├── RichEditor.tsx                    쇼핑 본문 리치 에디터 (TipTap)
 │   └── Providers.tsx                    세션 Provider
 ├── lib/
-│   ├── auth-db.ts                        인증 DB + 스키마 마이그레이션 (v001~v028)
+│   ├── auth-db.ts                        인증 DB + 스키마 마이그레이션 (v001~v026, v027·v028 철회)
 │   ├── pension-db.ts                    Supabase DB Pool 싱글턴 (전 화면 공용)
 │   ├── guard.ts                          접근 통제 — requireUser / requireAdmin / guardApi
+│   ├── settings.ts                       환경 변수로 관리하는 개인 설정 (PROFILE_* / PENSION_PER_*)
 │   ├── profile.ts                        정년일 계산 등 개인 정보 헬퍼 (calcRetireDate / ageOn / ymAtAge)
 │   ├── pension-per-calc.ts               개인연금 월 단위 복리 시뮬레이션 (적립·거치·수령)
 │   ├── etf-collector.ts                  ETF Python 수집기 기동·상태 관리
@@ -222,27 +223,6 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 );
 ```
 
-#### `my_profile` 테이블 — 개인 정보 공통 설정 (v028)
-
-생년월일·입사일·정년은 개인연금·퇴직연금·국민연금이 함께 쓰므로 한 곳에 둔다.
-
-```sql
-CREATE TABLE IF NOT EXISTS my_profile (
-  id          INT  PRIMARY KEY DEFAULT 1,        -- 항상 1행
-  birth_date  DATE NOT NULL,
-  join_date   DATE NOT NULL,
-  retire_age  INT  NOT NULL DEFAULT 60,
-  retire_rule TEXT NOT NULL DEFAULT 'month_end', -- birthday | month_end | year_end
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CHECK (id = 1)
-);
-```
-
-- 조회·수정: [app/actions/profile.ts](../app/actions/profile.ts) (`requireAdmin()` 보호)
-- 정년일 계산: [lib/profile.ts](../lib/profile.ts) `calcRetireDate()`
-- 수정 UI 는 현재 개인연금 화면의 계획 설정 팝업에만 있다
-
 > `my_stock` 테이블은 `ensureStockTables()` 로 런타임 자동 생성.
 > `t_stock_amt` 는 실제 스키마 기준으로 사전 생성 필요 (e_date/stock_code PK, e_amt/c_amt/e_rate/e_trade 컬럼).
 > `t_stock_list` 는 별도 마스터 데이터 (사전 적재 필요).
@@ -267,6 +247,26 @@ CREATE TABLE IF NOT EXISTS my_profile (
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase 서비스 롤 키 | 대시보드 > Settings > API (쇼핑 Storage 서버 사이드 업로드) |
 | `CARD_ENC_KEY` | 카드 민감정보 암호화 키 (32바이트 base64) | `my_card`의 `card_no`·`cvc`·`limit_ym` AES-256-GCM 암/복호화. **분실 시 복호화 불가 — 반드시 백업** |
 | `FRED_API_KEY` | FRED API 키 | Python 수집기(`collector/usa`) 전용 — Next.js 코드에서는 참조하지 않음 |
+| `PROFILE_BIRTH_DATE` | 생년월일 `YYYY-MM-DD` | 연금 메뉴 공용 개인 정보 |
+| `PROFILE_JOIN_DATE` | 입사일 `YYYY-MM-DD` | 퇴직연금 근속 계산 |
+| `PROFILE_RETIRE_AGE` | 정년 나이 | 기본 `60` |
+| `PROFILE_RETIRE_RULE` | 정년일 계산 규정 | `birthday` \| `month_end`(기본) \| `year_end` |
+| `PENSION_PER_PAYOUT_AGE` | 개인연금 수령 개시 나이 | 기본 `63` |
+| `PENSION_PER_MONTHLY_AMOUNT` | 개인연금 월 적립액 (원) | 기본 `500000` |
+| `PENSION_PER_ACCOUNT_NO` | 개인연금 재원 계좌번호 | 기본 `201-04-931585` |
+| `PENSION_PER_STOCK_CODE` | 개인연금 재원 종목코드 | 기본 `498400` |
+
+### 개인 설정을 DB 가 아니라 환경 변수로 두는 이유
+
+`PROFILE_*` / `PENSION_PER_*` 은 원래 `my_profile`·`my_pension_per_config` 테이블이었다(v027·v028).
+값이 바뀌는 일이 거의 없고 사용자도 한 명뿐이라, 테이블·마이그레이션·수정 UI 를 유지하는 것보다
+환경 변수 한 줄이 낫다고 보고 철회했다.
+
+- 읽기: [lib/settings.ts](../lib/settings.ts) — `profileFromEnv()` / `perSettingsFromEnv()`
+  (서버 전용. 값이 없으면 위 표의 기본값을 쓴다)
+- 노출: [app/actions/profile.ts](../app/actions/profile.ts) `getProfile()`,
+  [app/pension/per/actions.ts](../app/pension/per/actions.ts) `getPerConfig()` — 둘 다 `requireAdmin()` 보호
+- 수정 액션은 없다. 화면의 `적립 계획 확인` 팝업은 현재 값과 변수명만 보여주는 읽기 전용이다
 
 > **주의**: 특수문자(`#` 등) 포함 패스워드는 반드시 `"..."` 로 감싸야 dotenv 정상 파싱.
 >
@@ -340,6 +340,8 @@ Vercel 프로젝트 Settings > Environment Variables 에 아래 변수 등록:
 | `CRON_SECRET` | Cron 인증 시크릿 |
 | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | 쇼핑 첨부파일 Storage |
 | `CARD_ENC_KEY` | 카드 민감정보 암호화 키 — 로컬 `config/.env`와 **동일한 값**을 등록해야 기존 데이터 복호화 가능 |
+| `PROFILE_*` | 생년월일·입사일·정년. 누락 시 `lib/settings.ts` 기본값으로 동작하므로 **틀린 값이 조용히 표시된다** |
+| `PENSION_PER_*` | 개인연금 수령 나이·월 적립액·재원 계좌/종목. 위와 같음 |
 
 ---
 

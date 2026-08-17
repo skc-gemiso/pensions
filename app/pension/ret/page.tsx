@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import AppLayout from "@/components/AppLayout"
 import { getProfile, type ProfileView } from "@/app/actions/profile"
 
-// 프로필(my_profile)을 못 읽었을 때만 쓰는 값
+// 프로필(config/.env → lib/settings.ts)을 못 읽었을 때만 쓰는 값
 const FALLBACK_JOIN = "2015-02-23"
 const FALLBACK_RETIRE = "2034-06-30"
 const ANNUAL_SALARY_INCREASE_MAN = 240 // 만원/년

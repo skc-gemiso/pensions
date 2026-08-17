@@ -4,18 +4,14 @@ import { getPensionPool } from "@/lib/pension-db"
 import { requireAdmin } from "@/lib/guard"
 import { simulatePer, type PerResult } from "@/lib/pension-per-calc"
 import { getProfile } from "@/app/actions/profile"
+import { perSettingsFromEnv, type PerSettings } from "@/lib/settings"
 import { retireEndYm, ymAtAge, ageOn } from "@/lib/profile"
 
-const DEFAULT_ACCOUNT = "201-04-931585"
-const DEFAULT_STOCK = "498400"
-
-/** 생년월일·정년은 공통 프로필(my_profile)에서 온다 */
-export type PerConfig = {
-  payout_age: number
-  monthly_amount: number
-  account_no: string
-  stock_code: string
-}
+/**
+ * 적립 계획 — 출처는 `config/.env` 다 (DB 테이블 없음).
+ * 생년월일·정년은 공통 프로필(`getProfile`)에서 온다.
+ */
+export type PerConfig = PerSettings
 
 export type PerOverview = {
   account_no: string
@@ -75,36 +71,7 @@ export type PerProjection = {
 
 export async function getPerConfig(): Promise<PerConfig> {
   await requireAdmin()
-
-  const pool = getPensionPool()
-  const { rows } = await pool.query<PerConfig>(`
-    SELECT payout_age, monthly_amount, account_no, stock_code
-    FROM my_pension_per_config WHERE id = 1
-  `)
-  if (rows.length > 0) return rows[0]
-
-  await pool.query(`
-    INSERT INTO my_pension_per_config (id, account_no, stock_code)
-    VALUES (1, $1, $2) ON CONFLICT (id) DO NOTHING
-  `, [DEFAULT_ACCOUNT, DEFAULT_STOCK])
-  return {
-    payout_age: 63, monthly_amount: 500000,
-    account_no: DEFAULT_ACCOUNT, stock_code: DEFAULT_STOCK,
-  }
-}
-
-export async function updatePerConfig(data: {
-  payout_age: number
-  monthly_amount: number
-}): Promise<void> {
-  await requireAdmin()
-
-  const pool = getPensionPool()
-  await pool.query(`
-    UPDATE my_pension_per_config
-    SET payout_age = $1, monthly_amount = $2, updated_at = NOW()
-    WHERE id = 1
-  `, [data.payout_age, data.monthly_amount])
+  return perSettingsFromEnv()
 }
 
 // ── 현황 ──────────────────────────────────────────────────────────────────────

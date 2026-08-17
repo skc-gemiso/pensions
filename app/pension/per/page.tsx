@@ -6,14 +6,11 @@ import Link from "next/link"
 import AppLayout from "@/components/AppLayout"
 import { fmt, fmtKRW, cc } from "@/lib/fmt"
 import {
-  getPerConfig, updatePerConfig, getPerOverview, getPerProjection,
+  getPerConfig, getPerOverview, getPerProjection,
   type PerConfig, type PerOverview, type PerProjection,
 } from "./actions"
-import { getProfile, updateProfile, type ProfileView } from "@/app/actions/profile"
-import { RETIRE_RULE_LABEL, type RetireRule } from "@/lib/profile"
-
-const inputCls =
-  "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+import { getProfile, type ProfileView } from "@/app/actions/profile"
+import { RETIRE_RULE_LABEL } from "@/lib/profile"
 
 function fmtYm(ym: string): string {
   const [y, m] = ym.split("-")
@@ -521,49 +518,27 @@ function YearlyTrendHelp({ payoutAge, retireAge }: { payoutAge: number; retireAg
 }
 
 // ─────────────────────────────────────────────
-// 계획 설정 모달
+// 계획 설정 확인 모달 (읽기 전용 — 값은 config/.env 에 있다)
 // ─────────────────────────────────────────────
-function ConfigModal({ config, profile, onClose, onSaved }: {
+function ConfigModal({ config, profile, onClose }: {
   config: PerConfig
   profile: ProfileView
   onClose: () => void
-  onSaved: () => void
 }) {
-  const [form, setForm] = useState({
-    birth_date: profile.birth_date,
-    join_date: profile.join_date,
-    retire_age: String(profile.retire_age),
-    retire_rule: profile.retire_rule as RetireRule,
-    payout_age: String(config.payout_age),
-    monthly_amount: config.monthly_amount.toLocaleString("ko-KR"),
-  })
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const set = <K extends keyof typeof form>(k: K, v: typeof form[K]) =>
-    setForm(f => ({ ...f, [k]: v }))
-
-  async function save(e: React.SyntheticEvent) {
-    e.preventDefault()
-    setSaving(true)
-    setError(null)
-    try {
-      await updateProfile({
-        birth_date: form.birth_date,
-        join_date: form.join_date,
-        retire_age: Number(form.retire_age) || 60,
-        retire_rule: form.retire_rule,
-      })
-      await updatePerConfig({
-        payout_age: Number(form.payout_age) || 63,
-        monthly_amount: Number(form.monthly_amount.replace(/,/g, "")) || 0,
-      })
-      onSaved()
-      onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "저장하지 못했습니다.")
-    }
-    setSaving(false)
-  }
+  const Row = ({ label, value, env, note }: {
+    label: string; value: React.ReactNode; env: string; note?: string
+  }) => (
+    <tr className="border-b border-gray-100 last:border-0">
+      <td className="py-2 pr-3 align-top">
+        <p className="text-xs font-semibold text-gray-700 whitespace-nowrap">{label}</p>
+        <code className="text-[10px] text-gray-400">{env}</code>
+      </td>
+      <td className="py-2 align-top text-right">
+        <p className="text-sm text-gray-900 tabular-nums">{value}</p>
+        {note && <p className="text-[11px] text-gray-400 mt-0.5">{note}</p>}
+      </td>
+    </tr>
+  )
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -572,64 +547,52 @@ function ConfigModal({ config, profile, onClose, onSaved }: {
           <h3 className="text-base font-bold text-gray-800">적립 계획 설정</h3>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
         </div>
-        <form onSubmit={save}>
-          <div className="px-6 py-5 space-y-4">
-            <div>
-              <p className="text-sm font-semibold text-gray-700 mb-2">개인 정보</p>
-              <p className="text-[11px] text-gray-400 mb-2">퇴직연금·국민연금 화면도 같은 값을 씁니다.</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">생년월일 <span className="text-red-400">*</span></label>
-                  <input required type="date" className={inputCls} value={form.birth_date} onChange={e => set("birth_date", e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1">입사일</label>
-                  <input type="date" className={inputCls} value={form.join_date} onChange={e => set("join_date", e.target.value)} />
-                </div>
-              </div>
-            </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">정년</label>
-              <div className="grid grid-cols-[80px_1fr] gap-2">
-                <input type="number" min={40} max={80} className={`${inputCls} text-right`}
-                  value={form.retire_age} onChange={e => set("retire_age", e.target.value)} />
-                <select className={inputCls} value={form.retire_rule}
-                  onChange={e => set("retire_rule", e.target.value as RetireRule)}>
-                  {(Object.keys(RETIRE_RULE_LABEL) as RetireRule[]).map(r => (
-                    <option key={r} value={r}>{RETIRE_RULE_LABEL[r].replace("N", form.retire_age)}</option>
-                  ))}
-                </select>
-              </div>
-              <p className="text-[11px] text-gray-400 mt-1">여기까지 적립합니다</p>
-            </div>
+        <div className="px-6 py-5 space-y-5">
+          <div>
+            <p className="text-sm font-semibold text-gray-700 mb-1">개인 정보</p>
+            <p className="text-[11px] text-gray-400 mb-2">퇴직연금·국민연금 화면도 같은 값을 씁니다.</p>
+            <table className="w-full">
+              <tbody>
+                <Row label="생년월일" env="PROFILE_BIRTH_DATE" value={profile.birth_date} />
+                <Row label="입사일" env="PROFILE_JOIN_DATE" value={profile.join_date} />
+                <Row label="정년" env="PROFILE_RETIRE_AGE / _RULE"
+                  value={`만 ${profile.retire_age}세`}
+                  note={`${RETIRE_RULE_LABEL[profile.retire_rule].replace("N", String(profile.retire_age))} → ${profile.retire_date}`} />
+              </tbody>
+            </table>
+          </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">수령 개시 나이</label>
-                <input type="number" min={55} max={90} className={`${inputCls} text-right`}
-                  value={form.payout_age} onChange={e => set("payout_age", e.target.value)} />
-                <p className="text-[11px] text-gray-400 mt-1">분배금 수령 시작</p>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">월 적립액</label>
-                <input type="text" inputMode="numeric" className={`${inputCls} text-right`}
-                  value={form.monthly_amount}
-                  onChange={e => {
-                    const raw = e.target.value.replace(/[^0-9]/g, "")
-                    set("monthly_amount", raw ? Number(raw).toLocaleString("ko-KR") : "")
-                  }} />
-              </div>
-            </div>
-            {error && <p className="text-xs text-red-500">{error}</p>}
+          <div>
+            <p className="text-sm font-semibold text-gray-700 mb-2">적립 계획</p>
+            <table className="w-full">
+              <tbody>
+                <Row label="수령 개시 나이" env="PENSION_PER_PAYOUT_AGE"
+                  value={`만 ${config.payout_age}세`} note="분배금 수령 시작" />
+                <Row label="월 적립액" env="PENSION_PER_MONTHLY_AMOUNT"
+                  value={`${fmt(config.monthly_amount)}원`} />
+                <Row label="재원 계좌" env="PENSION_PER_ACCOUNT_NO" value={config.account_no} />
+                <Row label="재원 종목" env="PENSION_PER_STOCK_CODE" value={config.stock_code} />
+              </tbody>
+            </table>
           </div>
-          <div className="flex justify-end gap-2 px-6 py-4 bg-gray-50 border-t border-gray-200">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">취소</button>
-            <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
-              {saving ? "저장 중..." : "저장"}
-            </button>
+
+          <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
+            <p className="text-xs font-semibold text-amber-800 mb-1">값을 바꾸려면</p>
+            <p className="text-[11px] text-amber-700 leading-relaxed">
+              <code>config/.env</code> 의 해당 항목을 수정한 뒤 <b>서버를 재시작</b>합니다
+              (환경 변수는 기동 시 한 번만 읽습니다).
+              배포본은 Vercel 대시보드의 환경 변수를 바꾸고 재배포해야 합니다.
+            </p>
           </div>
-        </form>
+        </div>
+
+        <div className="flex justify-end px-6 py-4 bg-gray-50 border-t border-gray-200">
+          <button type="button" onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+            닫기
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -672,7 +635,7 @@ export default function PersonalPensionPage() {
           {config && (
             <button onClick={() => setEditing(true)}
               className="text-xs text-blue-600 border border-blue-300 rounded px-3 py-1.5 hover:bg-blue-50">
-              적립 계획 설정
+              적립 계획 확인
             </button>
           )}
         </div>
@@ -941,7 +904,7 @@ export default function PersonalPensionPage() {
       </div>
 
       {editing && config && profile && (
-        <ConfigModal config={config} profile={profile} onClose={() => setEditing(false)} onSaved={load} />
+        <ConfigModal config={config} profile={profile} onClose={() => setEditing(false)} />
       )}
     </AppLayout>
   )

@@ -15,51 +15,45 @@
 
 ---
 
-## DB 스키마
+## 설정 — 전용 DB 테이블 없음
 
-### `my_profile` — 개인 정보 공통 설정 (단일 행)
+**개인연금 전용 테이블은 만들지 않는다.** 시뮬레이션 전제값은 `config/.env` 에 두고
+`lib/settings.ts` 가 읽는다. 값이 바뀌는 일이 거의 없고 사용자도 한 명뿐이라
+테이블·마이그레이션·수정 UI 를 유지할 이유가 없다.
 
-생년월일·입사일·정년은 개인연금 전용이 아니라 **퇴직연금·국민연금과 공유**하므로
-별도 테이블로 분리한다 (v028).
+> 초기에는 `my_pension_per_config`(v027)·`my_profile`(v028) 테이블을 뒀다가 철회했다.
+> 두 테이블은 DROP 했고 `lib/auth-db.ts` 의 해당 마이그레이션도 제거했다.
 
-```sql
-my_profile (
-    id          INT  PRIMARY KEY DEFAULT 1,           -- 항상 1행
-    birth_date  DATE NOT NULL,                        -- 생년월일
-    join_date   DATE NOT NULL,                        -- 입사일
-    retire_age  INT  NOT NULL DEFAULT 60,             -- 정년 나이
-    retire_rule TEXT NOT NULL DEFAULT 'month_end',    -- birthday | month_end | year_end
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CHECK (id = 1)
-);
-```
+### 개인 정보 — 연금 메뉴 공용
 
-`retire_rule` 이 정년일 계산 방식을 정한다 (`lib/profile.ts` `calcRetireDate`).
+| 환경 변수 | 기본값 | 설명 |
+|-----------|--------|------|
+| `PROFILE_BIRTH_DATE` | `1974-06-04` | 생년월일 `YYYY-MM-DD` |
+| `PROFILE_JOIN_DATE` | `2015-02-23` | 입사일 `YYYY-MM-DD` |
+| `PROFILE_RETIRE_AGE` | `60` | 정년 나이 |
+| `PROFILE_RETIRE_RULE` | `month_end` | `birthday` \| `month_end` \| `year_end` |
 
-| 값 | 정년일 |
+`PROFILE_RETIRE_RULE` 이 정년일 계산 방식을 정한다 (`lib/profile.ts` `calcRetireDate`).
+
+| 값 | 정년일 (1974-06-04 · 60세 기준) |
 |----|--------|
-| `birthday` | 만 `retire_age` 세가 되는 생일 당일 |
-| `month_end` | 생일이 속한 달의 말일 (기본값) |
-| `year_end` | 만 `retire_age` 세가 되는 해의 12월 31일 |
+| `birthday` | 만 60세가 되는 생일 당일 → 2034-06-04 |
+| `month_end` | 생일이 속한 달의 말일 (기본값) → 2034-06-30 |
+| `year_end` | 만 60세가 되는 해의 12월 31일 → 2034-12-31 |
 
-### `my_pension_per_config` — 계획 설정 (단일 행)
+### 개인연금 적립 계획
 
-시뮬레이션 전제만 저장한다. 보유수량·주가·분배율은 저장하지 않고 매번 조회한다.
-생년월일·정년은 `my_profile` 에서 온다 (v028 에서 `birth_ym`·`retire_age` 제거).
+| 환경 변수 | 기본값 | 설명 |
+|-----------|--------|------|
+| `PENSION_PER_PAYOUT_AGE` | `63` | 수령 개시 나이 |
+| `PENSION_PER_MONTHLY_AMOUNT` | `500000` | 월 적립액 (원) |
+| `PENSION_PER_ACCOUNT_NO` | `201-04-931585` | 재원 계좌번호 |
+| `PENSION_PER_STOCK_CODE` | `498400` | 재원 종목코드 |
 
-```sql
-my_pension_per_config (
-    id             INT  PRIMARY KEY DEFAULT 1,   -- 항상 1행
-    payout_age     INT  NOT NULL DEFAULT 63,     -- 수령 개시 나이
-    monthly_amount INT  NOT NULL DEFAULT 500000, -- 월 적립액
-    account_no     TEXT NOT NULL,                -- 재원 계좌
-    stock_code     TEXT NOT NULL,                -- 재원 종목
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CHECK (id = 1)
-);
-```
+- 값을 바꾸면 **dev 서버 재시작** 필요 (`next.config.ts` 가 기동 시 한 번만 dotenv 로 읽는다)
+- Vercel 배포본은 대시보드 환경 변수를 바꾸고 재배포
+- 화면의 `적립 계획 확인` 버튼은 현재 값과 환경 변수명을 보여주는 **읽기 전용** 팝업이다
+- 보유수량·주가·분배율은 어차피 저장하지 않고 매번 조회한다
 
 ---
 
@@ -133,12 +127,12 @@ JOIN my_stock ms
 
 | 함수 | 반환 | 설명 |
 |------|------|------|
-| `getPerConfig` | `PerConfig` | 설정 1행 (없으면 기본값으로 생성) |
-| `updatePerConfig` | `void` | 수령나이·월적립액 수정 |
+| `getPerConfig` | `PerConfig` | `perSettingsFromEnv()` 결과 (환경 변수) |
 | `getPerOverview` | `PerOverview` | 계좌 현황(보유수량·평가액·매입금액·손익) + 시세·분배율 + 누적 수령 분배금 |
 | `getPerProjection` | `PerProjection` | 기본 시나리오 + 퇴직 시점별 비교 |
 
-생년월일·정년은 `app/actions/profile.ts` 의 `getProfile` / `updateProfile` 을 쓴다.
+생년월일·정년은 `app/actions/profile.ts` 의 `getProfile` 을 쓴다 (마찬가지로 환경 변수 기반).
+설정 수정 액션은 없다 — 값은 `config/.env` 에서만 바꾼다.
 모두 `requireAdmin()` 으로 보호한다.
 
 ---
