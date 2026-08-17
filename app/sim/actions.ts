@@ -1,6 +1,7 @@
 "use server"
 
 import { auth } from "../../auth"
+import { requireUser } from "@/lib/guard"
 import { getPensionPool } from "../../lib/pension-db"
 import { headers } from "next/headers"
 
@@ -44,6 +45,8 @@ async function ensureIpUsageTable(db: ReturnType<typeof getPensionPool>) {
 }
 
 export async function checkAndRecordIpUsage(): Promise<{ allowed: boolean }> {
+  await requireUser()
+
   const ip = await getClientIp()
   if (ip === "unknown") return { allowed: true }
 
@@ -221,6 +224,8 @@ export type Kodex200Row = {
 }
 
 export async function getKodex200Series(months?: number): Promise<Kodex200Row[]> {
+  await requireUser()
+
   const db = getPensionPool()
   const { rows } = await db.query(
     `SELECT TO_CHAR(e_date, 'YYYY-MM-DD') AS date,
@@ -249,6 +254,8 @@ export type CoveredCallRow = {
 
 // t_stock_amt 에서 498400 (KODEX 200타겟위클리커버드콜) 일별 주가 조회
 export async function getCoveredCallSeries(months?: number): Promise<CoveredCallRow[]> {
+  await requireUser()
+
   const db = getPensionPool()
   const { rows } = await db.query(
     `SELECT TO_CHAR(e_date, 'YYYY-MM-DD') AS date,
@@ -294,6 +301,8 @@ export type EtfDividendRow = {
 }
 
 export async function getEtfDividendHistory(stockCode: string): Promise<EtfDividendRow[]> {
+  await requireUser()
+
   const db = getPensionPool()
   const { rows } = await db.query(
     `SELECT TO_CHAR(ref_date,'YYYY-MM-DD') AS ref_date,

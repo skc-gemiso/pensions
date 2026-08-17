@@ -1,7 +1,7 @@
 "use server"
 
-import { auth } from "@/auth"
 import { getPensionPool } from "@/lib/pension-db"
+import { requireAdmin } from "@/lib/guard"
 
 export type MarketIndex = {
   name:       string
@@ -95,8 +95,7 @@ export type AccountInfo = {
 }
 
 export async function getAccounts(): Promise<Account[]> {
-  const session = await auth()
-  if (!session?.user) throw new Error("Unauthorized")
+  await requireAdmin()
 
   const db = getPensionPool()
   const { rows } = await db.query(
@@ -106,8 +105,7 @@ export async function getAccounts(): Promise<Account[]> {
 }
 
 export async function getAccountInfo(): Promise<AccountInfo[]> {
-  const session = await auth()
-  if (!session?.user) throw new Error("Unauthorized")
+  await requireAdmin()
 
   const db = getPensionPool()
   const { rows } = await db.query(`
@@ -169,8 +167,7 @@ export type DailyPrice = {
 }
 
 export async function getHoldings(accountNo?: string): Promise<StockHolding[]> {
-  const session = await auth()
-  if (!session?.user) throw new Error("Unauthorized")
+  await requireAdmin()
 
   const db = getPensionPool()
   await ensureStockTables(db)
@@ -224,8 +221,7 @@ export async function getHoldings(accountNo?: string): Promise<StockHolding[]> {
 }
 
 export async function getTransactions(stockCode?: string, accountNo?: string): Promise<StockTransaction[]> {
-  const session = await auth()
-  if (!session?.user) throw new Error("Unauthorized")
+  await requireAdmin()
 
   const db = getPensionPool()
   await ensureStockTables(db)
@@ -261,8 +257,7 @@ export async function addTransaction(data: {
   qty: number
   s_amt: number
 }): Promise<void> {
-  const session = await auth()
-  if (!session?.user) throw new Error("Unauthorized")
+  await requireAdmin()
 
   const db = getPensionPool()
   await ensureStockTables(db)
@@ -294,8 +289,7 @@ export async function addAccountInfo(data: {
   amt: number
   memo: string
 }): Promise<void> {
-  const session = await auth()
-  if (!session?.user) throw new Error("Unauthorized")
+  await requireAdmin()
 
   const db = getPensionPool()
   await db.query(
@@ -306,8 +300,7 @@ export async function addAccountInfo(data: {
 }
 
 export async function deleteTransaction(id: number): Promise<void> {
-  const session = await auth()
-  if (!session?.user) throw new Error("Unauthorized")
+  await requireAdmin()
 
   const db = getPensionPool()
   await db.query(`DELETE FROM my_stock WHERE id = $1`, [id])
@@ -317,8 +310,7 @@ export type StockListItem = { code: string; name: string; market: string; stock_
 
 // t_stock_list 검색 — 빈 쿼리 시 default_yn='Y' 인기 종목 반환
 export async function searchStockList(q: string): Promise<StockListItem[]> {
-  const session = await auth()
-  if (!session?.user) return []
+  await requireAdmin()
 
   const db = getPensionPool()
 
@@ -360,8 +352,7 @@ export async function searchStockList(q: string): Promise<StockListItem[]> {
 }
 
 export async function getDailyPrices(stockCode: string): Promise<DailyPrice[]> {
-  const session = await auth()
-  if (!session?.user) throw new Error("Unauthorized")
+  await requireAdmin()
 
   const db = getPensionPool()
   await ensureStockTables(db)
@@ -384,8 +375,7 @@ export async function getDailyPrices(stockCode: string): Promise<DailyPrice[]> {
 }
 
 export async function fetchAndSaveNaverPrices(stockCode: string): Promise<number> {
-  const session = await auth()
-  if (!session?.user) throw new Error("Unauthorized")
+  await requireAdmin()
 
   const db = getPensionPool()
   await ensureStockTables(db)
@@ -446,8 +436,7 @@ export async function fetchAndSaveNaverPrices(stockCode: string): Promise<number
 
 // t_stock_list default_yn='Y' 기준 수집 대상 목록
 export async function getDefaultStockList(): Promise<Array<{ stock_code: string; stock_type: number }>> {
-  const session = await auth()
-  if (!session?.user) throw new Error("Unauthorized")
+  await requireAdmin()
 
   const db = getPensionPool()
   const { rows } = await db.query(`
@@ -472,8 +461,7 @@ export type MonthlyAccountDiv = {
 // 분배금 지급기준일별 계좌 보유수량(13일 기산)·분배금 조회
 // 기산 규칙: 각 지급기준일의 해당 월 13일(YYYYMM13)까지 매입한 수량 합산
 export async function getMonthlyDividendByAccount(stockCode: string): Promise<MonthlyAccountDiv[]> {
-  const session = await auth()
-  if (!session?.user) throw new Error("Unauthorized")
+  await requireAdmin()
 
   const db = getPensionPool()
 
@@ -523,8 +511,7 @@ export async function addEtfDividend(data: {
   dist_amt?: number | null
   tax_base_amt?: number | null
 }): Promise<void> {
-  const session = await auth()
-  if (!session?.user) throw new Error("Unauthorized")
+  await requireAdmin()
 
   if (!data.stock_code) throw new Error("종목코드가 없습니다.")
   if (!data.ref_date) throw new Error("지급기준일을 입력하세요.")

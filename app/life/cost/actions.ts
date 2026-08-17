@@ -1,6 +1,7 @@
 "use server"
 
 import { getPensionPool } from "@/lib/pension-db"
+import { requireAdmin } from "@/lib/guard"
 import { decryptField, encryptField, extractLast4 } from "@/lib/card-crypto"
 
 export type CostItem = {
@@ -71,6 +72,8 @@ export type RecentMonthSummary = {
 }
 
 export async function getMonthData(yyyymm: string): Promise<MonthDataRow[]> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const prevMonth = getPrevMonth(yyyymm)
 
@@ -118,6 +121,8 @@ export async function getMonthData(yyyymm: string): Promise<MonthDataRow[]> {
 }
 
 export async function getRecentMonths(yyyymm: string, n: number): Promise<RecentMonthSummary[]> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const months: string[] = []
   let [y, m] = yyyymm.split("-").map(Number)
@@ -152,6 +157,8 @@ export async function upsertCostInfo(
   amount: number,
   memo: string | null
 ): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const res = await pool.query(`
     UPDATE my_cost_info SET amt = $3, memo = $4, updated_at = NOW()
@@ -169,6 +176,8 @@ export async function upsertCostInfo(
 }
 
 export async function deleteCostInfo(yyyymm: string, itemId: number): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   await pool.query(`
     DELETE FROM my_cost_info WHERE yyyymm = $1::text AND item_id = $2::int
@@ -185,6 +194,8 @@ export async function addCostItem(data: {
   memo?: string | null
   card_id?: number | null
 }): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   await pool.query(`
     INSERT INTO my_cost_item (item_type1, item_type2, item_nm, cost_type, pay_dd, amt, memo, card_id)
@@ -202,6 +213,8 @@ export async function addCostItem(data: {
 }
 
 export async function getAllCostItems(): Promise<ManagedCostItem[]> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<ManagedCostItem>(`
     SELECT
@@ -235,6 +248,8 @@ export async function getAllCostItems(): Promise<ManagedCostItem[]> {
 }
 
 export async function getAvailableCostItems(yyyymm: string, item_type1: string): Promise<CostItem[]> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<CostItem>(`
     SELECT
@@ -255,6 +270,8 @@ export async function getAvailableCostItems(yyyymm: string, item_type1: string):
 }
 
 export async function addCostInfoItems(yyyymm: string, itemIds: number[]): Promise<void> {
+  await requireAdmin()
+
   if (itemIds.length === 0) return
   const pool = getPensionPool()
   for (const itemId of itemIds) {
@@ -278,6 +295,8 @@ export async function updateCostItemFields(id: number, data: {
   memo?: string | null
   card_id?: number | null
 }): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const pairs: string[] = []
   const values: unknown[] = [id]
@@ -294,6 +313,8 @@ export async function updateCostItemFields(id: number, data: {
 }
 
 export async function deactivateCostItem(id: number): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   await pool.query(`UPDATE my_cost_item SET use_yn = 'N' WHERE id = $1`, [id])
 }
@@ -305,6 +326,8 @@ export async function deactivateCostItem(id: number): Promise<void> {
  * 한 트랜잭션에서 실적 → 항목 순으로 지운다. (cost_task.md 항목 삭제 시 주의)
  */
 export async function deleteCostItem(id: number): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const client = await pool.connect()
   try {
@@ -332,6 +355,8 @@ export async function deleteCostItem(id: number): Promise<void> {
 }
 
 export async function activateCostItem(id: number): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   await pool.query(`UPDATE my_cost_item SET use_yn = 'Y' WHERE id = $1`, [id])
 }
@@ -346,6 +371,8 @@ const CARD_MASTER_COLUMNS = `
 `
 
 export async function getCards(): Promise<CardMaster[]> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<CardMaster>(`
     SELECT ${CARD_MASTER_COLUMNS}
@@ -356,6 +383,8 @@ export async function getCards(): Promise<CardMaster[]> {
 }
 
 export async function getCardMaster(cardId: number): Promise<CardMaster | null> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<CardMaster>(`
     SELECT ${CARD_MASTER_COLUMNS} FROM my_card WHERE id = $1
@@ -378,6 +407,8 @@ export async function updateCardMaster(cardId: number, data: {
   limit_ym?: string | null
   cvc?: string | null
 }): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const pairs: string[] = []
   const values: unknown[] = [cardId]
@@ -415,6 +446,8 @@ export async function revealCardSecret(
   cardId: number,
   field: CardSecretField
 ): Promise<RevealResult> {
+  await requireAdmin()
+
   const allowed: CardSecretField[] = ["card_no", "limit_ym", "cvc"]
   if (!allowed.includes(field)) return { ok: false, error: `복호화할 수 없는 컬럼입니다: ${field}` }
 
@@ -451,6 +484,8 @@ export async function addCard(data: {
   cvc?: string | null
   memo?: string | null
 }): Promise<void> {
+  await requireAdmin()
+
   if (!data.card_nm) throw new Error("카드명을 입력하세요.")
   if (!data.card_no) throw new Error("카드번호를 입력하세요.")
 
@@ -476,6 +511,8 @@ export async function addCard(data: {
 
 /** my_cost_item 카드 항목 ↔ my_card 연결·해제 */
 export async function linkCardToItem(itemId: number, cardId: number | null): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   await pool.query(
     `UPDATE my_cost_item SET card_id = $2, updated_at = NOW() WHERE id = $1`,
@@ -484,6 +521,8 @@ export async function linkCardToItem(itemId: number, cardId: number | null): Pro
 }
 
 export async function copyFromPrevMonth(yyyymm: string): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const prevMonth = getPrevMonth(yyyymm)
   // 이전 달 실적 복사
@@ -515,6 +554,8 @@ function getPrevMonth(yyyymm: string): string {
 }
 
 export async function copyFromMonth(targetYyyymm: string, sourceYyyymm: string): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   await pool.query(`DELETE FROM my_cost_info WHERE yyyymm = $1::text`, [targetYyyymm])
   await pool.query(`

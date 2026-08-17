@@ -1,6 +1,7 @@
 "use server"
 
 import { getPensionPool } from "@/lib/pension-db"
+import { requireAdmin } from "@/lib/guard"
 import { auth } from "@/auth"
 import { startCollection, getCollectStatus, startFxCollection, getFxCollectStatus } from "@/lib/usa-collector"
 
@@ -34,6 +35,8 @@ export async function triggerFxCollect() {
 }
 
 export async function getFxCollectStatusAction() {
+  await requireAdmin()
+
   return getFxCollectStatus()
 }
 
@@ -53,6 +56,8 @@ export type IndicatorCard = IndicatorMeta & {
 }
 
 export async function getIndicatorLatest(): Promise<IndicatorCard[]> {
+  await requireAdmin()
+
   const pool = getPensionPool()
 
   const { rows: masters } = await pool.query<IndicatorMeta>(
@@ -87,6 +92,8 @@ export async function getIndicatorLatest(): Promise<IndicatorCard[]> {
 }
 
 export async function getIndicatorList(): Promise<IndicatorMeta[]> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<IndicatorMeta>(
     `SELECT indicator_code, indicator_name, unit, description
@@ -97,6 +104,8 @@ export async function getIndicatorList(): Promise<IndicatorMeta[]> {
 }
 
 export async function getIndicatorSeries(code: string, months?: number) {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{ stat_date: string; value: number }>(
     `SELECT stat_date, value
@@ -110,6 +119,8 @@ export async function getIndicatorSeries(code: string, months?: number) {
 }
 
 export async function getTreasurySeries(months?: number) {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{
     stat_date: string
@@ -146,6 +157,8 @@ export async function getTreasurySeries(months?: number) {
 }
 
 export async function getFxSeries(months?: number) {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{ stat_date: string; exchange_rate: number }>(
     `SELECT e_date AS stat_date, fx_rate AS exchange_rate
@@ -161,6 +174,8 @@ export async function getFxSeries(months?: number) {
 }
 
 export async function getCollectLogRecent() {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{
     log_id: number
@@ -182,6 +197,8 @@ export async function getCollectLogRecent() {
 }
 
 export async function getCollectLastRun() {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{
     collector_name: string

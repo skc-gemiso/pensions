@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { randomUUID } from "crypto"
 import { uploadContentImage } from "@/lib/supabase-storage"
+import { guardApi } from "@/lib/guard"
 
 export async function POST(req: NextRequest) {
+  const denied = await guardApi()
+  if (denied) return denied
+
   try {
     const formData = await req.formData()
     const file = formData.get("file") as File | null

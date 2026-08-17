@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { guardApi } from "@/lib/guard"
 
 export type NaverPrice = {
   price: number
@@ -10,6 +11,9 @@ export type NaverPrice = {
 
 // GET /api/stock/price?codes=005930,069500
 export async function GET(req: NextRequest) {
+  const denied = await guardApi()
+  if (denied) return denied
+
   const codes = req.nextUrl.searchParams.get("codes")
   if (!codes) return NextResponse.json({}, { status: 400 })
 

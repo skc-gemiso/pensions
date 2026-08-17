@@ -763,6 +763,24 @@ async function _applyMigrations(): Promise<void> {
     await pool.query("INSERT INTO app_migrations (name) VALUES ('v025_power_drop_unused')")
   }
 
+  // v026: normal 역할은 연금투자 시뮬레이션·복리의 마법만 접근하도록 축소
+  //       (메뉴 숨김만으로는 URL 직접 입력을 못 막으므로 middleware·lib/guard 와 함께 적용)
+  const { rows: v026 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v026_normal_menu_minimal'"
+  )
+  if (v026.length === 0) {
+    await pool.query(`
+      DELETE FROM app_role_menus
+      WHERE role = 'normal' AND menu_id NOT IN ('sim', 'magic')
+    `)
+    await pool.query(`
+      INSERT INTO app_role_menus (role, menu_id)
+      SELECT 'normal', m FROM unnest(ARRAY['sim','magic']::text[]) AS m
+      ON CONFLICT DO NOTHING
+    `)
+    await pool.query("INSERT INTO app_migrations (name) VALUES ('v026_normal_menu_minimal')")
+  }
+
   // v010: 메뉴 ID 단축 (savings-fund→sim, compound-magic→magic, personal-pension→per 등)
   const { rows: v010 } = await pool.query<{ name: string }>(
     "SELECT name FROM app_migrations WHERE name = 'v010_shorten_menu_ids'"

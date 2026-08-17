@@ -1,7 +1,7 @@
 "use server"
 
-import { auth } from "@/auth"
 import { getPensionPool } from "@/lib/pension-db"
+import { requireAdmin } from "@/lib/guard"
 
 // ── 기존: 납부 이력 타입 (호환 유지) ──────────────────────────
 export type PaymentRecord = {
@@ -67,8 +67,7 @@ function rowToSnapshot(r: { id: number; check_date: string; total_premium: strin
 }
 
 export async function loadSnapshots(): Promise<Snapshot[]> {
-  const session = await auth()
-  if (!session?.user) throw new Error("로그인이 필요합니다.")
+  await requireAdmin()
 
   await ensureSnapshotTable()
   const pool = getPensionPool()
@@ -84,8 +83,7 @@ export async function addSnapshot(
   monthlyNet: number,
   monthlyGross: number | null,
 ): Promise<Snapshot> {
-  const session = await auth()
-  if (!session?.user) throw new Error("로그인이 필요합니다.")
+  await requireAdmin()
 
   await ensureSnapshotTable()
   const pool = getPensionPool()
@@ -99,8 +97,7 @@ export async function addSnapshot(
 }
 
 export async function deleteSnapshot(id: number): Promise<void> {
-  const session = await auth()
-  if (!session?.user) throw new Error("로그인이 필요합니다.")
+  await requireAdmin()
 
   const pool = getPensionPool()
   await pool.query("DELETE FROM np_snapshots WHERE id = $1", [id])

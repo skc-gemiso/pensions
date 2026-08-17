@@ -1,6 +1,7 @@
 "use server"
 
 import { getPensionPool } from "@/lib/pension-db"
+import { requireAdmin } from "@/lib/guard"
 import { calcPowerBill, splitSeasonDays, derivePeriod, type PowerRate, type PowerCalc } from "@/lib/power-calc"
 
 export type PowerRateRow = PowerRate & {
@@ -55,6 +56,8 @@ const RATE_COLUMNS = `
 `
 
 export async function getRates(): Promise<PowerRateRow[]> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<PowerRateRow>(`
     SELECT ${RATE_COLUMNS} FROM my_power_rate
@@ -82,6 +85,8 @@ export async function upsertRate(data: {
   vat_rate: number
   memo?: string | null
 }): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const values = [
     data.apply_start, data.season, data.tier1_limit, data.tier2_limit,
@@ -119,6 +124,8 @@ export async function upsertRate(data: {
 }
 
 export async function deleteRate(id: number): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   await pool.query(`DELETE FROM my_power_rate WHERE id = $1`, [id])
 }
@@ -138,6 +145,8 @@ function pickRates(rates: PowerRateRow[], periodEnd: string): { summer: PowerRat
 // ── 월별 청구 ─────────────────────────────────────────────────────────────────
 
 export async function getBills(): Promise<PowerBill[]> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const [{ rows }, rates] = await Promise.all([
     pool.query(`
@@ -178,6 +187,8 @@ export async function upsertBill(data: {
   season_discount?: number
   welfare_yn?: string
 }): Promise<void> {
+  await requireAdmin()
+
   if (!data.yyyymm) throw new Error("요금월을 입력하세요.")
 
   const pool = getPensionPool()
@@ -192,6 +203,8 @@ export async function upsertBill(data: {
 
 /** 일별 사용량 탭의 목표 사용량 설정. null 이면 안분 1구간 상한 자동 */
 export async function setTargetKwh(yyyymm: string, target: number | null): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   await pool.query(
     `UPDATE my_power_bill SET target_kwh = $2, updated_at = NOW() WHERE yyyymm = $1`,
@@ -200,6 +213,8 @@ export async function setTargetKwh(yyyymm: string, target: number | null): Promi
 }
 
 export async function deleteBill(yyyymm: string): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const client = await pool.connect()
   try {
@@ -218,6 +233,8 @@ export async function deleteBill(yyyymm: string): Promise<void> {
 // ── 일별 사용량 ───────────────────────────────────────────────────────────────
 
 export async function getDailyUsage(yyyymm: string): Promise<DailyView | null> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows: bills } = await pool.query(`
     SELECT yyyymm, target_kwh::float8 AS target_kwh, usage_kwh::float8 AS usage_kwh
@@ -280,6 +297,8 @@ export async function upsertDailyUsage(
   useDate: string,
   kwh: number | null
 ): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   if (kwh == null) {
     await pool.query(`DELETE FROM my_power_daily WHERE yyyymm = $1 AND use_date = $2::date`, [yyyymm, useDate])
@@ -295,6 +314,8 @@ export async function upsertDailyUsage(
 
 /** 일별 합계를 청구의 사용량으로 반영 */
 export async function applyDailyTotalToBill(yyyymm: string): Promise<number> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{ total: number }>(`
     SELECT COALESCE(SUM(usage_kwh), 0)::float8 AS total FROM my_power_daily WHERE yyyymm = $1

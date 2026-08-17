@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { guardApi } from "@/lib/guard"
 
 export type StockSearchItem = {
   code: string
@@ -8,6 +9,9 @@ export type StockSearchItem = {
 
 // GET /api/stock/search?q=삼성
 export async function GET(req: NextRequest) {
+  const denied = await guardApi()
+  if (denied) return denied
+
   const q = req.nextUrl.searchParams.get("q")?.trim()
   if (!q) return NextResponse.json([])
 

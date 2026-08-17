@@ -1,6 +1,7 @@
 "use server"
 
 import { getPensionPool } from "@/lib/pension-db"
+import { requireAdmin } from "@/lib/guard"
 import { deleteFile as storageDeleteFile, getSignedUrl } from "@/lib/supabase-storage"
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
@@ -41,6 +42,8 @@ export type CardItem = {
 // ── 결제수단 ──────────────────────────────────────────────────────────────────
 
 export async function getCardItems(): Promise<CardItem[]> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   // 카드명은 my_card.card_nm 기준 (docs/life/cost/cost_task.md 연결 구조)
   const { rows } = await pool.query<CardItem>(
@@ -58,6 +61,8 @@ export async function getCardItems(): Promise<CardItem[]> {
 // ── 구매 목록 ─────────────────────────────────────────────────────────────────
 
 export async function getShoppingList(category?: string): Promise<Shopping[]> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<Shopping>(
     `SELECT
@@ -80,6 +85,8 @@ export async function getShoppingList(category?: string): Promise<Shopping[]> {
 }
 
 export async function getShoppingFiles(shoppingId: number): Promise<ShoppingFile[]> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<Omit<ShoppingFile, "signed_url">>(
     `SELECT id, ref_type, ref_id, file_nm, storage_path, mime_type, file_size, created_at::text
@@ -105,6 +112,8 @@ export async function addShopping(data: {
   purchase_place?: string | null
   content?: string | null
 }): Promise<number> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{ id: number }>(
     `INSERT INTO my_shopping
@@ -138,6 +147,8 @@ export async function updateShopping(
     content: string | null
   }>
 ): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const pairs: string[] = []
   const values: unknown[] = [id]
@@ -156,6 +167,8 @@ export async function updateShopping(
 }
 
 export async function deleteShopping(id: number): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{ storage_path: string }>(
     `SELECT storage_path FROM my_shopping_file WHERE ref_type = 'shopping' AND ref_id = $1`,
@@ -169,6 +182,8 @@ export async function deleteShopping(id: number): Promise<void> {
 // ── 참고 자료 ─────────────────────────────────────────────────────────────────
 
 export async function getRefList(): Promise<Shopping[]> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<Shopping>(
     `SELECT
@@ -185,6 +200,8 @@ export async function getRefList(): Promise<Shopping[]> {
 }
 
 export async function getRefFiles(refId: number): Promise<ShoppingFile[]> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<Omit<ShoppingFile, "signed_url">>(
     `SELECT id, ref_type, ref_id, file_nm, storage_path, mime_type, file_size, created_at::text
@@ -206,6 +223,8 @@ export async function addRef(data: {
   original_price?: number | null
   content?: string | null
 }): Promise<number> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{ id: number }>(
     `INSERT INTO my_shopping (item_type, category, product_nm, purchase_place, original_price, content)
@@ -224,6 +243,8 @@ export async function updateRef(
     content: string | null
   }>
 ): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const pairs: string[] = []
   const values: unknown[] = [id]
@@ -238,6 +259,8 @@ export async function updateRef(
 }
 
 export async function deleteRef(id: number): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{ storage_path: string }>(
     `SELECT storage_path FROM my_shopping_file WHERE ref_type = 'ref' AND ref_id = $1`,
@@ -251,6 +274,8 @@ export async function deleteRef(id: number): Promise<void> {
 // ── 첨부파일 단건 삭제 ────────────────────────────────────────────────────────
 
 export async function deleteShoppingFile(fileId: number): Promise<void> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{ storage_path: string }>(
     `SELECT storage_path FROM my_shopping_file WHERE id = $1`,

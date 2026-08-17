@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { guardApi } from "@/lib/guard"
 
 export type NaverCandle = {
   date: string  // YYYY-MM-DD
@@ -11,6 +12,9 @@ export type NaverCandle = {
 
 // GET /api/stock/daily?code=005930&count=500
 export async function GET(req: NextRequest) {
+  const denied = await guardApi()
+  if (denied) return denied
+
   const code  = req.nextUrl.searchParams.get("code")
   const count = req.nextUrl.searchParams.get("count") ?? "500"
   if (!code) return NextResponse.json({ error: "code required" }, { status: 400 })

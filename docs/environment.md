@@ -119,13 +119,38 @@ pensions/
 
 | role | 접근 범위 |
 |------|-----------|
-| `admin` | 전체 메뉴 (연금·자산·투자·생활·시뮬레이션·복리의 마법) |
-| `normal` | 투자(ETF·미국 경제 지표)·생활비·시뮬레이션·복리의 마법 |
+| `admin` | 전체 메뉴 |
+| `normal` | **연금투자 시뮬레이션(`/sim`)·복리의 마법(`/magic`) 만** |
+
+Google 계정만 있으면 누구나 `/register` 에서 즉시 `normal` 로 가입된다(승인 절차 없음).
+그래서 `normal` 은 개인 데이터가 없는 두 화면으로만 제한한다.
+
+### 접근 통제는 3중이다
+
+메뉴를 숨기는 것만으로는 막히지 않는다. **서버 액션은 POST 엔드포인트라 화면 없이도 호출되고,
+API 라우트는 미들웨어 matcher(`/((?!api|...))`)에서 아예 제외**돼 있다.
+그래서 데이터에 닿는 지점마다 다시 확인한다.
+
+| 계층 | 위치 | 내용 |
+|------|------|------|
+| 1. 화면 경로 | [middleware.ts](../middleware.ts) | 미인증 → `/login`. admin 이 아니면 `NORMAL_ALLOWED`(`/sim`,`/magic`) 밖은 `/sim` 으로 리다이렉트 |
+| 2. 서버 액션 | [lib/guard.ts](../lib/guard.ts) | 모든 액션 첫 줄에 `requireUser()` 또는 `requireAdmin()` |
+| 3. API 라우트 | [lib/guard.ts](../lib/guard.ts) | `guardApi()` → 401/403 응답 |
+| 4. 메뉴 노출 | `app_role_menus` | 네비게이션에 보일 메뉴 (v026에서 normal 은 2개) |
+
+액션별 가드:
+
+| 모듈 | 가드 |
+|------|------|
+| `app/sim/actions.ts` | `requireUser` — normal 도 쓴다 |
+| 그 외 전부 (life/cost·life/power·shopping·invest/etf·invest/usa·assets/stock·pension/nat) | `requireAdmin` |
+
+`/api/cron/stock-sync` 만 세션 대신 `CRON_SECRET` 으로 검증한다 (Vercel Cron 이 호출).
 
 ### 라우트 보호
 
 - `middleware.ts` (Next.js 16 미들웨어, named export) — 현재 파일명은 `middleware.ts` 다 (`proxy.ts` 아님)
-- `/login` 이외 모든 경로: 미인증 시 `/login` 리다이렉트
+- `/login`, `/register` 이외 모든 경로: 미인증 시 `/login` 리다이렉트
 
 ---
 

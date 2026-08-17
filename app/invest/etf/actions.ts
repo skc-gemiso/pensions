@@ -1,6 +1,7 @@
 "use server"
 
 import { auth } from "@/auth"
+import { requireAdmin } from "@/lib/guard"
 import { getPensionPool } from "@/lib/pension-db"
 import { startCollection, getCollectStatus } from "@/lib/etf-collector"
 
@@ -22,6 +23,8 @@ function countryParam(country?: string | null): string | null {
 }
 
 export async function getDefaultTickers(): Promise<{ ticker: string; name: string }[]> {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{ ticker: string; name: string }>(
     `SELECT stock_code AS ticker, stock_short_name AS name
@@ -33,6 +36,8 @@ export async function getDefaultTickers(): Promise<{ ticker: string; name: strin
 }
 
 export async function getFetchLog() {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{
     etf_ticker: string
@@ -51,6 +56,8 @@ export async function getFetchLog() {
 }
 
 export async function getTickers(etf: string, country?: string | null) {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{ ticker: string; name: string; location: string }>(
     `SELECT ticker, MAX(name) AS name, MAX(location) AS location
@@ -65,6 +72,8 @@ export async function getTickers(etf: string, country?: string | null) {
 }
 
 export async function getStockSeries(etf: string, ticker: string) {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{
     holding_date: Date | string
@@ -115,6 +124,8 @@ export async function getStockSeries(etf: string, ticker: string) {
 }
 
 export async function getPriceRiseTop(etf: string, country?: string | null, days?: number | null) {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{
     ticker: string; name: string; location: string
@@ -158,6 +169,8 @@ export async function getPriceRiseTop(etf: string, country?: string | null, days
 }
 
 export async function getPriceRiseSeries(etf: string, ticker: string) {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{
     holding_date: Date | string; price: number; shares: number; weight_pct: number
@@ -173,6 +186,8 @@ export async function getPriceRiseSeries(etf: string, ticker: string) {
 }
 
 export async function getVolumeChangeTop(etf: string, country?: string | null, days?: number | null) {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{
     ticker: string; name: string; location: string
@@ -214,6 +229,8 @@ export async function getVolumeChangeTop(etf: string, country?: string | null, d
 }
 
 export async function getVolumeChangeSeries(etf: string, ticker: string) {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{
     holding_date: Date | string; shares: number; price: number; weight_pct: number
@@ -229,6 +246,8 @@ export async function getVolumeChangeSeries(etf: string, ticker: string) {
 }
 
 export async function getRecommend(etf: string, country?: string | null, days?: number | null) {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{
     ticker: string; name: string; sector: string; location: string
@@ -303,6 +322,8 @@ export async function getRecommend(etf: string, country?: string | null, days?: 
 }
 
 export async function getStockEtfWeights(tickers: string[]) {
+  await requireAdmin()
+
   if (tickers.length === 0) return []
   const pool = getPensionPool()
   const { rows } = await pool.query<{ ticker: string; etf_ticker: string; weight_pct: number }>(
@@ -324,6 +345,8 @@ export async function getStockEtfWeights(tickers: string[]) {
 }
 
 export async function getEtfSummary(days?: number | null) {
+  await requireAdmin()
+
   const pool = getPensionPool()
   const { rows } = await pool.query<{
     etf_ticker: string
@@ -384,5 +407,7 @@ export async function triggerCollect() {
 }
 
 export async function getCollectStatusAction() {
+  await requireAdmin()
+
   return getCollectStatus()
 }

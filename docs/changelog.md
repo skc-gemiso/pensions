@@ -4,6 +4,20 @@
 
 ## 2026-07-30
 
+### 접근 통제 강화 — v026
+점검 결과 `normal` 계정이 `/sim`·`/magic` 외 화면·데이터에 접근할 수 있었다. 세 계층으로 막았다.
+
+- **메뉴 권한** — `normal` 에서 15개 회수, `sim`·`magic` 만 남김
+  (투자 ETF 5 · 미국지표 4 · 생활비 · 전기요금 등이 열려 있었다)
+- **화면 경로** — `middleware.ts` 가 인증만 확인해 URL 직접 입력으로 모든 화면이 열렸다.
+  admin 이 아니면 허용 목록 밖은 `/sim` 으로 리다이렉트
+- **서버 액션** — 62개 중 42개에 인증 검사가 없었다(`revealCardSecret` 포함).
+  `lib/guard.ts` 의 `requireUser`/`requireAdmin` 을 전 액션에 적용.
+  기존 세션 확인만 있던 `assets/stock`·`pension/nat` 도 admin 확인으로 상향
+- **API 라우트** — 미들웨어 matcher 가 `/api` 를 제외해 로그인조차 필요 없었다.
+  `guardApi()` 로 401/403 (`shopping/upload`·`content-image`, `stock/price`·`daily`·`search`)
+- admin 계정 정리 — `baramgil3@gmail.com` 삭제, admin 은 `skc` 하나
+
 ### 전기요금 관리 신규 (`/life/power`) — v023·v024·v025
 - 생활 > 전기요금 메뉴 추가. 탭 3개(월별 청구 / 일별 사용량 / 요금표 관리)
 - 테이블 3개 신설: `my_power_rate`(요금표 이력) · `my_power_bill`(월별 청구) · `my_power_daily`(일별 사용량)
