@@ -81,6 +81,7 @@ pensions/
 │   ├── AppLayout.tsx                     공통 사이드바 레이아웃
 │   ├── NationalPensionDashboardCard.tsx  국민연금 카드
 │   ├── RetirementDashboardCard.tsx       퇴직연금 카드
+│   ├── HelpModal.tsx                     공용 도움말 모달 (파란 ! 아이콘 + 탭) — H/Box/ColTable 프리미티브 포함
 │   ├── RichEditor.tsx                    쇼핑 본문 리치 에디터 (TipTap)
 │   └── Providers.tsx                    세션 Provider
 ├── lib/
@@ -110,6 +111,31 @@ pensions/
 
 > 환경 변수 파일은 `config/.env` 다. [next.config.ts](../next.config.ts) 가 `dotenv` 로 읽어
 > `process.env` 에 주입하며 **서버 기동 시 한 번만** 로드한다 — 값을 바꾸면 dev 서버를 재시작해야 한다.
+
+---
+
+## 공용 도움말 (`components/HelpModal.tsx`)
+
+화면·카드 옆의 `!` 아이콘을 눌러 여는 설명 모달. 개인연금·퇴직연금이 함께 쓴다.
+
+```tsx
+import HelpModal, { H, Box, ColTable } from "@/components/HelpModal"
+
+<HelpModal
+  variant="page"            // "page" 24px(페이지 제목) | "section" 16px(카드·표 제목, 기본)
+  title="퇴직연금 계산 안내"
+  lead="이 화면의 숫자가 어떤 전제로 계산되는지"
+  tabs={[{ key: "basis", label: "계산 전제", body: <Box><H>…</H></Box> }]}
+/>
+```
+
+- **아이콘은 파란 `!` 원 하나로 통일**한다. 크기만 위치에 따라 다르다
+- `tabs` 가 1개면 탭 버튼 줄을 그리지 않는다
+- 본문 프리미티브
+  - `H` — 박스 안 소제목
+  - `Box` — 배경 박스 (`gray` / `amber` / `blue` / `emerald` / `red`)
+  - `ColTable` — 컬럼명 ↔ 뜻을 1:1로 보여주는 표. `[["컬럼", <>설명</>], …]`
+- 모달은 `createPortal` 로 `document.body` 에 그린다 — `<p>` 안에 놓아도 안전하다
 
 ---
 

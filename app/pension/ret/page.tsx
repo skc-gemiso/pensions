@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import AppLayout from "@/components/AppLayout"
+import HelpModal, { H, Box, ColTable } from "@/components/HelpModal"
 import { getProfile, type ProfileView } from "@/app/actions/profile"
 import { getEtfDividendHistory } from "@/app/sim/actions"
 // 수령 개시 나이는 개인연금과 같은 값을 쓴다 (PENSION_PER_PAYOUT_AGE)
@@ -262,6 +263,8 @@ export default function RetirementPensionPage() {
 
   const joinStr = "2015.02.23"
   const retireStr = `${LEGAL_RETIRE_YEAR}년 ${String(retireDate.getMonth() + 1).padStart(2, "0")}월`
+  const retireMonth = retireDate.getMonth() + 1
+  const growthMultiple = Math.pow(1 + ccAnnualRate / 12 * (1 - taxBaseRatio * DIVIDEND_TAX), holdMonths)
 
   return (
     <AppLayout>
@@ -269,7 +272,96 @@ export default function RetirementPensionPage() {
 
         {/* 헤더 */}
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">퇴직연금</h1>
+          <div className="flex items-center gap-2 mb-1">
+            <h1 className="text-2xl font-bold text-gray-900">퇴직연금</h1>
+            <HelpModal
+              variant="page"
+              title="퇴직연금 계산 안내"
+              lead="이 화면의 숫자가 어떤 전제로 계산되는지"
+              tabs={[
+                { key: "basis", label: "계산 전제", body: (
+                  <>
+                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl px-5 py-4 text-white">
+                      <p className="font-bold text-base mb-1">이 화면의 금액은 전부 &ldquo;추정치&rdquo;입니다</p>
+                      <p className="text-sm text-blue-100">
+                        회사가 통보한 확정 금액이 아니라, 아래 전제로 계산한 값입니다.
+                      </p>
+                    </div>
+
+                    <Box>
+                      <H>DB형(확정급여형) 기준입니다</H>
+                      <p className="text-xs text-gray-700 leading-relaxed">
+                        퇴직금이 운용 성과가 아니라 <b>퇴직 직전 평균임금 × 근속연수</b>로 정해지는 방식입니다.
+                        정년 전까지는 회사가 적립금을 운용하므로 개인이 손댈 수 없고,
+                        퇴직금은 <b>정년({LEGAL_RETIRE_YEAR}년 {retireMonth}월)에 손에 들어옵니다.</b>
+                      </p>
+                    </Box>
+
+                    <Box>
+                      <H>어디서 온 값인가</H>
+                      <ColTable rows={[
+                        ["입사일 · 정년", <>공통 프로필 환경 변수(<code>PROFILE_*</code>). 퇴직연금·개인연금이 같은 값을 씁니다</>],
+                        ["평균임금", <>급여명세서 지급액 <b>월 690만원</b>을 코드에 고정해 뒀습니다</>],
+                        ["연봉 인상", <>매년 <b>240만원</b> 균등 인상 가정</>],
+                        ["2030~2034", <>사전 계산해 둔 값(<code>USER_PROJECTIONS</code>)을 그대로 씁니다</>],
+                        ["2026~2029", <>법정 퇴직금 공식(연봉 ÷ 12 × 근속연수)으로 추정합니다</>],
+                        ["분배율 · 과표", <>KODEX 200 타겟위클리커버드콜의 실제 지급 이력 최근 12회</>],
+                      ]} />
+                    </Box>
+
+                    <Box tone="amber">
+                      <H>IRP·ISA 는 다루지 않습니다</H>
+                      <p className="text-xs text-gray-700 leading-relaxed">
+                        운용 계획이 없어 계산에서 뺐습니다. 퇴직금을 일시금으로 받아 <b>일반 계좌</b>에서
+                        운용하는 기준이므로, 분배금에 연금소득세(3.3~5.5%)가 아니라 배당소득세(15.4%)가 붙습니다.
+                        IRP 로 이전하면 퇴직소득세도 이연·감면되므로, 이 화면의 세후 금액은 그만큼 보수적입니다.
+                      </p>
+                    </Box>
+                  </>
+                ) },
+                { key: "tax", label: "퇴직소득세", body: (
+                  <>
+                    <Box>
+                      <H>2023년 개정 기준으로 계산합니다</H>
+                      <pre className="text-xs bg-white border border-gray-200 rounded-lg p-3 overflow-x-auto text-gray-700">{`1. 과세표준 = 퇴직급여 − 근속연수공제
+2. 환산급여 = 과세표준 ÷ 근속연수 × 12
+3. 환산급여공제를 뺀 값에 기본세율 적용
+4. 퇴직소득세 = 산출세액 ÷ 12 × 근속연수`}</pre>
+                      <p className="text-xs text-gray-500 mt-2">지방소득세 10%가 포함된 금액입니다.</p>
+                    </Box>
+
+                    <Box>
+                      <H>근속연수공제</H>
+                      <ColTable rows={[
+                        ["5년 이하", "100만원 × 근속연수"],
+                        ["5~10년", "500만원 + 200만원 × (근속연수 − 5)"],
+                        ["10~20년", "1,500만원 + 250만원 × (근속연수 − 10)"],
+                        ["20년 초과", "4,000만원 + 300만원 × (근속연수 − 20)"],
+                      ]} />
+                      <p className="text-xs text-gray-500 mt-2">
+                        오래 다닐수록 공제가 커져서, 근속연수가 늘면 세율이 완만하게 낮아집니다.
+                      </p>
+                    </Box>
+                  </>
+                ) },
+                { key: "limit", label: "⚠️ 한계와 주의", body: (
+                  <Box tone="amber">
+                    <H>⚠️ 이 숫자가 그대로 실현되지 않는 이유</H>
+                    <ul className="text-xs text-gray-700 space-y-2 list-disc pl-4 leading-relaxed">
+                      <li><b>평균임금이 추정값입니다.</b> DB형 실제 산정은 퇴직 직전 3개월 평균임금 기준이라
+                        상여·수당 구성에 따라 달라집니다.</li>
+                      <li><b>연봉 인상률은 가정입니다.</b> 매년 240만원 균등 인상을 전제로 했습니다.</li>
+                      <li><b>2029~2030년 사이 금액이 크게 뜁니다.</b> 두 구간의 계산 방식이 달라서 생기는 현상입니다.</li>
+                      <li><b>분배율·과표 비율이 유지된다고 봤습니다.</b> 운용사가 분배 정책을 바꾸면 결과가 크게 달라집니다.</li>
+                      <li><b>주가 변동을 반영하지 않았습니다.</b> 주가가 떨어지면 평가액도 분배금도 함께 줄어듭니다.</li>
+                      <li><b>물가를 반영하지 않았습니다.</b></li>
+                      <li><b>중도인출·회사 정책 변경</b>은 계산에 없습니다.</li>
+                    </ul>
+                  </Box>
+                ) },
+              ]}
+            />
+          </div>
           <p className="text-gray-500 text-sm">퇴직 시점별 예상 수령액 시뮬레이션 (DB형 기준)</p>
         </div>
 
@@ -299,6 +391,39 @@ export default function RetirementPensionPage() {
 
         {/* 근속 진행 바 */}
         <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="text-xs font-semibold text-gray-600">근속 진행 현황</span>
+            <HelpModal
+              title="근속 진행 현황"
+              lead="입사일부터 정년까지 어디쯤 와 있는지"
+              tabs={[
+                { key: "how", label: "계산 방법", body: (
+                  <>
+                    <Box>
+                      <H>진행률</H>
+                      <pre className="text-xs bg-white border border-gray-200 rounded-lg p-3 overflow-x-auto text-gray-700">{`진행률 = (오늘 − 입사일) ÷ (정년일 − 입사일) × 100`}</pre>
+                      <p className="text-xs text-gray-500 mt-2">
+                        일 단위로 계산합니다. 위 카드의 <b>현재 근속</b>·<b>정년까지 남은 기간</b>은
+                        같은 기준을 연·월로 환산한 값입니다.
+                      </p>
+                    </Box>
+
+                    <Box tone="blue">
+                      <H>정년일이 {LEGAL_RETIRE_YEAR}년 {retireMonth}월인 이유</H>
+                      <p className="text-xs text-gray-700 leading-relaxed">
+                        정년 규정이 <b>만 60세가 되는 달의 말일</b>이기 때문입니다.
+                        생일 당일이나 연말로 잡는 회사도 있어서, 규정을 환경 변수
+                        (<code>PROFILE_RETIRE_RULE</code>)로 바꿀 수 있게 해 뒀습니다.
+                      </p>
+                      <p className="text-xs text-gray-500 mt-2">
+                        입사일·생년월일도 같은 프로필(<code>PROFILE_*</code>)에서 오며, 개인연금 화면과 공유합니다.
+                      </p>
+                    </Box>
+                  </>
+                ) },
+              ]}
+            />
+          </div>
           <div className="flex justify-between text-xs text-gray-400 mb-2">
             <span>입사 {joinStr}</span>
             <span className="font-medium text-blue-600">{progressPct}% 경과</span>
@@ -319,11 +444,46 @@ export default function RetirementPensionPage() {
 
         {/* 현재 기준 예상 퇴직금 */}
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
-          <p className="text-xs text-blue-500 font-medium mb-3">
+          <p className="text-xs text-blue-500 font-medium mb-3 flex items-center gap-1.5 flex-wrap">
             현재 기준 예상 퇴직금
-            <span className="ml-2 text-blue-400 font-normal">
+            <span className="text-blue-400 font-normal">
               ({today.getFullYear()}.{String(today.getMonth()+1).padStart(2,"0")}.{String(today.getDate()).padStart(2,"0")} 기준 · 근속 {tenure.years}년 {tenure.months}개월)
             </span>
+            <HelpModal
+              title="현재 기준 예상 퇴직금"
+              lead="오늘 그만둔다면 얼마를 받는가"
+              tabs={[
+                { key: "cols", label: "값 설명", body: (
+                  <Box>
+                    <ColTable rows={[
+                      ["세전 퇴직금", <>월 690만원 × 근속일수({tenure.totalDays}일) ÷ 365. <b>근속 1년당 한 달치 급여</b>라는 법정 산식입니다</>],
+                      ["퇴직소득세", <>2023년 개정 기준 근사치. 근속연수공제·환산급여공제를 적용합니다 — 자세한 식은 페이지 도움말의 <b>퇴직소득세</b> 탭에</>],
+                      ["실수령액", <>세전 퇴직금 − 퇴직소득세. 아래 커버드콜 시뮬레이션의 <b>투자 원금</b>이 되는 금액입니다</>],
+                      [`${payoutAge}세 월 분배금(세후)`, <>실수령액을 정년에 커버드콜로 매입하고 {payoutAge}세까지 분배금을 재투자했을 때, {payoutAge}세부터 매달 받는 세후 금액</>],
+                    ]} />
+                  </Box>
+                ) },
+                { key: "note", label: "읽는 법", body: (
+                  <>
+                    <Box tone="blue">
+                      <H>&ldquo;지금 그만두면&rdquo;의 값입니다</H>
+                      <p className="text-xs text-gray-700 leading-relaxed">
+                        오늘까지의 근속만 반영하므로, 더 다닐수록 커집니다.
+                        정년까지 다녔을 때의 금액은 아래 <b>퇴직 시점별 예상 퇴직금</b> 표의 마지막 행을 보세요.
+                      </p>
+                    </Box>
+                    <Box tone="amber">
+                      <H>마지막 값만 시점이 다릅니다</H>
+                      <p className="text-xs text-gray-700 leading-relaxed">
+                        앞의 세 값은 <b>오늘</b> 기준이지만, {payoutAge}세 월 분배금은
+                        <b> 정년 매입 → {holdMonths}개월 재투자 → {payoutAge}세 수령</b>을 거친 뒤의 값입니다.
+                        DB형이라 정년 전에는 ETF 를 매입할 수 없어 이 순서를 따릅니다.
+                      </p>
+                    </Box>
+                  </>
+                ) },
+              ]}
+            />
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
@@ -351,7 +511,52 @@ export default function RetirementPensionPage() {
         {/* 퇴직 시점별 시나리오 테이블 */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100">
-            <h2 className="font-semibold text-gray-900">퇴직 시점별 예상 퇴직금</h2>
+            <div className="flex items-center gap-1.5">
+              <h2 className="font-semibold text-gray-900">퇴직 시점별 예상 퇴직금</h2>
+              <HelpModal
+                title="퇴직 시점별 예상 퇴직금"
+                lead="어느 해에 그만두면 퇴직금이 얼마인가"
+                tabs={[
+                  { key: "cols", label: "컬럼 설명", body: (
+                    <Box>
+                      <ColTable rows={[
+                        ["퇴직 시점", <>그 해에 퇴직한다고 가정한 연도. <b>정년</b> 배지가 붙은 행이 {LEGAL_RETIRE_YEAR}년입니다</>],
+                        ["근속연수", <>입사 연도(2015)부터의 햇수. 퇴직소득세 공제액을 정하는 값입니다</>],
+                        ["평균임금", <>그 해 기준 연봉. 2030년부터 매년 240만원씩 오른다고 봅니다</>],
+                        ["세전 퇴직금", <>퇴직소득세를 떼기 전 금액</>],
+                        ["퇴직소득세", <>2023년 개정 기준 근사치 (지방소득세 10% 포함)</>],
+                        ["실수령액", <>세전 − 세금. 아래 커버드콜 시뮬레이션의 투자 원금이 됩니다</>],
+                      ]} />
+                    </Box>
+                  ) },
+                  { key: "read", label: "읽는 법", body: (
+                    <>
+                      <Box tone="amber">
+                        <H>⚠️ 2029 → 2030년 사이가 크게 뜁니다</H>
+                        <p className="text-xs text-gray-700 leading-relaxed">
+                          두 구간의 계산 방식이 다르기 때문입니다.
+                        </p>
+                        <ColTable rows={[
+                          ["2026~2029", <>법정 퇴직금 공식(연봉 ÷ 12 × 근속연수)으로 <b>추정</b>한 값</>],
+                          ["2030~2034", <>사전에 계산해 둔 값. 법정 퇴직금보다 높을 수 있습니다</>],
+                        ]} />
+                        <p className="text-xs text-gray-500 mt-2">
+                          계산 방식이 바뀌는 경계라 그 구간의 증가폭은 의미로 읽지 마세요.
+                        </p>
+                      </Box>
+
+                      <Box>
+                        <H>세율이 아니라 공제가 움직입니다</H>
+                        <p className="text-xs text-gray-700 leading-relaxed">
+                          퇴직금이 커지면 세금도 늘지만, 근속연수공제·환산급여공제가 함께 커져
+                          <b> 실효세율은 완만하게</b> 오릅니다. 오래 다닐수록 세금 면에서 유리한 구조입니다.
+                        </p>
+                      </Box>
+                    </>
+                  ) },
+                ]}
+              />
+            </div>
             <p className="text-xs text-gray-400 mt-0.5">매년 240만원 연봉 인상 가정 · 2026~2029년은 법정 퇴직금 추정 · 2030~2034년은 사전 계산값</p>
           </div>
           <div className="overflow-x-auto">
@@ -411,7 +616,105 @@ export default function RetirementPensionPage() {
         {/* 퇴직금 커버드콜 운용 시뮬레이션 */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100">
-            <h2 className="font-semibold text-gray-900">퇴직금 커버드콜 운용 시 분배금 시뮬레이션</h2>
+            <div className="flex items-center gap-1.5">
+              <h2 className="font-semibold text-gray-900">퇴직금 커버드콜 운용 시 분배금 시뮬레이션</h2>
+              <HelpModal
+                title="퇴직금 커버드콜 운용 시 분배금"
+                lead={`정년 매입 → ${holdMonths}개월 재투자 → ${payoutAge}세부터 수령`}
+                tabs={[
+                  { key: "what", label: "이 표가 뭔가요", body: (
+                    <>
+                      <div className="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-xl px-5 py-4 text-white">
+                        <p className="font-bold text-base mb-1">퇴직금을 헐지 않고 분배금만 받는 구조</p>
+                        <p className="text-sm text-emerald-50">
+                          원금(수량)은 그대로 두고 매달 나오는 분배금만 생활비로 쓰는 시나리오입니다.
+                        </p>
+                      </div>
+
+                      <Box>
+                        <H>시간 순서</H>
+                        <div className="space-y-1.5 text-xs">
+                          <p><b className="text-gray-700">정년 {LEGAL_RETIRE_YEAR}년 {retireMonth}월</b> — 실수령 퇴직금 전액으로 KODEX 200 타겟위클리커버드콜 매입</p>
+                          <p><b className="text-gray-700">~ {payoutAge}세</b> — 분배금 전액 재투자 ({holdMonths}개월)</p>
+                          <p><b className="text-amber-600">{payoutAge}세부터</b> — 재투자를 멈추고 분배금 수령. 수량이 고정되므로 수령액이 유지됩니다</p>
+                        </div>
+                      </Box>
+
+                      <Box tone="amber">
+                        <H>왜 정년부터인가</H>
+                        <p className="text-xs text-gray-700 leading-relaxed">
+                          <b>DB형이라 정년 전에는 ETF 를 매입할 수 없습니다.</b> 회사가 적립금을 운용하므로
+                          퇴직금은 정년에 손에 들어오고, 그 전에 발생하는 분배금도 없습니다.
+                          그래서 각 행의 차이는 &ldquo;그 해 퇴직했다면 퇴직금이 얼마인가&rdquo;뿐이고,
+                          매입·재투자·수령 시점은 <b>모든 행이 같습니다.</b>
+                        </p>
+                      </Box>
+                    </>
+                  ) },
+                  { key: "cols", label: "컬럼 설명", body: (
+                    <Box>
+                      <ColTable rows={[
+                        ["투자 원금", <>그 해 퇴직 시 실수령액. 정년에 이 금액으로 매입한다고 봅니다</>],
+                        [`${payoutAge}세 평가액`, <>재투자로 불어난 금액. 주가는 현재가 고정(상승률 0%)이라
+                          세후 분배금만큼만 늘어납니다 — {holdMonths}개월이면 약 <b>{growthMultiple.toFixed(2)}배</b></>],
+                        ["월 분배금(세전)", <>평가액 × 연 분배율 ÷ 12</>],
+                        ["연 과세 대상", <>연 분배금 × 과표 비율. 실제로 세금이 붙는 금액이며,
+                          2,000만원을 넘으면 <b className="text-red-500">종합과세</b> 배지가 붙습니다</>],
+                        ["월·연 분배금(세후)", <>세전 금액에서 (과세 대상 × 15.4%)를 뺀 값</>],
+                      ]} />
+                    </Box>
+                  ) },
+                  { key: "tax", label: "세금", body: (
+                    <>
+                      <Box tone="emerald">
+                        <H>분배금 전액에 세금이 붙지 않습니다</H>
+                        <p className="text-xs text-gray-700 leading-relaxed">
+                          커버드콜 분배금은 대부분 <b>파생상품 매매이익</b>이라 국내 주식형 ETF 기준으로 비과세입니다.
+                          실제 과세 대상은 운용사가 공시하는 <b>주당 과세표준액</b>뿐이고,
+                          최근 12회 기준 분배금의 <b>{(taxBaseRatio * 100).toFixed(1)}%</b> 수준입니다.
+                        </p>
+                        <pre className="text-xs bg-white border border-emerald-200 rounded-lg p-3 overflow-x-auto text-gray-700 mt-2">{`과세 대상 = 분배금 × ${(taxBaseRatio * 100).toFixed(1)}%
+세금      = 과세 대상 × 15.4%
+실효세율  = ${(taxBaseRatio * DIVIDEND_TAX * 100).toFixed(2)}%`}</pre>
+                      </Box>
+
+                      <Box>
+                        <H>금융소득종합과세</H>
+                        <p className="text-xs text-gray-700 leading-relaxed">
+                          연 <b>과세 대상</b>이 2,000만원을 넘으면 종합과세 대상이 됩니다.
+                          분배금 전액이 아니라 과표 기준이라, 분배금이 커도 대상이 되기 어렵습니다.
+                          다만 실제 판정은 예금 이자·다른 배당을 <b>모두 합산</b>하므로
+                          이 표의 판정은 이 ETF 단독 기준입니다.
+                        </p>
+                      </Box>
+
+                      <Box tone="blue">
+                        <H>재투자도 세후 금액으로 합니다</H>
+                        <p className="text-xs text-gray-700 leading-relaxed">
+                          일반 계좌라 분배 시점에 원천징수되므로, 손에 들어온 만큼만 다시 삽니다.
+                          연금계좌처럼 과세이연이 되지 않습니다.
+                        </p>
+                      </Box>
+                    </>
+                  ) },
+                  { key: "limit", label: "⚠️ 주의", body: (
+                    <Box tone="amber">
+                      <H>⚠️ 깔려 있는 가정</H>
+                      <ul className="text-xs text-gray-700 space-y-2 list-disc pl-4 leading-relaxed">
+                        <li><b>분배율이 유지된다고 봤습니다.</b> 최근 12회 평균(연 {(ccAnnualRate * 100).toFixed(1)}%)을
+                          {holdMonths}개월 내내 곱합니다. 회차별 편차가 커서 오차가 누적됩니다.</li>
+                        <li><b>과표 비율도 유지된다고 봤습니다.</b> 회차마다 0%~16%로 흔들리고,
+                          운용사가 분배 재원 구성을 바꾸면 세금이 크게 늘 수 있습니다.</li>
+                        <li><b>주가 변동이 없습니다.</b> 떨어지면 평가액이 줄고 분배금도 함께 줍니다.</li>
+                        <li><b>상품이 청산되거나</b> 분배 정책이 바뀔 수 있습니다.</li>
+                        <li><b>물가를 반영하지 않았습니다.</b></li>
+                        <li><b>IRP 를 쓰지 않는 전제</b>라 세후 금액이 보수적입니다.</li>
+                      </ul>
+                    </Box>
+                  ) },
+                ]}
+              />
+            </div>
             <p className="text-xs text-gray-400 mt-0.5">
               정년({LEGAL_RETIRE_YEAR}년 {retireDate.getMonth() + 1}월)에 실수령 퇴직금 전액으로 KODEX 200 타겟위클리커버드콜을 매입 →
               <b className="text-gray-500"> {payoutAge}세까지 분배금 전액 재투자</b> →

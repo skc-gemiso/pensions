@@ -1,9 +1,9 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { createPortal } from "react-dom"
 import Link from "next/link"
 import AppLayout from "@/components/AppLayout"
+import HelpModal, { H, Box, ColTable } from "@/components/HelpModal"
 import { fmt, fmtKRW, cc } from "@/lib/fmt"
 import {
   getPerConfig, getPerOverview, getPerProjection,
@@ -26,278 +26,142 @@ function prevYm(ym: string): string {
 // ─────────────────────────────────────────────
 // 도움말 모달 (연금투자 시뮬레이션과 같은 ! 아이콘)
 // ─────────────────────────────────────────────
-type HelpSection = "basis" | "formula" | "limit"
-
-const H = ({ children }: { children: React.ReactNode }) =>
-  <p className="font-semibold text-gray-900 mb-1.5">{children}</p>
-
-const Box = ({ children, tone = "gray" }: { children: React.ReactNode; tone?: "gray" | "amber" | "blue" | "emerald" }) => (
-  <div className={`rounded-xl p-4 border ${
-    tone === "amber" ? "bg-amber-50 border-amber-200"
-      : tone === "blue" ? "bg-blue-50 border-blue-200"
-      : tone === "emerald" ? "bg-emerald-50 border-emerald-200"
-      : "bg-gray-50 border-gray-200"
-  }`}>{children}</div>
-)
-
-/** 컬럼 설명 표 — 헤더명과 뜻을 1:1로 보여준다 */
-const ColTable = ({ rows }: { rows: [string, React.ReactNode][] }) => (
-  <table className="w-full text-xs">
-    <tbody className="[&_td]:py-1.5 [&_td]:align-top [&_tr]:border-b [&_tr]:border-gray-200 [&_tr:last-child]:border-0">
-      {rows.map(([col, desc], i) => (
-        <tr key={i}>
-          <td className="w-28 pr-2 font-medium text-gray-800 whitespace-nowrap">{col}</td>
-          <td className="text-gray-600 leading-relaxed">{desc}</td>
-        </tr>
-      ))}
-    </tbody>
-  </table>
-)
-
-/** 페이지 제목 옆 도움말 — 파란 ! 아이콘, 화면 전체의 계산 전제를 설명한다 */
+/** 페이지 제목 옆 도움말 — 화면 전체의 계산 전제를 설명한다 */
 function PageHelpModal({ payoutAge }: { payoutAge: number }) {
-  const [open, setOpen] = useState(false)
-  const [section, setSection] = useState<HelpSection>("basis")
-
   return (
-    <>
-      <button
-        onClick={() => { setSection("basis"); setOpen(true) }}
-        title="개인연금 계산 안내"
-        className="inline-flex items-center justify-center flex-shrink-0 opacity-60 hover:opacity-100 transition-opacity"
-      >
-        <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none">
-          <circle cx="12" cy="12" r="10" stroke="#3B82F6" strokeWidth="2" fill="white" />
-          <circle cx="12" cy="8" r="1.5" fill="#3B82F6" />
-          <rect x="11" y="11" width="2" height="6" rx="1" fill="#3B82F6" />
-        </svg>
-      </button>
+    <HelpModal
+      variant="page"
+      title="개인연금 계산 안내"
+      lead="이 화면의 미래 숫자가 어떤 전제로 계산되는지"
+      tabs={[
+        { key: "basis", label: "계산 전제", body: (
+          <>
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl px-5 py-4 text-white">
+            <p className="font-bold text-base mb-1">이 화면의 미래 숫자는 전부 &ldquo;예상치&rdquo;입니다</p>
+            <p className="text-sm text-blue-100">
+              확정된 금액이 아니라, 아래 전제가 그대로 유지된다고 가정했을 때의 계산 결과입니다.
+            </p>
+          </div>
 
-      {open && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
-              <h2 className="text-base font-bold text-gray-900">개인연금 계산 안내</h2>
-              <button onClick={() => setOpen(false)} className="text-gray-500 hover:text-gray-700 text-xl leading-none">×</button>
+          <Box>
+            <H>조회 시점 값을 그대로 씁니다</H>
+            <table className="w-full text-xs">
+              <tbody className="[&_td]:py-1 [&_td:first-child]:text-gray-500 [&_td:first-child]:w-32">
+                <tr><td>보유수량</td><td className="text-gray-800">연금저축펀드 계좌의 실제 순수량</td></tr>
+                <tr><td>주가</td><td className="text-gray-800">최신 종가 (성장률 0%로 유지 가정)</td></tr>
+                <tr><td>월 분배율</td><td className="text-gray-800">최근 12회 분배율의 평균</td></tr>
+              </tbody>
+            </table>
+            <p className="text-xs text-gray-500 mt-2">
+              매수를 입력하거나 분배금이 새로 등록되면 다음 조회부터 자동 반영됩니다.
+            </p>
+          </Box>
+
+          <Box tone="amber">
+            <H>주가를 올리지 않는 이유</H>
+            <p className="text-xs text-gray-700 leading-relaxed">
+              커버드콜 ETF는 주가 상승분을 옵션으로 팔아 분배금으로 돌려주는 구조라,
+              장기적으로 주가는 크게 오르지 않고 분배금이 수익의 대부분을 차지합니다.
+              그래서 주가를 현재가로 두는 편이 실제에 가깝고 결과도 보수적으로 나옵니다.
+            </p>
+          </Box>
+
+          <Box>
+            <H>세 구간으로 나눠 계산합니다</H>
+            <div className="space-y-1.5 text-xs">
+              <p><b className="text-blue-600">적립</b> 지금 ~ 정년 — 월 적립액 + 분배금을 모두 재투자</p>
+              <p><b className="text-emerald-600">거치</b> 정년 ~ {payoutAge}세 — 적립은 멈추고 분배금만 재투자</p>
+              <p><b className="text-amber-600">수령</b> {payoutAge}세 ~ — 수량을 그대로 두고 분배금만 수령</p>
             </div>
-
-            <div className="flex gap-1 px-6 pt-3 flex-shrink-0 flex-wrap">
-              {([
-                ["basis", "계산 전제"],
-                ["formula", "산출 방법"],
-                ["limit", "⚠️ 한계와 주의"],
-              ] as const).map(([s, label]) => (
-                <button key={s} onClick={() => setSection(s)}
-                  className={`px-4 py-1.5 text-sm rounded-lg font-medium transition-colors ${
-                    section === s ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-100"
-                  }`}>{label}</button>
-              ))}
-            </div>
-
-            <div className="overflow-y-auto px-6 py-4 space-y-4 text-sm">
-              {section === "basis" && (
-                <>
-                  <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl px-5 py-4 text-white">
-                    <p className="font-bold text-base mb-1">이 화면의 미래 숫자는 전부 &ldquo;예상치&rdquo;입니다</p>
-                    <p className="text-sm text-blue-100">
-                      확정된 금액이 아니라, 아래 전제가 그대로 유지된다고 가정했을 때의 계산 결과입니다.
-                    </p>
-                  </div>
-
-                  <Box>
-                    <H>조회 시점 값을 그대로 씁니다</H>
-                    <table className="w-full text-xs">
-                      <tbody className="[&_td]:py-1 [&_td:first-child]:text-gray-500 [&_td:first-child]:w-32">
-                        <tr><td>보유수량</td><td className="text-gray-800">연금저축펀드 계좌의 실제 순수량</td></tr>
-                        <tr><td>주가</td><td className="text-gray-800">최신 종가 (성장률 0%로 유지 가정)</td></tr>
-                        <tr><td>월 분배율</td><td className="text-gray-800">최근 12회 분배율의 평균</td></tr>
-                      </tbody>
-                    </table>
-                    <p className="text-xs text-gray-500 mt-2">
-                      매수를 입력하거나 분배금이 새로 등록되면 다음 조회부터 자동 반영됩니다.
-                    </p>
-                  </Box>
-
-                  <Box tone="amber">
-                    <H>주가를 올리지 않는 이유</H>
-                    <p className="text-xs text-gray-700 leading-relaxed">
-                      커버드콜 ETF는 주가 상승분을 옵션으로 팔아 분배금으로 돌려주는 구조라,
-                      장기적으로 주가는 크게 오르지 않고 분배금이 수익의 대부분을 차지합니다.
-                      그래서 주가를 현재가로 두는 편이 실제에 가깝고 결과도 보수적으로 나옵니다.
-                    </p>
-                  </Box>
-
-                  <Box>
-                    <H>세 구간으로 나눠 계산합니다</H>
-                    <div className="space-y-1.5 text-xs">
-                      <p><b className="text-blue-600">적립</b> 지금 ~ 정년 — 월 적립액 + 분배금을 모두 재투자</p>
-                      <p><b className="text-emerald-600">거치</b> 정년 ~ {payoutAge}세 — 적립은 멈추고 분배금만 재투자</p>
-                      <p><b className="text-amber-600">수령</b> {payoutAge}세 ~ — 수량을 그대로 두고 분배금만 수령</p>
-                    </div>
-                  </Box>
-                </>
-              )}
-
-              {section === "formula" && (
-                <>
-                  <Box>
-                    <H>매월 이렇게 굴러갑니다</H>
-                    <pre className="text-xs bg-white border border-gray-200 rounded-lg p-3 overflow-x-auto text-gray-700">{`분배금 = 보유수량 × (주가 × 월 분배율)
+          </Box>
+          </>
+        ) },
+        { key: "formula", label: "산출 방법", body: (
+          <>
+          <Box>
+            <H>매월 이렇게 굴러갑니다</H>
+            <pre className="text-xs bg-white border border-gray-200 rounded-lg p-3 overflow-x-auto text-gray-700">{`분배금 = 보유수량 × (주가 × 월 분배율)
 매수액 = (적립기간이면 월 적립액) + 분배금
 보유수량 += 매수액 ÷ 주가`}</pre>
-                    <p className="text-xs text-gray-500 mt-2">
-                      분배금으로 다시 사들이므로 수량이 매달 늘고, 늘어난 수량이 다음 달 분배금을 더 키웁니다(복리).
-                    </p>
-                  </Box>
+            <p className="text-xs text-gray-500 mt-2">
+              분배금으로 다시 사들이므로 수량이 매달 늘고, 늘어난 수량이 다음 달 분배금을 더 키웁니다(복리).
+            </p>
+          </Box>
 
-                  <Box>
-                    <H>수령 시점 보유수량은 세 조각으로 나뉩니다</H>
-                    <table className="w-full text-xs">
-                      <tbody className="[&_td]:py-1 [&_td:first-child]:text-gray-500 [&_td:first-child]:w-28">
-                        <tr><td>현재</td><td className="text-gray-800">지금 계좌에 들어 있는 수량</td></tr>
-                        <tr><td>적립 매수</td><td className="text-gray-800">월 적립액 ÷ 주가 를 적립 개월만큼 더한 수량</td></tr>
-                        <tr><td>분배금 재투자</td><td className="text-gray-800">받은 분배금으로 다시 사들인 수량</td></tr>
-                      </tbody>
-                    </table>
-                    <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-                      기간이 길수록 <b>재투자分이 적립分보다 훨씬 커집니다</b> — 적립은 매달 같은 금액이지만
-                      재투자는 불어난 수량에 비례해 늘기 때문입니다. 카드 하단에 세 값을 함께 표시합니다.
-                    </p>
-                  </Box>
+          <Box>
+            <H>수령 시점 보유수량은 세 조각으로 나뉩니다</H>
+            <table className="w-full text-xs">
+              <tbody className="[&_td]:py-1 [&_td:first-child]:text-gray-500 [&_td:first-child]:w-28">
+                <tr><td>현재</td><td className="text-gray-800">지금 계좌에 들어 있는 수량</td></tr>
+                <tr><td>적립 매수</td><td className="text-gray-800">월 적립액 ÷ 주가 를 적립 개월만큼 더한 수량</td></tr>
+                <tr><td>분배금 재투자</td><td className="text-gray-800">받은 분배금으로 다시 사들인 수량</td></tr>
+              </tbody>
+            </table>
+            <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+              기간이 길수록 <b>재투자分이 적립分보다 훨씬 커집니다</b> — 적립은 매달 같은 금액이지만
+              재투자는 불어난 수량에 비례해 늘기 때문입니다. 카드 하단에 세 값을 함께 표시합니다.
+            </p>
+          </Box>
 
-                  <Box tone="blue">
-                    <H>수령액</H>
-                    <p className="text-xs text-gray-700">
-                      <b>월 수령액 = {payoutAge}세 시점 보유수량 × 주가 × 월 분배율</b>
-                    </p>
-                    <p className="text-xs text-gray-600 mt-1.5 leading-relaxed">
-                      원금(수량)을 헐지 않고 분배금만 받는 구조라 수령액이 줄지 않습니다.
-                      대신 분배율이 떨어지면 수령액도 같이 떨어집니다.
-                    </p>
-                  </Box>
+          <Box tone="blue">
+            <H>수령액</H>
+            <p className="text-xs text-gray-700">
+              <b>월 수령액 = {payoutAge}세 시점 보유수량 × 주가 × 월 분배율</b>
+            </p>
+            <p className="text-xs text-gray-600 mt-1.5 leading-relaxed">
+              원금(수량)을 헐지 않고 분배금만 받는 구조라 수령액이 줄지 않습니다.
+              대신 분배율이 떨어지면 수령액도 같이 떨어집니다.
+            </p>
+          </Box>
 
-                  <Box>
-                    <H>누적 수령 분배금은 예상이 아닙니다</H>
-                    <p className="text-xs text-gray-700 leading-relaxed">
-                      실제 지급된 분배금 이력에 각 지급기준일의 <b>해당 월 13일까지 누적 보유수량</b>을
-                      곱한 값입니다. 주식 투자 화면의 배당 팝업과 같은 기준입니다.
-                    </p>
-                  </Box>
-                </>
-              )}
+          <Box>
+            <H>누적 수령 분배금은 예상이 아닙니다</H>
+            <p className="text-xs text-gray-700 leading-relaxed">
+              실제 지급된 분배금 이력에 각 지급기준일의 <b>해당 월 13일까지 누적 보유수량</b>을
+              곱한 값입니다. 주식 투자 화면의 배당 팝업과 같은 기준입니다.
+            </p>
+          </Box>
+          </>
+        ) },
+        { key: "limit", label: "⚠️ 한계와 주의", body: (
+          <>
+          <Box tone="amber">
+            <H>⚠️ 이 숫자가 그대로 실현되지 않는 이유</H>
+            <ul className="text-xs text-gray-700 space-y-2 list-disc pl-4 leading-relaxed">
+              <li><b>분배율은 매달 다릅니다.</b> 최근에도 월 1.36%~1.53% 사이를 오갔습니다.
+                평균으로 10년 이상을 곱하면 오차가 누적됩니다.</li>
+              <li><b>주가가 떨어지면</b> 평가액이 줄고, 같은 분배율이어도 주당 분배금이 함께 줄어듭니다.</li>
+              <li><b>운용사가 분배 정책을 바꾸거나</b> 상품이 청산될 수 있습니다.</li>
+              <li><b>세금·수수료를 반영하지 않았습니다.</b> 연금저축 계좌 안에서는 과세가 이연되지만
+                실제 수령 시에는 연금소득세가 붙습니다.</li>
+              <li><b>물가를 반영하지 않았습니다.</b> {payoutAge}세의 500만원은 지금의 500만원과 가치가 다릅니다.</li>
+            </ul>
+          </Box>
 
-              {section === "limit" && (
-                <>
-                  <Box tone="amber">
-                    <H>⚠️ 이 숫자가 그대로 실현되지 않는 이유</H>
-                    <ul className="text-xs text-gray-700 space-y-2 list-disc pl-4 leading-relaxed">
-                      <li><b>분배율은 매달 다릅니다.</b> 최근에도 월 1.36%~1.53% 사이를 오갔습니다.
-                        평균으로 10년 이상을 곱하면 오차가 누적됩니다.</li>
-                      <li><b>주가가 떨어지면</b> 평가액이 줄고, 같은 분배율이어도 주당 분배금이 함께 줄어듭니다.</li>
-                      <li><b>운용사가 분배 정책을 바꾸거나</b> 상품이 청산될 수 있습니다.</li>
-                      <li><b>세금·수수료를 반영하지 않았습니다.</b> 연금저축 계좌 안에서는 과세가 이연되지만
-                        실제 수령 시에는 연금소득세가 붙습니다.</li>
-                      <li><b>물가를 반영하지 않았습니다.</b> {payoutAge}세의 500만원은 지금의 500만원과 가치가 다릅니다.</li>
-                    </ul>
-                  </Box>
-
-                  <Box tone="blue">
-                    <H>표별 자세한 설명은 따로 있습니다</H>
-                    <p className="text-xs text-gray-700 leading-relaxed">
-                      <b>퇴직 시점별 비교</b>와 <b>연도별 추이</b>는 각 표 제목 옆의
-                      <span className="mx-1 inline-flex align-middle">
-                        <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none">
-                          <circle cx="12" cy="12" r="10" stroke="#3B82F6" strokeWidth="2" fill="white" />
-                          <circle cx="12" cy="8" r="1.5" fill="#3B82F6" />
-                          <rect x="11" y="11" width="2" height="6" rx="1" fill="#3B82F6" />
-                        </svg>
-                      </span>
-                      아이콘을 누르면 컬럼 하나하나의 뜻과 읽는 요령을 볼 수 있습니다.
-                    </p>
-                  </Box>
-                </>
-              )}
-            </div>
-
-            <div className="px-6 py-3 border-t border-gray-200 flex justify-end flex-shrink-0">
-              <button onClick={() => setOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-                닫기
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-    </>
+          <Box tone="blue">
+            <H>표별 자세한 설명은 따로 있습니다</H>
+            <p className="text-xs text-gray-700 leading-relaxed">
+              <b>퇴직 시점별 비교</b>와 <b>연도별 추이</b>는 각 표 제목 옆의
+              <span className="mx-1 inline-flex align-middle">
+                <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="#3B82F6" strokeWidth="2" fill="white" />
+                  <circle cx="12" cy="8" r="1.5" fill="#3B82F6" />
+                  <rect x="11" y="11" width="2" height="6" rx="1" fill="#3B82F6" />
+                </svg>
+              </span>
+              아이콘을 누르면 컬럼 하나하나의 뜻과 읽는 요령을 볼 수 있습니다.
+            </p>
+          </Box>
+          </>
+        ) },
+      ]}
+    />
   )
 }
 
 // ─────────────────────────────────────────────
 // 표별 전용 도움말
 // ─────────────────────────────────────────────
-type HelpTab = { key: string; label: string; body: React.ReactNode }
-
-/** 표 제목 옆 "읽는 법" 버튼 + 전용 모달 껍데기 */
-function TableHelpModal({ title, lead, tabs }: {
-  title: string
-  lead: React.ReactNode
-  tabs: HelpTab[]
-}) {
-  const [open, setOpen] = useState(false)
-  const [tab, setTab] = useState(tabs[0].key)
-  const current = tabs.find(t => t.key === tab) ?? tabs[0]
-
-  return (
-    <>
-      <button
-        onClick={() => { setTab(tabs[0].key); setOpen(true) }}
-        title={`${title} 읽는 법`}
-        className="inline-flex items-center justify-center flex-shrink-0 opacity-60 hover:opacity-100 transition-opacity"
-      >
-        <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none">
-          <circle cx="12" cy="12" r="10" stroke="#3B82F6" strokeWidth="2" fill="white" />
-          <circle cx="12" cy="8" r="1.5" fill="#3B82F6" />
-          <rect x="11" y="11" width="2" height="6" rx="1" fill="#3B82F6" />
-        </svg>
-      </button>
-
-      {open && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
-            <div className="flex items-start justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
-              <div>
-                <h2 className="text-base font-bold text-gray-900">{title}</h2>
-                <p className="text-xs text-gray-500 mt-0.5">{lead}</p>
-              </div>
-              <button onClick={() => setOpen(false)}
-                className="text-gray-500 hover:text-gray-700 text-xl leading-none ml-4">×</button>
-            </div>
-
-            <div className="flex gap-1 px-6 pt-3 flex-shrink-0 flex-wrap">
-              {tabs.map(t => (
-                <button key={t.key} onClick={() => setTab(t.key)}
-                  className={`px-4 py-1.5 text-sm rounded-lg font-medium transition-colors ${
-                    tab === t.key ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-100"
-                  }`}>{t.label}</button>
-              ))}
-            </div>
-
-            <div className="overflow-y-auto px-6 py-4 space-y-4 text-sm">{current.body}</div>
-
-            <div className="px-6 py-3 border-t border-gray-200 flex justify-end flex-shrink-0">
-              <button onClick={() => setOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-                닫기
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-    </>
-  )
-}
 
 /** 퇴직 시점별 비교 전용 도움말 */
 function RetireCompareHelp({ payoutAge, retireAge, monthlyAmount }: {
@@ -306,7 +170,7 @@ function RetireCompareHelp({ payoutAge, retireAge, monthlyAmount }: {
   monthlyAmount: number
 }) {
   return (
-    <TableHelpModal
+    <HelpModal
       title="퇴직 시점별 비교"
       lead={`언제 적립을 멈추면 ${payoutAge}세 연금이 얼마나 달라지는가`}
       tabs={[
@@ -431,7 +295,7 @@ function RetireCompareHelp({ payoutAge, retireAge, monthlyAmount }: {
 /** 연도별 추이 전용 도움말 */
 function YearlyTrendHelp({ payoutAge, retireAge }: { payoutAge: number; retireAge: number }) {
   return (
-    <TableHelpModal
+    <HelpModal
       title="연도별 추이"
       lead="지금부터 수령 시작까지, 수량이 어떻게 불어나는지"
       tabs={[

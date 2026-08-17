@@ -197,16 +197,14 @@ JOIN my_stock ms
 미래 숫자가 확정값으로 읽히지 않도록 세 종류의 도움말을 둔다.
 표 제목에는 `예상치` 앰버 배지를 함께 붙인다.
 
-| 컴포넌트 | 위치 | 아이콘 | 탭 |
-|----------|------|--------|-----|
-| `PageHelpModal` | 페이지 제목 옆 | 파란 `!` 원 (24px) | 계산 전제 / 산출 방법 / ⚠️ 한계와 주의 |
-| `RetireCompareHelp` | 퇴직 시점별 비교 헤더 | 파란 `!` 원 (16px) | 이 표가 뭔가요 / 컬럼 설명 / 읽는 법 / ⚠️ 주의 |
-| `YearlyTrendHelp` | 연도별 추이 헤더 | 파란 `!` 원 (16px) | 이 표가 뭔가요 / 컬럼 설명 / 읽는 법 / ⚠️ 주의 |
+공용 컴포넌트 [components/HelpModal.tsx](../../../components/HelpModal.tsx) 위에 내용만 얹는다.
+사용법은 [environment.md](../../environment.md) 공용 도움말 절 참고.
 
-도움말 아이콘은 화면 전체에서 **파란 `!` 원 하나로 통일**한다.
-크기만 위치에 따라 다르다 (페이지 제목 24px / 표 헤더·`/sim` ETF 설명 16px).
+| 래퍼 | 위치 | variant | 탭 |
+|------|------|---------|-----|
+| `PageHelpModal` | 페이지 제목 옆 | `page` (24px) | 계산 전제 / 산출 방법 / ⚠️ 한계와 주의 |
+| `RetireCompareHelp` | 퇴직 시점별 비교 헤더 | `section` (16px) | 이 표가 뭔가요 / 컬럼 설명 / 읽는 법 / ⚠️ 주의 |
+| `YearlyTrendHelp` | 연도별 추이 헤더 | `section` (16px) | 이 표가 뭔가요 / 컬럼 설명 / 읽는 법 / ⚠️ 주의 |
 
 - `PageHelpModal` 은 화면 전체의 계산 전제를 다루고, 표별 상세는 각 전용 도움말로 넘긴다
-- 표별 도움말은 공용 껍데기 `TableHelpModal({ title, lead, tabs })` 위에 내용만 얹는다
-- 공유 프리미티브: `H`(소제목) · `Box`(gray/amber/blue/emerald 톤) · `ColTable`(컬럼명↔뜻 표)
-- 파란 `!` 아이콘 SVG 는 `/sim` 의 `PageHelpModal` 과 동일하다
+- 아이콘은 전 화면 공통 파란 `!` 원이다 (`/sim` ETF 설명 팝오버와 같은 SVG)
