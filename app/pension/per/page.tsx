@@ -187,16 +187,14 @@ function PageHelpModal({ payoutAge }: { payoutAge: number }) {
                     <H>표별 자세한 설명은 따로 있습니다</H>
                     <p className="text-xs text-gray-700 leading-relaxed">
                       <b>퇴직 시점별 비교</b>와 <b>연도별 추이</b>는 각 표 제목 옆의
-                      <span className="mx-1 inline-flex items-center gap-0.5 align-middle text-[11px] text-gray-500">
-                        <svg viewBox="0 0 24 24" className="w-3 h-3" fill="none">
-                          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
-                          <path d="M9.2 9a2.9 2.9 0 1 1 3.4 3.4v1.3" stroke="currentColor" strokeWidth="2"
-                            strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                          <circle cx="12" cy="17" r="1.1" fill="currentColor" />
+                      <span className="mx-1 inline-flex align-middle">
+                        <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none">
+                          <circle cx="12" cy="12" r="10" stroke="#3B82F6" strokeWidth="2" fill="white" />
+                          <circle cx="12" cy="8" r="1.5" fill="#3B82F6" />
+                          <rect x="11" y="11" width="2" height="6" rx="1" fill="#3B82F6" />
                         </svg>
-                        <span className="underline underline-offset-2">읽는 법</span>
                       </span>
-                      을 누르면 컬럼 하나하나의 뜻과 읽는 요령을 볼 수 있습니다.
+                      아이콘을 누르면 컬럼 하나하나의 뜻과 읽는 요령을 볼 수 있습니다.
                     </p>
                   </Box>
                 </>
@@ -237,15 +235,13 @@ function TableHelpModal({ title, lead, tabs }: {
       <button
         onClick={() => { setTab(tabs[0].key); setOpen(true) }}
         title={`${title} 읽는 법`}
-        className="inline-flex items-center gap-1 flex-shrink-0 text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+        className="inline-flex items-center justify-center flex-shrink-0 opacity-60 hover:opacity-100 transition-opacity"
       >
-        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none">
-          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
-          <path d="M9.2 9a2.9 2.9 0 1 1 3.4 3.4v1.3" stroke="currentColor" strokeWidth="2"
-            strokeLinecap="round" strokeLinejoin="round" fill="none" />
-          <circle cx="12" cy="17" r="1.1" fill="currentColor" />
+        <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none">
+          <circle cx="12" cy="12" r="10" stroke="#3B82F6" strokeWidth="2" fill="white" />
+          <circle cx="12" cy="8" r="1.5" fill="#3B82F6" />
+          <rect x="11" y="11" width="2" height="6" rx="1" fill="#3B82F6" />
         </svg>
-        <span className="underline underline-offset-2">읽는 법</span>
       </button>
 
       {open && createPortal(
