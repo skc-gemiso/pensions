@@ -1663,6 +1663,53 @@ export default function SavingsFundPage() {
   const [ipBlocked, setIpBlocked]     = useState(false)
   const [showDivModal, setShowDivModal] = useState(false)
   const [divHistory, setDivHistory]     = useState<EtfDividendRow[]>([])
+  const [prefilled, setPrefilled]       = useState(false)
+
+  // 개인연금(/pension/per)에서 "지금 기준 그대로" 넘어온 경우 입력값을 채운다.
+  // useSearchParams 대신 location 을 읽어 Suspense 경계 없이 클라이언트에서만 처리한다.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search)
+    if (sp.get("from") !== "per") return
+
+    const num = (k: string): number | null => {
+      const raw = sp.get(k)
+      if (raw === null) return null
+      const n = Number(raw)
+      return Number.isFinite(n) ? n : null
+    }
+
+    setInputs(prev => {
+      const base = prev["reference"]
+      if (!base) return prev
+
+      const next: InputValues = { ...base }
+      const initDeposit   = num("initDeposit")
+      const monthlyPmt    = num("monthlyPmt")
+      const accumMonths   = num("accumMonths")
+      const retirementAge = num("retirementAge")
+      const ccAnnualRate  = num("ccAnnualRate")
+      const birthdate     = sp.get("birthdate")
+
+      if (initDeposit   != null) next.initDeposit   = Math.round(initDeposit)
+      if (monthlyPmt    != null) next.monthlyPmt    = Math.round(monthlyPmt)
+      if (accumMonths   != null) next.accumMonths   = Math.round(accumMonths)
+      if (retirementAge != null) next.retirementAge = Math.round(retirementAge)
+      if (ccAnnualRate  != null) next.ccAnnualRate  = ccAnnualRate
+      if (birthdate && /^\d{4}-\d{2}-\d{2}$/.test(birthdate)) next.birthdate = birthdate
+
+      // 보관 기간은 생년월일·적립 기간·수령 나이에서 다시 계산한다
+      const ageMonths = birthdateToAgeMonths(next.birthdate)
+      const holdMonths = num("holdMonths")
+      next.holdMonths = ageMonths != null
+        ? calcHoldMonths(next.retirementAge ?? 55, next.accumMonths, ageMonths)
+        : (holdMonths != null ? Math.round(holdMonths) : next.holdMonths)
+
+      return { ...prev, reference: next }
+    })
+
+    setActiveId("reference")
+    setPrefilled(true)
+  }, [])
 
   // role이 결정되면 첫 번째 visible 탭으로 맞춤
   useEffect(() => {
@@ -1875,6 +1922,22 @@ export default function SavingsFundPage() {
           </div>
           <p className="text-gray-500 text-sm">퇴직 시점 연금 시뮬레이션 (KODEX200 ETF vs KODEX200 타겟위클리커버드콜 ETF)</p>
         </div>
+
+        {/* 개인연금에서 기준을 가져온 경우 */}
+        {prefilled && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-start gap-3">
+            <span className="text-blue-500 text-lg flex-shrink-0">📈</span>
+            <div className="text-sm text-blue-800 flex-1">
+              <p className="font-semibold mb-0.5">개인연금 화면의 기준을 그대로 불러왔습니다.</p>
+              <p className="text-xs text-blue-600">
+                초기 입금은 현재 평가액, 월 납입금·적립 기간·수령 나이·배당률은 개인연금 설정 값입니다.
+                아래 <b>입력 값 수정</b>에서 조건을 바꿔 비교해 보세요.
+              </p>
+            </div>
+            <button onClick={() => setPrefilled(false)}
+              className="text-blue-400 hover:text-blue-600 text-lg leading-none flex-shrink-0">×</button>
+          </div>
+        )}
 
         {/* IP 사용 한도 초과 안내 */}
         {ipBlocked && (

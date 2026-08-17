@@ -53,6 +53,27 @@ holdMonths = max(0, retirementAge × 12 − currentAgeMonths − accumMonths)
 
 생년월일이 입력되면 탭 변경·적립기간·수령나이 수정 시 자동 재계산.
 
+### 개인연금에서 기준 넘겨받기 (`?from=per`)
+
+개인연금(`/pension/per`) 하단 빠른 이동 링크는 현재 기준을 쿼리스트링으로 넘긴다.
+`/sim` 은 마운트 시 1회 `window.location.search` 를 읽어 `reference` 탭 입력을 채우고,
+파란 안내 배너를 띄운다 (`prefilled` state, × 로 닫힘).
+
+| 쿼리 | → `InputValues` | 개인연금 쪽 출처 |
+|------|-----------------|------------------|
+| `initDeposit` | `initDeposit` | 현재 평가액 `ov.value` |
+| `monthlyPmt` | `monthlyPmt` | `PENSION_PER_MONTHLY_AMOUNT` |
+| `accumMonths` | `accumMonths` | `pj.base.accumMonths` |
+| `retirementAge` | `retirementAge` | `PENSION_PER_PAYOUT_AGE` |
+| `birthdate` | `birthdate` | `PROFILE_BIRTH_DATE` |
+| `ccAnnualRate` | `ccAnnualRate` | 월 분배율 × 12 |
+| `holdMonths` | (생년월일 없을 때만) | `pj.base.holdMonths` |
+
+- `holdMonths` 는 넘어온 값을 쓰지 않고 위의 자동 계산식으로 다시 구한다.
+  두 화면의 개월 수 계산이 일치하므로 결과는 같다 (2026-08 기준 적립 95 · 보관 35).
+- `useSearchParams` 대신 `window.location.search` 를 쓴다 — Suspense 경계 없이 처리하기 위함.
+- `from=per` 가 없으면 아무 동작도 하지 않는다.
+
 ---
 
 ## 핵심 계산 로직

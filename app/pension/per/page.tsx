@@ -645,6 +645,20 @@ export default function PersonalPensionPage() {
   // 마지막으로 적립하는 달 (= 정년이 속한 달). pj.retireYm 은 그 다음 달이라 헷갈린다
   const accumEndYm = pj ? pj.retireDate.slice(0, 7) : ""
 
+  // 연금저축펀드 시뮬레이션으로 현재 기준을 그대로 넘긴다 (/sim 이 from=per 를 읽어 채운다)
+  const simHref = config && profile && ov && pj
+    ? `/sim?${new URLSearchParams({
+        from: "per",
+        initDeposit: String(ov.value),                       // 현재 평가액을 초기 입금으로
+        monthlyPmt: String(config.monthly_amount),
+        accumMonths: String(pj.base.accumMonths),
+        holdMonths: String(pj.base.holdMonths),
+        retirementAge: String(config.payout_age),
+        birthdate: profile.birth_date,
+        ccAnnualRate: (ov.monthly_rate * 12).toFixed(4),     // 월 분배율 → 연 환산
+      })}`
+    : "/sim"
+
   return (
     <AppLayout>
       <div className="max-w-7xl mx-auto px-4 py-4">
@@ -926,13 +940,14 @@ export default function PersonalPensionPage() {
               </div>
             </div>
 
-            {/* ── 빠른 이동 ── */}
+            {/* ── 빠른 이동 ── 현재 기준을 쿼리로 넘겨 시뮬레이션을 미리 채운다 */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
-                { href: "/sim", title: "연금저축펀드 시뮬레이션", desc: "납입·수익률 조건을 바꿔 비교", icon: "📈" },
+                { href: simHref, title: "연금저축펀드 시뮬레이션",
+                  desc: "지금 기준을 그대로 가져가 조건만 바꿔 비교", icon: "📈" },
                 { href: "/magic", title: "복리의 마법", desc: "복리 수익 시뮬레이션", icon: "✨" },
               ].map(item => (
-                <Link key={item.href} href={item.href}
+                <Link key={item.title} href={item.href}
                   className="flex items-center gap-3 bg-white rounded-lg border border-gray-200 p-4 hover:border-purple-300 hover:bg-purple-50 transition-colors">
                   <span className="text-2xl">{item.icon}</span>
                   <div>

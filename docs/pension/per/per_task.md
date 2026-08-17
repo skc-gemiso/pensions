@@ -173,6 +173,25 @@ JOIN my_stock ms
 
 ---
 
+## 시뮬레이션으로 기준 넘기기
+
+하단 빠른 이동의 `연금저축펀드 시뮬레이션` 링크는 `/sim?from=per&...` 형태로
+현재 기준을 쿼리에 담아 보낸다 (`simHref`). 받는 쪽 규격은
+[sim_task.md](../../sim/sim_task.md) `개인연금에서 기준 넘겨받기` 절 참고.
+
+| 쿼리 | 값 |
+|------|-----|
+| `initDeposit` | 현재 평가액 `ov.value` |
+| `monthlyPmt` | 월 적립액 |
+| `accumMonths` · `holdMonths` | `pj.base` 의 적립·거치 개월 |
+| `retirementAge` | 수령 개시 나이 |
+| `birthdate` | 프로필 생년월일 |
+| `ccAnnualRate` | 월 분배율 × 12 |
+
+데이터 로딩 전(`config`·`profile`·`ov`·`pj` 중 하나라도 null)에는 파라미터 없이 `/sim` 으로만 보낸다.
+
+---
+
 ## 도움말 컴포넌트 (`app/pension/per/page.tsx`)
 
 미래 숫자가 확정값으로 읽히지 않도록 세 종류의 도움말을 둔다.
