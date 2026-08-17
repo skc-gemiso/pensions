@@ -155,6 +155,9 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 | 매입/매도 내역 추가 | my_stock에 거래 내역 입력 (구분/일자 달력/t_stock_list 종목 검색/유형/단가/수량) |
 | 거래 내역 조회·삭제 | 전체 거래 내역 테이블 + 개별 삭제 |
 | 매입 내역 호버 툴팁 | 보유 종목 행 호버 시 매입일·수량·매입가·현재가·수익률 툴팁 표시 |
+| 계좌 입출금 관리 | `my_account` 계좌별 입출금 내역 조회·입력 |
+| 배당 수익률 조회 | `498400` 전용 팝업 — 분배율 요약, 13일 기산 계좌별 예상 분배금, 지급 이력 테이블 |
+| 분배금 추가 | 배당 팝업에서 `t_etf_dividend` 1건 등록. 엑셀 행 붙여넣기로 5개 항목 자동 분리 입력 |
 
 - 참고 파일: [app/assets/stock/page.tsx](../app/assets/stock/page.tsx), [app/assets/stock/actions.ts](../app/assets/stock/actions.ts)
 - 리다이렉트: [app/assets/page.tsx](../app/assets/page.tsx) → `/assets/stock`

@@ -511,6 +511,48 @@ export async function getMonthlyDividendByAccount(stockCode: string): Promise<Mo
   })
 }
 
+/**
+ * 분배금 1건 등록. PK가 (stock_code, ref_date) 라 같은 지급기준일은 중복 등록할 수 없다.
+ * 덮어쓰면 기존 이력이 조용히 바뀌므로 UPSERT 대신 예외를 던진다.
+ */
+export async function addEtfDividend(data: {
+  stock_code: string
+  ref_date: string           // YYYY-MM-DD
+  pay_date?: string | null
+  dist_rate?: number | null
+  dist_amt?: number | null
+  tax_base_amt?: number | null
+}): Promise<void> {
+  const session = await auth()
+  if (!session?.user) throw new Error("Unauthorized")
+
+  if (!data.stock_code) throw new Error("종목코드가 없습니다.")
+  if (!data.ref_date) throw new Error("지급기준일을 입력하세요.")
+
+  const db = getPensionPool()
+  const { rows } = await db.query(
+    `SELECT 1 FROM t_etf_dividend WHERE stock_code = $1 AND ref_date = $2::date`,
+    [data.stock_code, data.ref_date]
+  )
+  if (rows.length > 0) {
+    throw new Error(`이미 등록된 지급기준일입니다 (${data.ref_date}).`)
+  }
+
+  await db.query(
+    `INSERT INTO t_etf_dividend
+       (stock_code, ref_date, pay_date, dist_rate, dist_amt, tax_base_amt)
+     VALUES ($1, $2::date, $3::date, $4, $5, $6)`,
+    [
+      data.stock_code,
+      data.ref_date,
+      data.pay_date || null,
+      data.dist_rate ?? null,
+      data.dist_amt ?? null,
+      data.tax_base_amt ?? null,
+    ]
+  )
+}
+
 type SiseRow = { date: string; close: number; e_amt: number; e_rate: number; e_trade: number }
 
 // sise_day.naver 1페이지 스크래핑 (EUC-KR 디코딩 + HTML 파싱)

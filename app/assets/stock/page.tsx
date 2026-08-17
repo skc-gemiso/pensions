@@ -12,7 +12,7 @@ const won = (n: number | null | undefined) => n == null ? "-" : `${fmt(n)}원`
 import {
   getAccounts, getHoldings, getTransactions, addTransaction, deleteTransaction,
   getDailyPrices, fetchAndSaveNaverPrices, searchStockList, getMarketIndices, getDefaultStockList,
-  getAccountInfo, addAccountInfo, getMonthlyDividendByAccount,
+  getAccountInfo, addAccountInfo, getMonthlyDividendByAccount, addEtfDividend,
   type Account, type StockHolding, type StockTransaction, type DailyPrice, type StockListItem, type MarketIndex, type AccountInfo, type MonthlyAccountDiv,
 } from "./actions"
 import { getEtfDividendHistory, type EtfDividendRow } from "@/app/sim/actions"
@@ -44,6 +44,71 @@ const EMPTY_FORM: FormState = {
   s_amt: "",
 }
 
+// 배당 팝업 전용 종목 (KODEX 200타겟위클리커버드콜)
+const DIV_STOCK_CODE = "498400"
+
+type DivFormState = {
+  ref_date: string
+  pay_date: string
+  dist_rate: string
+  dist_amt: string
+  tax_base_amt: string
+}
+
+const EMPTY_DIV_FORM: DivFormState = {
+  ref_date: "",
+  pay_date: "",
+  dist_rate: "",
+  dist_amt: "",
+  tax_base_amt: "",
+}
+
+/** "26.08.14" · "2026-08-14" · "2026/8/14" → "2026-08-14" (input[type=date] 형식). 실패 시 "" */
+function parseDateToken(token: string): string {
+  const m = token.trim().replace(/\.$/, "").match(/^(\d{2}|\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})$/)
+  if (!m) return ""
+  const year = m[1].length === 2 ? 2000 + Number(m[1]) : Number(m[1])
+  const mm = String(Number(m[2])).padStart(2, "0")
+  const dd = String(Number(m[3])).padStart(2, "0")
+  if (Number(mm) < 1 || Number(mm) > 12 || Number(dd) < 1 || Number(dd) > 31) return ""
+  return `${year}-${mm}-${dd}`
+}
+
+/** "1.36%" → "1.36", "1,234" → "1234" */
+function parseNumToken(token: string): string {
+  return token.replace(/[%,\s]/g, "").trim()
+}
+
+/**
+ * 엑셀·표에서 복사한 한 행을 분배금 입력값으로 변환.
+ * 열 순서: 지급기준일 / 실지급일 / 분배율 / 주당 분배금 / 과세표준액
+ *   예) "26.08.14\t26.08.19\t1.36%\t270\t3"
+ */
+function parseDividendPaste(text: string): { form: DivFormState; rowCount: number } | null {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+  if (lines.length === 0) return null
+
+  // 탭 우선. 탭이 없으면 2칸 이상 공백, 그것도 없으면 단일 공백으로 분리한다.
+  // 빈 칸이 그대로 열 위치를 지키도록 filter 는 하지 않는다.
+  let cols = lines[0].split("\t")
+  if (cols.length < 2) cols = lines[0].split(/\s{2,}/)
+  if (cols.length < 2) cols = lines[0].split(/\s+/)
+  cols = cols.map(c => c.trim())
+
+  const distAmt = parseNumToken(cols[3] ?? "")
+  const taxAmt = parseNumToken(cols[4] ?? "")
+  return {
+    rowCount: lines.length,
+    form: {
+      ref_date:     parseDateToken(cols[0] ?? ""),
+      pay_date:     parseDateToken(cols[1] ?? ""),
+      dist_rate:    parseNumToken(cols[2] ?? ""),
+      dist_amt:     distAmt ? Number(distAmt).toLocaleString("ko-KR") : "",
+      tax_base_amt: taxAmt ? Number(taxAmt).toLocaleString("ko-KR") : "",
+    },
+  }
+}
+
 const CHART_PERIODS = [
   { label: "1개월", days: 30 },
   { label: "3개월", days: 90 },
@@ -69,6 +134,11 @@ export default function StockPage() {
   const [showDivModal, setShowDivModal]   = useState(false)
   const [divHistory, setDivHistory]       = useState<EtfDividendRow[]>([])
   const [monthlyAcctDiv, setMonthlyAcctDiv] = useState<MonthlyAccountDiv[]>([])
+  const [showDivForm, setShowDivForm]     = useState(false)
+  const [divForm, setDivForm]             = useState(EMPTY_DIV_FORM)
+  const [divSaving, setDivSaving]         = useState(false)
+  const [divError, setDivError]           = useState<string | null>(null)
+  const [divPasteInfo, setDivPasteInfo]   = useState<string | null>(null)
   const [transactions, setTransactions]   = useState<StockTransaction[]>([])
   const [txLoading, setTxLoading]         = useState(false)
   const [tooltip, setTooltip]             = useState<{ code: string; account_no: string; x: number; y: number } | null>(null)
@@ -136,6 +206,63 @@ export default function StockPage() {
   // t_stock_list default_yn='Y' 기준 전체 수집
   // codeToLoad: daily prices 로드할 종목코드 (state의 selectedCode 대신)
   // silent: true면 완료 alert 생략
+  // 분배금 이력 + 계좌별 환산을 함께 다시 읽는다 (둘 다 t_etf_dividend 기준)
+  async function reloadDividend() {
+    const [data, acctDiv] = await Promise.all([
+      getEtfDividendHistory(DIV_STOCK_CODE),
+      getMonthlyDividendByAccount(DIV_STOCK_CODE),
+    ])
+    setDivHistory(data)
+    setMonthlyAcctDiv(acctDiv)
+  }
+
+  // 폼 안 어디에 붙여넣어도 한 행을 5개 입력칸으로 나눠 채운다
+  function handleDividendPaste(e: React.ClipboardEvent<HTMLDivElement>) {
+    const text = e.clipboardData.getData("text")
+    if (!text.trim()) return
+    const parsed = parseDividendPaste(text)
+    if (!parsed) return
+
+    e.preventDefault()
+    setDivForm(parsed.form)
+    setDivError(null)
+
+    const missing: string[] = []
+    if (!parsed.form.ref_date) missing.push("지급기준일")
+    if (!parsed.form.pay_date) missing.push("실지급일")
+
+    if (missing.length > 0) {
+      setDivPasteInfo(`붙여넣기 완료 — ${missing.join("·")}은(는) 형식을 알아보지 못해 비워뒀습니다.`)
+    } else if (parsed.rowCount > 1) {
+      setDivPasteInfo(`${parsed.rowCount}행 중 첫 행만 입력했습니다.`)
+    } else {
+      setDivPasteInfo("붙여넣기 완료")
+    }
+  }
+
+  async function handleAddDividend() {
+    if (!divForm.ref_date) { setDivError("지급기준일을 입력하세요."); return }
+    setDivSaving(true)
+    setDivError(null)
+    try {
+      await addEtfDividend({
+        stock_code:   DIV_STOCK_CODE,
+        ref_date:     divForm.ref_date,
+        pay_date:     divForm.pay_date || null,
+        dist_rate:    divForm.dist_rate    === "" ? null : Number(divForm.dist_rate),
+        dist_amt:     divForm.dist_amt     === "" ? null : Number(divForm.dist_amt.replace(/,/g, "")),
+        tax_base_amt: divForm.tax_base_amt === "" ? null : Number(divForm.tax_base_amt.replace(/,/g, "")),
+      })
+      await reloadDividend()
+      setDivForm(EMPTY_DIV_FORM)
+      setDivPasteInfo(null)
+      setShowDivForm(false)
+    } catch (e) {
+      setDivError(e instanceof Error ? e.message : "분배금을 추가하지 못했습니다.")
+    }
+    setDivSaving(false)
+  }
+
   async function handleFetchNaver(codeToLoad?: string | null, silent = false) {
     setFetchingNaver(true)
     try {
@@ -396,14 +523,7 @@ export default function StockPage() {
                   {selectedCode === "498400" && (
                     <button
                       onClick={async () => {
-                        if (divHistory.length === 0) {
-                          const [data, acctDiv] = await Promise.all([
-                            getEtfDividendHistory("498400"),
-                            getMonthlyDividendByAccount("498400"),
-                          ])
-                          setDivHistory(data)
-                          setMonthlyAcctDiv(acctDiv)
-                        }
+                        if (divHistory.length === 0) await reloadDividend()
                         setShowDivModal(true)
                       }}
                       className="text-xs px-3 py-1.5 border border-amber-400 text-amber-700 bg-amber-50 rounded-lg hover:bg-amber-100 whitespace-nowrap font-medium"
@@ -945,6 +1065,96 @@ export default function StockPage() {
                     )}
                   </div>
                 )}
+                {/* 분배금 추가 */}
+                <div className="px-5 py-2 border-b border-gray-200 bg-white">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-gray-600">분배금 지급 이력</span>
+                    <button
+                      onClick={() => { setShowDivForm(v => !v); setDivError(null); setDivPasteInfo(null) }}
+                      className="text-xs px-3 py-1 border border-amber-400 text-amber-700 bg-amber-50 rounded-lg hover:bg-amber-100 font-medium"
+                    >
+                      {showDivForm ? "닫기" : "+ 분배금 추가"}
+                    </button>
+                  </div>
+
+                  {showDivForm && (
+                    <div className="mt-2 p-3 bg-amber-50/60 border border-amber-200 rounded-lg" onPaste={handleDividendPaste}>
+                      <p className="text-xs text-gray-500 mb-2">
+                        엑셀에서 복사한 행을 이 영역 아무 곳에나 붙여넣으면 자동으로 나뉩니다 —
+                        <span className="ml-1 font-mono text-gray-600">26.08.14 ⇥ 26.08.19 ⇥ 1.36% ⇥ 270 ⇥ 3</span>
+                      </p>
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 mb-1">지급기준일 <span className="text-red-400">*</span></label>
+                          <input
+                            type="date"
+                            className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            value={divForm.ref_date}
+                            onChange={e => setDivForm(f => ({ ...f, ref_date: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 mb-1">실지급일</label>
+                          <input
+                            type="date"
+                            className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            value={divForm.pay_date}
+                            onChange={e => setDivForm(f => ({ ...f, pay_date: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 mb-1">분배율(%)</label>
+                          <input
+                            type="text" inputMode="decimal" placeholder="1.53"
+                            className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            value={divForm.dist_rate}
+                            onChange={e => setDivForm(f => ({ ...f, dist_rate: e.target.value.replace(/[^0-9.]/g, "") }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 mb-1">주당 분배금(원)</label>
+                          <input
+                            type="text" inputMode="numeric" placeholder="323"
+                            className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            value={divForm.dist_amt}
+                            onChange={e => {
+                              const raw = e.target.value.replace(/[^0-9]/g, "")
+                              setDivForm(f => ({ ...f, dist_amt: raw ? Number(raw).toLocaleString("ko-KR") : "" }))
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 mb-1">과세표준액(원)</label>
+                          <input
+                            type="text" inputMode="numeric" placeholder="1"
+                            className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            value={divForm.tax_base_amt}
+                            onChange={e => {
+                              const raw = e.target.value.replace(/[^0-9]/g, "")
+                              setDivForm(f => ({ ...f, tax_base_amt: raw ? Number(raw).toLocaleString("ko-KR") : "" }))
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {divError && <p className="text-xs text-red-500 mt-2">{divError}</p>}
+                      {!divError && divPasteInfo && <p className="text-xs text-emerald-600 mt-2">{divPasteInfo}</p>}
+
+                      <div className="flex justify-end gap-2 mt-3">
+                        <button
+                          onClick={() => { setShowDivForm(false); setDivForm(EMPTY_DIV_FORM); setDivError(null); setDivPasteInfo(null) }}
+                          className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                        >취소</button>
+                        <button
+                          onClick={handleAddDividend}
+                          disabled={divSaving}
+                          className="px-3 py-1.5 text-xs font-medium text-white bg-amber-500 rounded-lg hover:bg-amber-600 disabled:opacity-50"
+                        >{divSaving ? "저장 중..." : "저장"}</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* 테이블 */}
                 <div className="overflow-y-auto flex-1">
                   <div className="overflow-x-auto">

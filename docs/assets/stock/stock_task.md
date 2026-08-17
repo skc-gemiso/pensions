@@ -56,6 +56,23 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `listed_shares` | 상장주식수 (정렬 기준) |
 | `default_yn` | 빈 검색 시 인기 종목 여부 (`'Y'`) |
 
+### `t_etf_dividend` — ETF 분배금 지급 이력
+
+배당 수익률 팝업의 데이터 원천. 월 1건씩 쌓인다.
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| `stock_code` | VARCHAR(20) NOT NULL | 종목코드 (PK) |
+| `ref_date` | DATE NOT NULL | 지급기준일 (PK) |
+| `pay_date` | DATE | 실지급일 |
+| `dist_rate` | NUMERIC(6,2) | 분배율(%) — 운용사 공시값을 그대로 입력 |
+| `dist_amt` | NUMERIC(10,0) | 주당 분배금(원) |
+| `tax_base_amt` | NUMERIC(10,0) | 주당 과세표준액(원) |
+| `created_at` / `updated_at` | TIMESTAMPTZ | |
+
+- PK `(stock_code, ref_date)` → 같은 기준일 중복 등록 불가
+- 조회는 `getEtfDividendHistory` (`app/sim/actions.ts`), 계좌별 환산은 `getMonthlyDividendByAccount`
+
 ---
 
 ## 서버 액션 (`app/assets/stock/actions.ts`)
@@ -75,6 +92,7 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `getAccountInfo()` | 계좌 입출금 내역 (`my_account_info` + `my_account` JOIN) | 세션 필요 |
 | `addAccountInfo(data)` | 계좌 입출금 내역 INSERT (`account_no`, `trade_date`, `in_out`, `amt`, `memo`) | 세션 필요 |
 | `getMonthlyDividendByAccount(stockCode)` | 분배금 지급기준일별 계좌 보유수량·분배금·세금. 각 기준일의 **해당 월 13일까지 누적 순수량** 기준 | 세션 필요 |
+| `addEtfDividend(data)` | `t_etf_dividend` 1건 INSERT. 같은 `(stock_code, ref_date)` 가 이미 있으면 덮어쓰지 않고 예외 — 배당 팝업의 `[+ 분배금 추가]` 에서 호출 | 세션 필요 |
 
 ### 타입 정의
 
