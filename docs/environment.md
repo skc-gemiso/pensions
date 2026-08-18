@@ -53,10 +53,9 @@ pensions/
 │   │   │   ├── page.tsx                  국민연금
 │   │   │   └── actions.ts               국민연금 스냅샷 CRUD
 │   │   ├── ret/page.tsx                  퇴직연금
-│   │   ├── per/
-│   │   │   ├── page.tsx                  개인연금 (수령액 시뮬레이션 + 표별 도움말)
-│   │   │   └── actions.ts               개인연금 설정·현황·시뮬레이션 Server Actions
-│   │   └── seni/page.tsx                노령연금 (진행 중)
+│   │   └── per/
+│   │       ├── page.tsx                  개인연금 (수령액 시뮬레이션 + 표별 도움말)
+│   │       └── actions.ts               개인연금 설정·현황·시뮬레이션 Server Actions
 │   ├── invest/
 │   │   ├── page.tsx                      /invest/etf 리다이렉트
 │   │   ├── etf/                          글로벌 ETF — page/holdings/recommend/analysis + actions.ts
@@ -85,7 +84,7 @@ pensions/
 │   ├── RichEditor.tsx                    쇼핑 본문 리치 에디터 (TipTap)
 │   └── Providers.tsx                    세션 Provider
 ├── lib/
-│   ├── auth-db.ts                        인증 DB + 스키마 마이그레이션 (v001~v026, v027·v028 철회)
+│   ├── auth-db.ts                        인증 DB + 스키마 마이그레이션 (v001~v029, v027·v028 철회)
 │   ├── pension-db.ts                    Supabase DB Pool 싱글턴 (전 화면 공용)
 │   ├── guard.ts                          접근 통제 — requireUser / requireAdmin / guardApi
 │   ├── settings.ts                       환경 변수로 관리하는 개인 설정 (PROFILE_* / PENSION_PER_*)
@@ -146,7 +145,7 @@ import HelpModal, { H, Box, ColTable } from "@/components/HelpModal"
 - NextAuth v5 — **Google OAuth + Credentials** 두 Provider
 - JWT 세션 (`strategy: "jwt"`, `maxAge` 30일): 사용자명(name), 역할(role), 메뉴 권한이 JWT에 포함
 - DB 기반 사용자·메뉴 관리 (`lib/auth-db.ts`) — 로그인 시 `ensureMigrations()` 가 실행돼
-  스키마 마이그레이션(v001~v022)이 적용된다
+  스키마 마이그레이션이 적용된다
 
 ### 역할(role)
 

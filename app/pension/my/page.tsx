@@ -13,15 +13,6 @@ const OTHER_NAV_CARDS = [
     btnColor: "bg-purple-100 hover:bg-purple-200 text-purple-500",
     icon: "💼",
   },
-  {
-    href: "/pension/seni",
-    title: "노령연금",
-    desc: "수급 조건 및 수령 예상",
-    bg: "bg-orange-50 border-orange-200",
-    iconColor: "text-orange-600",
-    btnColor: "bg-orange-100 hover:bg-orange-200 text-orange-500",
-    icon: "🌅",
-  },
 ]
 
 export default function DashboardPage() {

@@ -2,7 +2,7 @@
 
 ## 프로젝트 목적
 
-개인 연금(국민연금·퇴직연금·개인연금·노령연금)의 현황을 한 곳에서 파악하고,
+개인 연금(국민연금·퇴직연금·개인연금)의 현황을 한 곳에서 파악하고,
 ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계획을 수립하는 웹 애플리케이션.
 
 ---
@@ -15,8 +15,7 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
     ├── /pension/my              대시보드 (각 연금 네비게이션)
     ├── /pension/nat             국민연금
     ├── /pension/ret             퇴직연금
-    ├── /pension/per             개인연금 (연금저축펀드 수령액 시뮬레이션)
-    └── /pension/seni            노령연금 (진행 중)
+    └── /pension/per             개인연금 (연금저축펀드 수령액 시뮬레이션)
 /sim                             연금투자 시뮬레이션 (ETF 비교)
 /magic                           복리의 마법 (복리 계산기)
 /assets                          자산 (admin 전용)
@@ -48,7 +47,7 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 
 | 기능 | 설명 |
 |------|------|
-| 연금 종류별 네비게이션 | 국민연금·퇴직연금·개인연금·노령연금 카드 링크 |
+| 연금 종류별 네비게이션 | 국민연금·퇴직연금·개인연금 카드 링크 |
 
 - 참고 파일: [app/pension/my/page.tsx](../app/pension/my/page.tsx)
 - 컴포넌트: `NationalPensionNavCard`, `RetirementNavCard`
@@ -104,20 +103,6 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
   [app/pension/per/actions.ts](../app/pension/per/actions.ts),
   [lib/pension-per-calc.ts](../lib/pension-per-calc.ts)
 - 상세 문서: [pension/per/per_project.md](pension/per/per_project.md)
-
----
-
-### 노령연금 (`/pension/seni`) — 진행 중
-
-| 기능 | 설명 |
-|------|------|
-| 수급 조건 안내 | 수급 연령, 최소 가입 기간 |
-| 조기노령연금 안내 | 감액률 안내 |
-| 연기노령연금 안내 | 증액률 안내 |
-| 추정 계산 | 미구현 (입력 유도 메시지만) |
-
-- 참고 파일: [app/pension/seni/page.tsx](../app/pension/seni/page.tsx)
-- 상세 문서: [pension/seni/seni_project.md](pension/seni/seni_project.md)
 
 ---
 
@@ -316,7 +301,6 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 | 항목 | 설명 |
 |------|------|
 | 개인연금 평가액 연동 | 연금저축펀드·IRP·ISA 실제 잔액 데이터 입력/관리 |
-| 노령연금 계산 구현 | 국민연금 데이터 기반 예상 수령액 자동 계산 |
 | 퇴직연금 개인화 | `USER_PROJECTIONS` 하드코딩 제거, DB 기반 관리 |
 
 ### 중기

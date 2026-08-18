@@ -89,8 +89,7 @@ async function _init(): Promise<void> {
         ('home',               '나의 연금 현황',      '/pension/my',   'pension',  10),
         ('per',   '개인연금',            '/pension/per',  'pension',  20),
         ('ret', '퇴직연금',            '/pension/ret',  'pension',  30),
-        ('nat',   '국민연금',            '/pension/nat',  'pension',  40),
-        ('seni',     '노령연금',            '/pension/seni', 'pension',  50)
+        ('nat',   '국민연금',            '/pension/nat',  'pension',  40)
     `)
 
     // admin: 전체 메뉴
@@ -785,6 +784,17 @@ async function _applyMigrations(): Promise<void> {
   // 개인 정보와 개인연금 적립 계획은 DB 테이블이 아니라 config/.env 로 관리한다
   // → lib/settings.ts. 두 테이블은 수동으로 DROP 했고 마이그레이션도 제거했다.
   // app_migrations 에 남은 v027/v028 기록은 재실행을 막을 뿐이라 그대로 둔다.
+
+  // v029: 노령연금 메뉴 삭제 (화면·문서 함께 제거)
+  const { rows: v029 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v029_drop_seni_menu'"
+  )
+  if (v029.length === 0) {
+    // FK 때문에 권한 매핑을 먼저 지운다
+    await pool.query(`DELETE FROM app_role_menus WHERE menu_id = 'seni'`)
+    await pool.query(`DELETE FROM app_menus WHERE id = 'seni'`)
+    await pool.query("INSERT INTO app_migrations (name) VALUES ('v029_drop_seni_menu')")
+  }
 
   // v010: 메뉴 ID 단축 (savings-fund→sim, compound-magic→magic, personal-pension→per 등)
   const { rows: v010 } = await pool.query<{ name: string }>(

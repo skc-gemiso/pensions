@@ -12,7 +12,6 @@
 | `app/pension/nat/**` | `docs/pension/nat/nat_project.md`, `docs/pension/nat/nat_task.md` |
 | `app/pension/ret/**` | `docs/pension/ret/ret_project.md`, `docs/pension/ret/ret_task.md` |
 | `app/pension/per/**` | `docs/pension/per/per_project.md`, `docs/pension/per/per_task.md` |
-| `app/pension/seni/**` | `docs/pension/seni/seni_project.md`, `docs/pension/seni/seni_task.md` |
 | `app/pension/my/**` | `docs/pension/my/my_project.md`, `docs/pension/my/my_task.md` |
 | `app/sim/**` | `docs/sim/sim_project.md`, `docs/sim/sim_task.md` |
 | `app/magic/**` | `docs/magic/magic_project.md`, `docs/magic/magic_task.md` |

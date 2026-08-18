@@ -2,7 +2,7 @@
 
 ## 개요
 
-국민연금·퇴직연금·개인연금·노령연금 네 가지 연금 영역으로
+국민연금·퇴직연금·개인연금 세 가지 연금 영역으로
 빠르게 이동할 수 있는 대시보드 허브 화면.
 
 - 경로: `/pension/my` (`/pension` 진입 시 자동 리다이렉트)
@@ -20,8 +20,7 @@
 │   └── NationalPensionDashboardCard
 ├── 퇴직연금 카드 → /pension/ret
 │   └── RetirementDashboardCard
-├── 개인연금 카드 → /pension/per
-└── 노령연금 카드 → /pension/seni
+└── 개인연금 카드 → /pension/per
 ```
 
 ---
