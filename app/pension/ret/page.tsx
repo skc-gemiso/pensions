@@ -322,15 +322,12 @@ export default function RetirementPensionPage() {
                     <Box tone="amber">
                       <H>IRP 로 이전하지 않는 이유</H>
                       <p className="text-xs text-gray-700 leading-relaxed">
-                        <b>퇴직소득세 실효세율이 이미 낮기 때문입니다.</b> 근속연수공제가 커서
-                        {rate15 != null && <> 근속 15년에 <b>{rate15.toFixed(1)}%</b>,</>}
-                        {rateRetire != null && <> 정년({LEGAL_RETIRE_YEAR - 2015}년)에 <b>{rateRetire.toFixed(1)}%</b></>}
+                        <b>퇴직소득세 실효세율이 이미 낮기 때문입니다.</b> 근속연수공제·환산급여공제가 커서
+                        {rate15 != null && <> 근속 15년 <b>{rate15.toFixed(1)}%</b>,</>}
+                        {rateRetire != null && <> 정년({LEGAL_RETIRE_YEAR - 2015}년) <b>{rateRetire.toFixed(1)}%</b></>}
                         {" "}수준입니다. IRP 로 이전하면 이 세금이 이연·감면되지만,
                         운용 제약과 인출 절차가 따라붙습니다. 아끼는 세금보다 번거로움이 커서
-                        <b> 일시금으로 받아 바로 운용하는 기준</b>으로 잡았습니다.
-                      </p>
-                      <p className="text-xs text-gray-500 mt-2">
-                        ISA 도 같은 이유로 다루지 않습니다.
+                        <b> 일시금으로 받아 바로 운용하는 기준</b>으로 잡았습니다. ISA 도 같은 이유로 다루지 않습니다.
                       </p>
                     </Box>
                   </>
@@ -347,10 +344,17 @@ export default function RetirementPensionPage() {
                     </Box>
 
                     <Box tone="blue">
-                      <H>오래 다닐수록 세율이 낮아집니다</H>
+                      <H>실효세율은 근속이 아니라 퇴직금 규모가 좌우합니다</H>
                       <p className="text-xs text-gray-700 leading-relaxed">
-                        근속연수공제가 근속 20년 초과 시 <b>4,000만원 + 연 300만원</b>까지 커집니다.
-                        퇴직금이 늘어도 공제가 함께 커져 실효세율은 완만하게 오릅니다.
+                        근속연수공제는 20년 초과 시 <b>4,000만원 + 연 300만원</b>까지 커지지만,
+                        근속이 길면 퇴직금도 함께 커져 환산급여가 높은 세율 구간으로 올라갑니다.
+                        그래서 이 표에서는 실효세율이
+                        {rate15 != null && rateRetire != null && (
+                          <> 근속 15년 <b>{rate15.toFixed(1)}%</b> → 정년({LEGAL_RETIRE_YEAR - 2015}년) <b>{rateRetire.toFixed(1)}%</b> 로</>
+                        )} <b>오히려 오릅니다.</b>
+                      </p>
+                      <p className="text-xs text-gray-500 mt-2">
+                        그래도 일반 소득세율에 비하면 낮은 편이라, 세금만 놓고 보면 퇴직 시점을 미룰 이유가 되지는 않습니다.
                       </p>
                     </Box>
                   </>
@@ -729,9 +733,8 @@ export default function RetirementPensionPage() {
                   <p className="text-sm font-semibold text-emerald-800">KODEX 200 타겟위클리커버드콜 100%</p>
                   <p className="text-xs text-emerald-600 mt-0.5">
                     퇴직소득세 실효세율이
-                    {rate15 != null && <> 근속 15년 <b>{rate15.toFixed(1)}%</b>,</>}
-                    {rateRetire != null && <> 정년({LEGAL_RETIRE_YEAR - 2015}년) <b>{rateRetire.toFixed(1)}%</b></>}
-                    로 낮습니다. 운용·인출이 복잡한 IRP 전환보다 일시금으로 받아 바로 운용하는 편이 낫다고 보고 잡은 기준입니다.
+                    {rateRetire != null && <> 정년 기준 <b>{rateRetire.toFixed(1)}%</b></>} 수준으로 낮습니다.
+                    운용·인출이 복잡한 IRP 전환보다 일시금으로 받아 바로 운용하는 편이 낫다고 보고 잡은 기준입니다.
                   </p>
                 </div>
                 <div className="text-right">
