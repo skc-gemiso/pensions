@@ -147,7 +147,7 @@ export default function DashboardPage() {
 
   return (
     <AppLayout>
-      <div className="max-w-7xl mx-auto px-4 py-4 space-y-5">
+      <div className="max-w-7xl mx-auto space-y-5">
 
         {/* 헤더 */}
         <div className="flex items-start justify-between flex-wrap gap-2">
