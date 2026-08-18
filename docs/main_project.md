@@ -47,10 +47,12 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 
 | 기능 | 설명 |
 |------|------|
-| 연금 종류별 네비게이션 | 국민연금·퇴직연금·개인연금 카드 링크 |
+| 세 연금 합산 요약 | 63세부터 받는 월 수령액 + 연금별 비중 |
+| 수령 시점별 월 소득 | 63세(개인+퇴직) → 65세(+국민) 구간별 스택 바 |
+| 연금별 카드 | 월 수령액 / 적립 현황 / 진행률 + 각 화면 링크 |
+| 도움말 | 무엇을 모았나 / 공통 전제 / ⚠️ 한계 |
 
-- 참고 파일: [app/pension/my/page.tsx](../app/pension/my/page.tsx)
-- 컴포넌트: `NationalPensionNavCard`, `RetirementNavCard`
+- 참고 파일: [app/pension/my/page.tsx](../app/pension/my/page.tsx), [app/pension/my/actions.ts](../app/pension/my/actions.ts)
 - 상세 문서: [pension/my/my_project.md](pension/my/my_project.md)
 
 ---

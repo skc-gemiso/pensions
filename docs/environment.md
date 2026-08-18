@@ -48,7 +48,9 @@ pensions/
 │   │       └── content-image/route.ts     본문 인라인 이미지 업로드
 │   ├── pension/
 │   │   ├── page.tsx                      /pension/my 리다이렉트
-│   │   ├── my/page.tsx                   나의 연금 현황 대시보드
+│   │   ├── my/
+│   │   │   ├── page.tsx                  나의 연금 현황 — 세 연금 합산 대시보드
+│   │   │   └── actions.ts               getPensionOverview() — 국민·퇴직·개인 합산
 │   │   ├── nat/
 │   │   │   ├── page.tsx                  국민연금
 │   │   │   └── actions.ts               국민연금 스냅샷 CRUD
@@ -78,8 +80,6 @@ pensions/
 │       └── actions.ts                   시뮬레이션 CRUD + IP 기록 + 시세 조회
 ├── components/
 │   ├── AppLayout.tsx                     공통 사이드바 레이아웃
-│   ├── NationalPensionDashboardCard.tsx  국민연금 카드
-│   ├── RetirementDashboardCard.tsx       퇴직연금 카드
 │   ├── HelpModal.tsx                     공용 도움말 모달 (파란 ! 아이콘 + 탭) — H/Box/ColTable 프리미티브 포함
 │   ├── RichEditor.tsx                    쇼핑 본문 리치 에디터 (TipTap)
 │   └── Providers.tsx                    세션 Provider
@@ -90,6 +90,7 @@ pensions/
 │   ├── settings.ts                       환경 변수로 관리하는 개인 설정 (PROFILE_* / PENSION_PER_*)
 │   ├── profile.ts                        정년일 계산 등 개인 정보 헬퍼 (calcRetireDate / ageOn / ymAtAge)
 │   ├── pension-per-calc.ts               개인연금 월 단위 복리 시뮬레이션 (적립·거치·수령)
+│   ├── pension-ret-calc.ts               퇴직연금 계산 (퇴직소득세·시점별 퇴직금·재투자 평가액)
 │   ├── etf-collector.ts                  ETF Python 수집기 기동·상태 관리
 │   ├── usa-collector.ts                  미국 지표·환율 수집기 기동·상태 관리
 │   ├── supabase-storage.ts               Supabase Storage 업로드·Signed URL·삭제

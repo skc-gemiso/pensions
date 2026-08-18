@@ -7,69 +7,14 @@ import { getProfile, type ProfileView } from "@/app/actions/profile"
 import { getEtfDividendHistory } from "@/app/sim/actions"
 // 수령 개시 나이는 개인연금과 같은 값을 쓴다 (PENSION_PER_PAYOUT_AGE)
 import { getPerConfig } from "@/app/pension/per/actions"
+import {
+  buildRetirementRows, calcCurrentSeverance, calcTenure, grownValue, toDate,
+  CC_STOCK_CODE, CC_FALLBACK_ANNUAL_RATE, DB_ACCESS_AGE, MONTHLY_SALARY_WON,
+} from "@/lib/pension-ret-calc"
 
 // 프로필(config/.env → lib/settings.ts)을 못 읽었을 때만 쓰는 값
 const FALLBACK_JOIN = "2015-02-23"
 const FALLBACK_RETIRE = "2034-06-30"
-const ANNUAL_SALARY_INCREASE_MAN = 240 // 만원/년
-
-// 사용자 제공 예상 데이터 (2030~2034)
-const USER_PROJECTIONS: Record<number, { salaryMan: number; grossMan: number; netMan: number }> = {
-  2030: { salaryMan: 9_992,  grossMan: 14_800, netMan: 14_200 },
-  2031: { salaryMan: 10_232, grossMan: 15_500, netMan: 14_800 },
-  2032: { salaryMan: 10_472, grossMan: 16_200, netMan: 15_400 },
-  2033: { salaryMan: 10_712, grossMan: 16_900, netMan: 16_000 },
-  2034: { salaryMan: 10_952, grossMan: 17_600, netMan: 16_700 },
-}
-
-// 퇴직금 운용 시뮬레이션 기준 — IRP·ISA 는 운용하지 않으므로 일반 계좌 기준이다
-const CC_STOCK_CODE = "498400"        // KODEX 200 타겟위클리커버드콜
-const CC_FALLBACK_ANNUAL_RATE = 0.17  // 분배 이력을 못 읽었을 때만 쓰는 값
-// 분배금 과세는 계산에서 뺐다.
-// 커버드콜 분배금은 대부분 파생상품 매매이익이라 실제 과세 대상은 주당 과세표준액뿐이고,
-// 그 비율이 분배금의 4~5% 수준이라 실효세율이 1%에 못 미친다.
-// 금융소득종합과세(연 2,000만원)도 과표 기준이면 연 분배금이 5억에 가까워야 걸린다.
-
-// DB형 퇴직연금을 개인이 수령·운용할 수 있게 되는 나이
-const DB_ACCESS_AGE = 55
-
-// 퇴직소득세 계산 (2023년 개정 기준, 만원 단위, 근사치)
-function calcRetirementTax(grossMan: number, tenureYears: number): number {
-  if (tenureYears <= 0) return 0
-
-  // 근속연수공제
-  let deduction: number
-  if (tenureYears <= 5) deduction = 100 * tenureYears
-  else if (tenureYears <= 10) deduction = 500 + 200 * (tenureYears - 5)
-  else if (tenureYears <= 20) deduction = 1_500 + 250 * (tenureYears - 10)
-  else deduction = 4_000 + 300 * (tenureYears - 20)
-
-  const taxableBase = Math.max(0, grossMan - deduction)
-  const converted = (taxableBase / tenureYears) * 12
-
-  // 환산급여공제
-  let convDeduction: number
-  if (converted <= 800) convDeduction = converted
-  else if (converted <= 7_000) convDeduction = 800 + (converted - 800) * 0.6
-  else if (converted <= 10_000) convDeduction = 4_520 + (converted - 7_000) * 0.55
-  else if (converted <= 30_000) convDeduction = 6_170 + (converted - 10_000) * 0.45
-  else convDeduction = 15_170 + (converted - 30_000) * 0.35
-
-  const taxBase = Math.max(0, converted - convDeduction)
-
-  // 기본세율 (2023년 이후 과표구간)
-  let taxAtRate: number
-  if (taxBase <= 1_400) taxAtRate = taxBase * 0.06
-  else if (taxBase <= 5_000) taxAtRate = 84 + (taxBase - 1_400) * 0.15
-  else if (taxBase <= 8_800) taxAtRate = 624 + (taxBase - 5_000) * 0.24
-  else if (taxBase <= 15_000) taxAtRate = 1_536 + (taxBase - 8_800) * 0.35
-  else if (taxBase <= 30_000) taxAtRate = 3_706 + (taxBase - 15_000) * 0.38
-  else if (taxBase <= 50_000) taxAtRate = 9_406 + (taxBase - 30_000) * 0.40
-  else taxAtRate = 17_406 + (taxBase - 50_000) * 0.42
-
-  const incomeTax = (taxAtRate / 12) * tenureYears
-  return Math.round(incomeTax * 1.1) // +지방소득세 10%
-}
 
 function fmtMan(man: number): string {
   if (man >= 10_000) {
@@ -79,43 +24,6 @@ function fmtMan(man: number): string {
     return `${ok}억 ${rem.toLocaleString()}만원`
   }
   return `${man.toLocaleString()}만원`
-}
-
-function calcTenure(from: Date, to: Date): { years: number; months: number; days: number; totalDays: number } {
-  const totalDays = Math.floor((to.getTime() - from.getTime()) / 86_400_000)
-  let years = to.getFullYear() - from.getFullYear()
-  let months = to.getMonth() - from.getMonth()
-  if (months < 0) { years -= 1; months += 12 }
-  if (to.getDate() < from.getDate()) months -= 1
-  if (months < 0) { years -= 1; months += 12 }
-  return { years, months, days: to.getDate(), totalDays }
-}
-
-function calcCurrentSeverance(
-  monthlyWon: number, tenureDays: number, ccAnnualRate: number, holdMonths: number
-) {
-  const grossMan = Math.round((monthlyWon * (tenureDays / 365)) / 10_000)
-  const tenureYears = Math.max(1, Math.round(tenureDays / 365))
-  const taxMan = calcRetirementTax(grossMan, tenureYears)
-  const netMan = grossMan - taxMan
-  // 매입 시점부터 수령 개시까지 재투자한 뒤 받는 월 분배금
-  const grown = grownValue(netMan, ccAnnualRate, holdMonths)
-  const ccMonthlyMan = Math.round(grown * ccAnnualRate / 12)
-  return { grossMan, netMan, taxMan, ccMonthlyMan }
-}
-
-/**
- * 분배금을 전액 재투자했을 때의 평가액.
- * 주가는 현재가 고정(상승률 0%)이라 분배금만큼만 늘어난다.
- */
-function grownValue(principal: number, ccAnnualRate: number, months: number): number {
-  return principal * Math.pow(1 + ccAnnualRate / 12, months)
-}
-
-/** 'YYYY-MM-DD' → Date (UTC 밀림 방지) */
-function toDate(iso: string): Date {
-  const [y, m, d] = iso.split("-").map(Number)
-  return new Date(y, m - 1, d)
 }
 
 export default function RetirementPensionPage() {
@@ -174,10 +82,11 @@ export default function RetirementPensionPage() {
   // 현재 기준 추정 퇴직금 (급여명세서 지급액 기준: 6,900,000원/월)
   // 지금(만 52세) 그만두면 만 55세가 되어야 굴릴 수 있다 — 표와 달리 참고값으로 남겨 둔다
   const currentHoldMonths = Math.max(0, payoutIdx - accessIdx)
-  const currentSeverance = useMemo(
-    () => calcCurrentSeverance(6_900_000, tenure.totalDays, ccAnnualRate, currentHoldMonths),
-    [tenure.totalDays, ccAnnualRate, currentHoldMonths]
-  )
+  const currentSeverance = useMemo(() => {
+    const base = calcCurrentSeverance(MONTHLY_SALARY_WON, tenure.totalDays)
+    const grown = grownValue(base.netMan, ccAnnualRate, currentHoldMonths)
+    return { ...base, ccMonthlyMan: Math.round(grown * ccAnnualRate / 12) }
+  }, [tenure.totalDays, ccAnnualRate, currentHoldMonths])
 
   // 정년까지 남은 기간
   const remaining = useMemo(() => calcTenure(today, retireDate), [today, retireDate])
@@ -189,50 +98,11 @@ export default function RetirementPensionPage() {
   )
   const progressPct = Math.min(100, Math.round((tenure.totalDays / totalDaysToRetire) * 100))
 
-  // 테이블 행 생성 (2030~2034: 사용자 데이터, 2026~2029: 선형 보간)
-  const tableRows = useMemo(() => {
-    const rows = []
-    const currentYear = today.getFullYear()
-    const startYear = Math.max(currentYear, 2026)
-
-    for (let year = startYear; year <= LEGAL_RETIRE_YEAR; year++) {
-      const isConfirmed = year in USER_PROJECTIONS
-      const tenureYears = year - 2015
-      const isLegal = year === LEGAL_RETIRE_YEAR
-
-      if (isConfirmed) {
-        const d = USER_PROJECTIONS[year]
-        rows.push({
-          year,
-          tenureYears,
-          salaryMan: d.salaryMan,
-          grossMan: d.grossMan,
-          netMan: d.netMan,
-          taxMan: d.grossMan - d.netMan,
-          isConfirmed: true,
-          isLegal,
-        })
-      } else {
-        // 2026~2029: 법정 퇴직금 기준 추정 (연봉 ÷ 12 × 근속연수)
-        const yearOffset = year - 2030
-        const salaryMan = USER_PROJECTIONS[2030].salaryMan + yearOffset * ANNUAL_SALARY_INCREASE_MAN
-        const grossMan = Math.round(salaryMan / 12 * tenureYears)
-        const taxMan = calcRetirementTax(grossMan, tenureYears)
-        const netMan = grossMan - taxMan
-        rows.push({
-          year,
-          tenureYears,
-          salaryMan,
-          grossMan,
-          netMan,
-          taxMan,
-          isConfirmed: false,
-          isLegal,
-        })
-      }
-    }
-    return rows
-  }, [today])
+  // 퇴직 시점별 예상 퇴직금 — 산식은 lib/pension-ret-calc.ts
+  const tableRows = useMemo(
+    () => buildRetirementRows(today.getFullYear(), LEGAL_RETIRE_YEAR),
+    [today, LEGAL_RETIRE_YEAR]
+  )
 
   /**
    * 실수령 퇴직금을 퇴직 시점에 커버드콜로 매입 → 수령 개시까지 분배금 전액 재투자
