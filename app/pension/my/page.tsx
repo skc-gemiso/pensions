@@ -115,7 +115,7 @@ function StageBar({ stage, max }: { stage: PayoutStage; max: number }) {
   ] as { kind: PensionKind; value: number }[]).filter(p => p.value > 0)
 
   return (
-    <div className="flex h-7 rounded-lg overflow-hidden bg-gray-100" style={{ width: `${(stage.total / max) * 100}%` }}>
+    <div className="flex h-8 rounded-lg overflow-hidden bg-gray-100" style={{ width: `${(stage.total / max) * 100}%` }}>
       {parts.map(p => (
         <div key={p.kind} className={`${TONE[p.kind].bar} flex items-center justify-center`}
           style={{ width: `${(p.value / stage.total) * 100}%` }}
@@ -147,7 +147,7 @@ export default function DashboardPage() {
 
   return (
     <AppLayout>
-      <div className="max-w-7xl mx-auto px-4 py-4 space-y-4">
+      <div className="max-w-7xl mx-auto px-4 py-4 space-y-5">
 
         {/* 헤더 */}
         <div className="flex items-start justify-between flex-wrap gap-2">
@@ -172,16 +172,16 @@ export default function DashboardPage() {
         {ov && first && last && (
           <>
             {/* ── 핵심 요약 ── 한 줄로 압축 */}
-            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl px-6 py-5 text-white
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl px-6 py-6 text-white
                             flex items-center gap-6 flex-wrap">
               <div className="flex-shrink-0">
-                <p className="text-indigo-100 text-xs mb-0.5">
+                <p className="text-indigo-100 text-xs mb-1">
                   {last.fromAge}세({fmtYm(last.fromYm)})부터 · 세 연금 전부
                 </p>
-                <p className="text-3xl font-bold tabular-nums leading-tight">
+                <p className="text-4xl font-bold tabular-nums leading-tight">
                   월 {fmtKRW(last.total)}
                 </p>
-                <p className="text-indigo-100 text-xs mt-0.5">연 {fmtKRW(last.total * 12)}</p>
+                <p className="text-indigo-100 text-xs mt-1">연 {fmtKRW(last.total * 12)}</p>
               </div>
 
               <div className="flex gap-5 flex-wrap border-l border-white/20 pl-6">
@@ -212,11 +212,11 @@ export default function DashboardPage() {
 
             {/* ── 수령 타임라인 ── */}
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-              <div className="px-5 py-2.5 border-b border-gray-100 flex items-baseline gap-2 flex-wrap">
+              <div className="px-5 py-3 border-b border-gray-100 flex items-baseline gap-2 flex-wrap">
                 <h2 className="font-semibold text-gray-900 text-sm">수령 시점별 월 소득</h2>
                 <p className="text-xs text-gray-400">개시 나이가 달라 구간마다 합계가 달라집니다</p>
               </div>
-              <div className="px-5 py-4 space-y-3.5">
+              <div className="px-5 py-5 space-y-4">
                 {ov.stages.map(stage => (
                   <div key={stage.fromYm}>
                     <div className="flex items-baseline justify-between mb-1 flex-wrap gap-1">
@@ -256,8 +256,8 @@ export default function DashboardPage() {
                 const t = TONE[p.kind]
                 return (
                   <Link key={p.kind} href={p.href}
-                    className={`block rounded-xl border ${t.border} ${t.bg} p-5 hover:shadow-md transition-shadow`}>
-                    <div className="flex items-center gap-2 mb-2.5">
+                    className={`block rounded-xl border ${t.border} ${t.bg} p-6 hover:shadow-md transition-shadow`}>
+                    <div className="flex items-center gap-2 mb-3">
                       <span className="text-xl">{t.icon}</span>
                       <h3 className={`font-bold ${t.text}`}>{p.label}</h3>
                       <svg className={`w-4 h-4 ml-auto ${t.text} opacity-50`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -266,12 +266,12 @@ export default function DashboardPage() {
                     </div>
 
                     <p className="text-xs text-gray-500">월 수령액 ({p.startAge}세~)</p>
-                    <p className={`text-2xl font-bold tabular-nums ${t.text} leading-tight`}>
+                    <p className={`text-3xl font-bold tabular-nums ${t.text} leading-tight`}>
                       {fmt(p.monthly)}<span className="text-sm font-normal ml-0.5">원</span>
                     </p>
                     <p className="text-[11px] text-gray-400 mt-0.5">{p.basis}</p>
 
-                    <div className="mt-3.5 pt-3 border-t border-gray-200/70 space-y-2">
+                    <div className="mt-3.5 pt-3 border-t border-gray-200/70 space-y-2.5">
                       <div className="flex items-baseline justify-between">
                         <span className="text-xs text-gray-500">{p.accumulatedLabel}</span>
                         <span className="text-sm font-semibold text-gray-800 tabular-nums">{fmtKRW(p.accumulated)}</span>
