@@ -18,6 +18,13 @@ const TONE: Record<PensionKind, {
   nat: { text: "text-blue-700", bg: "bg-blue-50", border: "border-blue-200", bar: "bg-blue-500", soft: "bg-blue-100", icon: "🏛️" },
 }
 
+/** 요약 카드(진한 그라디언트) 위에서 쓰는 밝은 색 — 아래 표·카드와 같은 계열 */
+const LIGHT_BAR: Record<PensionKind, string> = {
+  per: "bg-purple-300",
+  ret: "bg-emerald-300",
+  nat: "bg-blue-300",
+}
+
 function fmtYm(ym: string): string {
   const [y, m] = ym.split("-")
   return `${y}년 ${Number(m)}월`
@@ -171,41 +178,66 @@ export default function DashboardPage() {
 
         {ov && first && last && (
           <>
-            {/* ── 핵심 요약 ── 한 줄로 압축 */}
-            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl px-6 py-8 text-white
-                            flex items-center gap-6 flex-wrap">
-              <div className="flex-shrink-0">
-                <p className="text-indigo-100 text-sm mb-1">
-                  {last.fromAge}세({fmtYm(last.fromYm)})부터 · 세 연금 전부
-                </p>
-                <p className="text-5xl font-bold tabular-nums leading-tight">
-                  월 {fmtKRW(last.total)}
-                </p>
-                <p className="text-indigo-100 text-sm mt-1">연 {fmtKRW(last.total * 12)}</p>
+            {/* ── 핵심 요약 ── */}
+            <div className="bg-gradient-to-br from-indigo-600 via-indigo-600 to-purple-600 rounded-xl px-6 py-7 text-white">
+              <div className="flex items-end gap-8 flex-wrap">
+                {/* 합산 월 수령액 */}
+                <div className="flex-shrink-0">
+                  <p className="text-indigo-200 text-xs tracking-wide">
+                    만 {last.fromAge}세 · {fmtYm(last.fromYm)}부터 세 연금 전부
+                  </p>
+                  <p className="text-5xl font-bold tabular-nums leading-none mt-1.5">
+                    {fmt(last.total)}
+                    <span className="text-xl font-normal ml-1.5">원</span>
+                    <span className="text-sm font-normal text-indigo-200 ml-2">/월</span>
+                  </p>
+                  <p className="text-indigo-200 text-xs mt-1.5">연 {fmtKRW(last.total * 12)}</p>
+                </div>
+
+                {/* 연금별 내역 */}
+                <div className="flex gap-6 flex-wrap">
+                  {ov.pensions.map(p => (
+                    <div key={p.kind}>
+                      <p className="text-[11px] text-indigo-200 flex items-center gap-1.5">
+                        <span className={`inline-block w-2 h-2 rounded-full ${LIGHT_BAR[p.kind]}`} />
+                        {p.label}
+                      </p>
+                      <p className="text-xl font-bold tabular-nums leading-tight mt-0.5">
+                        {fmtKRW(p.monthly)}
+                        <span className="text-[11px] font-normal text-indigo-200 ml-1.5">
+                          {Math.round(p.monthly / last.total * 100)}%
+                        </span>
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* 먼저 받는 시점 */}
+                <div className="ml-auto rounded-lg bg-white/10 border border-white/15 px-4 py-2.5">
+                  <p className="text-[11px] text-indigo-200">
+                    먼저 받는 시점 · 만 {first.fromAge}세
+                  </p>
+                  <p className="text-lg font-bold tabular-nums leading-tight">
+                    월 {fmtKRW(first.total)}
+                    <span className="text-[11px] font-normal text-indigo-200 ml-1.5">{fmtYm(first.fromYm)}</span>
+                  </p>
+                </div>
               </div>
 
-              <div className="flex gap-5 flex-wrap border-l border-white/20 pl-6">
+              {/* 비중 바 — 아래 타임라인·카드와 같은 색 언어 */}
+              <div className="mt-5 flex h-2 rounded-full overflow-hidden bg-white/15">
                 {ov.pensions.map(p => (
-                  <div key={p.kind}>
-                    <p className="text-xs text-indigo-200">{p.label}</p>
-                    <p className="text-xl font-bold tabular-nums leading-tight">{fmtKRW(p.monthly)}</p>
-                    <p className="text-xs text-indigo-200">{Math.round(p.monthly / last.total * 100)}%</p>
-                  </div>
+                  <div key={p.kind} className={LIGHT_BAR[p.kind]}
+                    style={{ width: `${(p.monthly / last.total) * 100}%` }}
+                    title={`${p.label} ${Math.round(p.monthly / last.total * 100)}%`} />
                 ))}
-              </div>
-
-              <div className="border-l border-white/20 pl-6 ml-auto">
-                <p className="text-xs text-indigo-200">먼저 받는 시점</p>
-                <p className="text-lg font-bold leading-tight">{first.fromAge}세 {fmtYm(first.fromYm)}</p>
-                <p className="text-xs text-indigo-200 tabular-nums">월 {fmtKRW(first.total)}</p>
               </div>
             </div>
 
             {/* ── 수령 타임라인 ── */}
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-gray-100 flex items-baseline gap-2 flex-wrap">
+              <div className="px-5 py-3 border-b border-gray-100">
                 <h2 className="font-semibold text-gray-900 text-sm">수령 시점별 월 소득</h2>
-                <p className="text-xs text-gray-400">개시 나이가 달라 구간마다 합계가 달라집니다</p>
               </div>
               <div className="px-5 py-5 space-y-4">
                 {ov.stages.map(stage => (
