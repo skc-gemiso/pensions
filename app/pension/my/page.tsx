@@ -221,18 +221,18 @@ export default function DashboardPage() {
         {ov && first && last && (
           <>
             {/* ── 핵심 요약 ── */}
-            <div className={`${CARD} px-6 py-6`}>
+            <div className={`${CARD} px-6 py-9`}>
               <div className="flex items-center gap-6 flex-wrap">
                 {/* 합산 월 수령액 */}
                 <div className="flex-shrink-0 pr-6">
-                  <p className="text-gray-500 text-sm">
+                  <p className="text-gray-500 text-base">
                     만 {last.fromAge}세 ~ {fmtYm(last.fromYm)}부터 연금 수령 예상
                   </p>
-                  <p className="text-gray-900 text-[42px] font-bold tabular-nums leading-tight mt-1">
+                  <p className="text-gray-900 text-[52px] font-bold tabular-nums leading-tight mt-1">
                     {fmt(last.total)}
-                    <span className="text-base font-medium text-gray-500 ml-1">원 / 월</span>
+                    <span className="text-lg font-medium text-gray-500 ml-1">원 / 월</span>
                   </p>
-                  <p className="text-gray-500 text-sm mt-1">연 {fmtKRW(last.total * 12)}</p>
+                  <p className="text-gray-500 text-base mt-1">연 {fmtKRW(last.total * 12)}</p>
                 </div>
 
                 {/* 연금별 */}
@@ -274,6 +274,15 @@ export default function DashboardPage() {
                     {fmtYm(first.fromYm)}
                   </p>
                 </div>
+              </div>
+
+              {/* 비중 바 — 아래 스택 바·카드와 같은 색 */}
+              <div className="mt-5 flex h-2.5 rounded-full overflow-hidden bg-gray-100">
+                {ov.pensions.map(p => (
+                  <div key={p.kind} className={TONE[p.kind].bar}
+                    style={{ width: `${(p.monthly / last.total) * 100}%` }}
+                    title={`${p.label} ${Math.round(p.monthly / last.total * 100)}%`} />
+                ))}
               </div>
             </div>
 
