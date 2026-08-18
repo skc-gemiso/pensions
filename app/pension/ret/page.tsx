@@ -503,9 +503,6 @@ export default function RetirementPensionPage() {
               <p className="text-xl font-bold text-indigo-700">약 {fmtMan(currentSeverance.ccMonthlyMan)}</p>
             </div>
           </div>
-          <p className="text-[10px] text-blue-300 mt-3">
-            급여명세서 지급액 (6,900,000원/월) × 근속일수({tenure.totalDays}일) ÷ 365 기준 · 세금은 2023년 개정 퇴직소득세 기준 근사치
-          </p>
         </div>
 
         {/* 퇴직 시점별 시나리오 테이블 */}
