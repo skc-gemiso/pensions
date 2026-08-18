@@ -158,26 +158,22 @@ export default function RetirementPensionPage() {
   const accessIdx = birthIdx + DB_ACCESS_AGE * 12
 
   /**
-   * 매입 시점 = max(퇴직 시점, 만 55세)
+   * 매입 시점 = 퇴직 시점.
    *
-   * DB형이라 두 가지 제약이 함께 걸린다.
-   *   1. 퇴직 전에는 회사가 적립금을 운용하므로 손댈 수 없다
-   *   2. 만 55세 전에는 퇴직연금을 수령해 개인이 운용할 수 없다
+   * DB형이라 퇴직 전에는 회사가 적립금을 운용하므로 손댈 수 없다.
+   * 만 55세 이전 퇴직은 퇴직급여가 IRP 로 의무 이전되어 인출할 수 없으므로
+   * 애초에 표에서 제외한다 (ccRows 필터 참고).
    */
-  const buyIdxOf = useCallback(
-    (retireIdx: number) => Math.max(retireIdx, accessIdx),
-    [accessIdx]
-  )
   const holdMonthsOf = useCallback(
-    (retireIdx: number) => Math.max(0, payoutIdx - buyIdxOf(retireIdx)),
-    [payoutIdx, buyIdxOf]
+    (retireIdx: number) => Math.max(0, payoutIdx - retireIdx),
+    [payoutIdx]
   )
 
   const tenure = useMemo(() => calcTenure(JOIN_DATE, today), [JOIN_DATE, today])
 
   // 현재 기준 추정 퇴직금 (급여명세서 지급액 기준: 6,900,000원/월)
-  // 지금 그만두면 만 55세가 되어야 굴릴 수 있다
-  const currentHoldMonths = holdMonthsOf(today.getFullYear() * 12 + today.getMonth())
+  // 지금(만 52세) 그만두면 만 55세가 되어야 굴릴 수 있다 — 표와 달리 참고값으로 남겨 둔다
+  const currentHoldMonths = Math.max(0, payoutIdx - accessIdx)
   const currentSeverance = useMemo(
     () => calcCurrentSeverance(6_900_000, tenure.totalDays, ccAnnualRate, currentHoldMonths),
     [tenure.totalDays, ccAnnualRate, currentHoldMonths]
@@ -239,31 +235,30 @@ export default function RetirementPensionPage() {
   }, [today])
 
   /**
-   * 실수령 퇴직금을 커버드콜로 매입 → 수령 개시까지 분배금 전액 재투자
+   * 실수령 퇴직금을 퇴직 시점에 커버드콜로 매입 → 수령 개시까지 분배금 전액 재투자
    * → 그 뒤부터 분배금만 수령.
    *
-   * 매입 시점은 퇴직 시점과 만 55세 중 늦은 쪽이다 (buyIdxOf 주석 참고).
-   * 그 전에 발생하는 분배금은 없다.
+   * 만 55세 이전 퇴직 행은 제외한다. 퇴직급여가 IRP 로 의무 이전되고 만 55세까지
+   * 인출할 수 없는데, 이 화면은 IRP 를 운용하지 않는다는 전제라 시나리오가 성립하지 않는다.
    */
-  const ccRows = useMemo(() => tableRows.map(row => {
+  const ccRows = useMemo(() => tableRows
     // 퇴직 시점은 그 해 정년월로 잡는다 — 행 간 개월 차이가 정확히 12의 배수가 된다
-    const retireIdx  = row.year * 12 + retireDate.getMonth()
-    const buyIdx     = buyIdxOf(retireIdx)
-    const holdMonths = holdMonthsOf(retireIdx)
+    .filter(row => row.year * 12 + retireDate.getMonth() >= accessIdx)
+    .map(row => {
+      const buyIdx     = row.year * 12 + retireDate.getMonth()
+      const holdMonths = holdMonthsOf(buyIdx)
 
-    const valueMan     = grownValue(row.netMan, ccAnnualRate, holdMonths)
-    const yearlyDist   = Math.round(valueMan * ccAnnualRate)
-    const monthlyDist  = Math.round(yearlyDist / 12)
-    return {
-      ...row,
-      holdMonths,
-      buyYm: `${Math.floor(buyIdx / 12)}.${String((buyIdx % 12) + 1).padStart(2, "0")}`,
-      // 퇴직보다 만 55세가 늦어 기다려야 하는 경우
-      waiting: buyIdx > retireIdx,
-      valueMan: Math.round(valueMan),
-      yearlyDist, monthlyDist,
-    }
-  }), [tableRows, ccAnnualRate, retireDate, buyIdxOf, holdMonthsOf])
+      const valueMan    = grownValue(row.netMan, ccAnnualRate, holdMonths)
+      const yearlyDist  = Math.round(valueMan * ccAnnualRate)
+      const monthlyDist = Math.round(yearlyDist / 12)
+      return {
+        ...row,
+        holdMonths,
+        buyYm: `${Math.floor(buyIdx / 12)}.${String((buyIdx % 12) + 1).padStart(2, "0")}`,
+        valueMan: Math.round(valueMan),
+        yearlyDist, monthlyDist,
+      }
+    }), [tableRows, ccAnnualRate, retireDate, accessIdx, holdMonthsOf])
 
   const joinStr = "2015.02.23"
   const retireStr = `${LEGAL_RETIRE_YEAR}년 ${String(retireDate.getMonth() + 1).padStart(2, "0")}월`
@@ -272,6 +267,8 @@ export default function RetirementPensionPage() {
   const accessStr = `${Math.floor(accessIdx / 12)}.${String((accessIdx % 12) + 1).padStart(2, "0")}`
   /** 정년에 퇴직했을 때의 재투자 개월 — 도움말 예시로 쓴다 */
   const retireHoldMonths = holdMonthsOf(retireDate.getFullYear() * 12 + retireDate.getMonth())
+  /** 오늘 기준 만 나이 */
+  const currentAge = Math.floor((today.getFullYear() * 12 + today.getMonth() - birthIdx) / 12)
 
   return (
     <AppLayout>
@@ -484,7 +481,12 @@ export default function RetirementPensionPage() {
                       <p className="text-xs text-gray-700 leading-relaxed">
                         앞의 세 값은 <b>오늘</b> 기준이지만, {payoutAge}세 월 분배금은
                         <b> 만 {DB_ACCESS_AGE}세({accessStr}) 매입 → {currentHoldMonths}개월 재투자 → {payoutAge}세 수령</b>을 거친 뒤의 값입니다.
-                        DB형이라 만 {DB_ACCESS_AGE}세 전에는 퇴직연금을 개인이 운용할 수 없어 이 순서를 따릅니다.
+                        지금 퇴직하면 만 {DB_ACCESS_AGE}세까지 IRP 에서 인출할 수 없으므로, 그 시점을 매입 시점으로 잡았습니다.
+                      </p>
+                      <p className="text-xs text-gray-600 mt-2 leading-relaxed">
+                        아래 시뮬레이션 표는 만 {DB_ACCESS_AGE}세 이전 퇴직을 <b>제외</b>하지만,
+                        이 카드는 &ldquo;지금 그만두면&rdquo;을 보여주는 자리라 값을 남겨 뒀습니다.
+                        실현 가능한 시나리오가 아니라 <b>참고값</b>으로 보세요.
                       </p>
                     </Box>
                   </>
@@ -641,19 +643,23 @@ export default function RetirementPensionPage() {
                       <Box>
                         <H>시간 순서</H>
                         <div className="space-y-1.5 text-xs">
-                          <p><b className="text-gray-700">퇴직 · 만 {DB_ACCESS_AGE}세 중 늦은 쪽</b> — 실수령 퇴직금 전액으로 KODEX 200 타겟위클리커버드콜 매입</p>
+                          <p><b className="text-gray-700">퇴직 시점</b> — 실수령 퇴직금 전액으로 KODEX 200 타겟위클리커버드콜 매입</p>
                           <p><b className="text-gray-700">~ {payoutAge}세</b> — 분배금 전액 재투자 (정년 퇴직이면 {retireHoldMonths}개월)</p>
                           <p><b className="text-amber-600">{payoutAge}세부터</b> — 재투자를 멈추고 분배금 수령. 수량이 고정되므로 수령액이 유지됩니다</p>
                         </div>
                       </Box>
 
                       <Box tone="amber">
-                        <H>왜 정년부터인가</H>
+                        <H>표가 {Math.floor(accessIdx / 12)}년부터 시작하는 이유</H>
                         <p className="text-xs text-gray-700 leading-relaxed">
-                          <b>DB형이라 정년 전에는 ETF 를 매입할 수 없습니다.</b> 회사가 적립금을 운용하므로
-                          퇴직금은 정년에 손에 들어오고, 그 전에 발생하는 분배금도 없습니다.
-                          그래서 각 행의 차이는 &ldquo;그 해 퇴직했다면 퇴직금이 얼마인가&rdquo;뿐이고,
-                          매입·재투자·수령 시점은 <b>모든 행이 같습니다.</b>
+                          만 {DB_ACCESS_AGE}세 미만으로 퇴직하면 퇴직급여가 <b>IRP 로 의무 이전</b>되고,
+                          만 {DB_ACCESS_AGE}세가 될 때까지 인출할 수 없습니다.
+                          이 화면은 IRP 를 운용하지 않는다는 전제이므로 그 시나리오가 성립하지 않아
+                          <b> 만 {DB_ACCESS_AGE}세({accessStr}) 이전 퇴직 행은 표에서 제외</b>했습니다.
+                        </p>
+                        <p className="text-xs text-gray-500 mt-2">
+                          위쪽 <b>퇴직 시점별 예상 퇴직금</b> 표에는 그 연도들이 그대로 있습니다 —
+                          퇴직금을 받는 것 자체는 성립하고, 운용 시나리오만 성립하지 않기 때문입니다.
                         </p>
                       </Box>
                     </>
@@ -661,7 +667,9 @@ export default function RetirementPensionPage() {
                   { key: "cols", label: "컬럼 설명", body: (
                     <Box>
                       <ColTable rows={[
-                        ["투자 원금", <>그 해 퇴직 시 실수령액. 정년에 이 금액으로 매입한다고 봅니다</>],
+                        ["투자 원금", <>그 해 퇴직 시 실수령액. 퇴직 시점에 이 금액으로 매입한다고 봅니다</>],
+                        ["매입 시점", <>퇴직한 해의 {retireMonth}월(정년월). 퇴직하는 그 시점에 바로 매입한다고 봅니다</>],
+                        ["재투자", <>매입부터 {payoutAge}세까지의 개월 수. 일찍 퇴직할수록 길어집니다</>],
                         [`${payoutAge}세 평가액`, <>재투자로 불어난 금액. 주가는 현재가 고정(상승률 0%)이라
                           분배금만큼만 늘어납니다 — 정년 퇴직 기준 {retireHoldMonths}개월이면 약 <b>{Math.pow(1 + ccAnnualRate / 12, retireHoldMonths).toFixed(2)}배</b></>],
                         ["월 분배금", <>평가액 × 연 분배율 ÷ 12</>],
@@ -720,10 +728,12 @@ export default function RetirementPensionPage() {
               />
             </div>
             <p className="text-xs text-gray-400 mt-0.5">
-              실수령 퇴직금 전액으로 KODEX 200 타겟위클리커버드콜 매입 →
+              퇴직 시점에 실수령 퇴직금 전액으로 KODEX 200 타겟위클리커버드콜 매입 →
               <b className="text-gray-500"> {payoutAge}세까지 분배금 전액 재투자</b> →
-              <b className="text-amber-600"> {payoutAge}세부터 분배금 수령</b> ·
-              매입은 <b className="text-gray-500">퇴직 시점과 만 {DB_ACCESS_AGE}세({accessStr}) 중 늦은 쪽</b>부터
+              <b className="text-amber-600"> {payoutAge}세부터 분배금 수령</b>
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              만 {DB_ACCESS_AGE}세({accessStr}) 이전 퇴직은 퇴직급여가 IRP 로 의무 이전되어 인출할 수 없으므로 표에서 제외했습니다.
             </p>
           </div>
 
@@ -796,11 +806,9 @@ export default function RetirementPensionPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right text-gray-500 text-xs border-l border-gray-100">{fmtMan(row.netMan)}</td>
+
                     <td className="px-4 py-3 text-right">
                       <span className="text-gray-500 text-xs">{row.buyYm}</span>
-                      {row.waiting && (
-                        <span className="ml-1 text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">만 {DB_ACCESS_AGE}세</span>
-                      )}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <span className="text-gray-500 text-xs">{row.holdMonths}개월</span>
@@ -832,14 +840,17 @@ export default function RetirementPensionPage() {
               금융소득종합과세(연 2,000만원)도 그 기준이면 연 분배금이 5억에 가까워야 걸린다
             </p>
             <p>
-              • <b>DB형이라 매입 시점에 두 가지 제약이 걸린다.</b>
-              ① 퇴직 전에는 회사가 적립금을 운용하므로 손댈 수 없고,
-              ② 만 {DB_ACCESS_AGE}세({accessStr}) 전에는 퇴직연금을 수령해 개인이 운용할 수 없다 —
-              그래서 매입 시점은 <b>둘 중 늦은 쪽</b>이다
+              • <b>매입 시점은 퇴직 시점이다.</b> DB형이라 퇴직 전에는 회사가 적립금을 운용하므로
+              개인이 손댈 수 없고, 그 전에 발생하는 분배금도 없다
             </p>
             <p>
-              • 만 {DB_ACCESS_AGE}세 전에 퇴직하는 행은 <span className="text-gray-500">만 {DB_ACCESS_AGE}세</span> 배지가 붙는다.
-              퇴직금은 그 해에 받지만 {accessStr}까지 굴리지 못하고 기다리는 경우다
+              • <b>표는 만 {DB_ACCESS_AGE}세({accessStr}) 이후 퇴직부터 시작한다.</b>
+              만 {DB_ACCESS_AGE}세 미만으로 퇴직하면 퇴직급여가 IRP 로 의무 이전되고 만 {DB_ACCESS_AGE}세까지 인출할 수 없다 —
+              IRP 를 운용하지 않는다는 전제라 이 시나리오 자체가 성립하지 않아 제외했다
+            </p>
+            <p>
+              • 위 <b>현재 기준 예상 퇴직금</b> 카드의 {payoutAge}세 월 분배금만 예외다.
+              지금(만 {currentAge}세) 퇴직하는 경우라 만 {DB_ACCESS_AGE}세에 매입하는 것으로 계산한 <b>참고값</b>이다
             </p>
             <p>• 각 행은 그 해 <b>{retireMonth}월</b>(정년월)에 퇴직한다고 가정 — 행 간 개월 차이가 정확히 12의 배수가 된다</p>
             <p>• 주가는 현재가 고정(상승률 0%)이라 평가액은 재투자한 분배금만큼만 늘어난다 — 정년 퇴직 기준 {retireHoldMonths}개월이면 약 {Math.pow(1 + ccAnnualRate / 12, retireHoldMonths).toFixed(2)}배</p>
