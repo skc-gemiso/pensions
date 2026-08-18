@@ -115,7 +115,7 @@ function StageBar({ stage, max }: { stage: PayoutStage; max: number }) {
   ] as { kind: PensionKind; value: number }[]).filter(p => p.value > 0)
 
   return (
-    <div className="flex h-7 rounded-lg overflow-hidden bg-gray-100" style={{ width: `${(stage.total / max) * 100}%` }}>
+    <div className="flex h-6 rounded-lg overflow-hidden bg-gray-100" style={{ width: `${(stage.total / max) * 100}%` }}>
       {parts.map(p => (
         <div key={p.kind} className={`${TONE[p.kind].bar} flex items-center justify-center`}
           style={{ width: `${(p.value / stage.total) * 100}%` }}
@@ -147,13 +147,13 @@ export default function DashboardPage() {
 
   return (
     <AppLayout>
-      <div className="max-w-7xl mx-auto px-4 py-4 space-y-5">
+      <div className="max-w-7xl mx-auto px-4 py-4 space-y-3">
 
         {/* 헤더 */}
         <div className="flex items-start justify-between flex-wrap gap-2">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-2xl font-bold text-gray-900">나의 연금 현황</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold text-gray-900">나의 연금 현황</h1>
               {ov && <PageHelp ov={ov} />}
             </div>
             <p className="text-gray-500 text-sm">
@@ -171,64 +171,57 @@ export default function DashboardPage() {
 
         {ov && first && last && (
           <>
-            {/* ── 핵심 요약 ── */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <div className="lg:col-span-2 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl p-6 text-white">
-                <p className="text-indigo-100 text-xs mb-1">
-                  {last.fromAge}세({fmtYm(last.fromYm)})부터 세 연금을 모두 받을 때
+            {/* ── 핵심 요약 ── 한 줄로 압축 */}
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl px-5 py-4 text-white
+                            flex items-center gap-5 flex-wrap">
+              <div className="flex-shrink-0">
+                <p className="text-indigo-100 text-[11px]">
+                  {last.fromAge}세({fmtYm(last.fromYm)})부터 · 세 연금 전부
                 </p>
-                <p className="text-4xl font-bold tabular-nums leading-tight">
+                <p className="text-2xl font-bold tabular-nums leading-tight">
                   월 {fmtKRW(last.total)}
+                  <span className="text-xs font-normal text-indigo-100 ml-2">
+                    연 {fmtKRW(last.total * 12)}
+                  </span>
                 </p>
-                <p className="text-indigo-100 text-sm mt-2">연 {fmtKRW(last.total * 12)}</p>
-
-                <div className="mt-4 pt-4 border-t border-white/20 grid grid-cols-3 gap-3">
-                  {ov.pensions.map(p => (
-                    <div key={p.kind}>
-                      <p className="text-[11px] text-indigo-100">{p.label}</p>
-                      <p className="text-base font-bold tabular-nums">{fmtKRW(p.monthly)}</p>
-                      <p className="text-[10px] text-indigo-200">
-                        {Math.round(p.monthly / last.total * 100)}%
-                      </p>
-                    </div>
-                  ))}
-                </div>
               </div>
 
-              <div className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col justify-center gap-4">
+              <div className="flex gap-4 flex-wrap border-l border-white/20 pl-5">
+                {ov.pensions.map(p => (
+                  <div key={p.kind}>
+                    <p className="text-[10px] text-indigo-200">{p.label}</p>
+                    <p className="text-sm font-bold tabular-nums leading-tight">{fmtKRW(p.monthly)}</p>
+                    <p className="text-[10px] text-indigo-200">{Math.round(p.monthly / last.total * 100)}%</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex gap-4 flex-wrap border-l border-white/20 pl-5 ml-auto">
                 <div>
-                  <p className="text-xs text-gray-500 mb-0.5">가장 먼저 받는 시점</p>
-                  <p className="text-lg font-bold text-gray-900">
-                    {first.fromAge}세 · {fmtYm(first.fromYm)}
-                  </p>
-                  <p className="text-sm font-semibold text-purple-600 tabular-nums mt-0.5">
-                    월 {fmtKRW(first.total)}
-                  </p>
+                  <p className="text-[10px] text-indigo-200">먼저 받는 시점</p>
+                  <p className="text-sm font-bold leading-tight">{first.fromAge}세 {fmtYm(first.fromYm)}</p>
+                  <p className="text-[10px] text-indigo-200 tabular-nums">월 {fmtKRW(first.total)}</p>
                 </div>
-                <div className="border-t border-gray-100 pt-4">
-                  <p className="text-xs text-gray-500 mb-0.5">지금까지 쌓은 금액</p>
-                  <p className="text-lg font-bold text-gray-900 tabular-nums">
+                <div>
+                  <p className="text-[10px] text-indigo-200">지금까지 쌓은 금액</p>
+                  <p className="text-sm font-bold tabular-nums leading-tight">
                     {fmtKRW(ov.pensions.reduce((s, p) => s + p.accumulated, 0))}
                   </p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">
-                    국민연금 납부액 + 퇴직금 + 연금저축 평가액
-                  </p>
+                  <p className="text-[10px] text-indigo-200">납부액 + 퇴직금 + 평가액</p>
                 </div>
               </div>
             </div>
 
             {/* ── 수령 타임라인 ── */}
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-gray-100">
+              <div className="px-4 py-2 border-b border-gray-100 flex items-baseline gap-2 flex-wrap">
                 <h2 className="font-semibold text-gray-900 text-sm">수령 시점별 월 소득</h2>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  개시 나이가 달라 구간마다 합계가 달라집니다
-                </p>
+                <p className="text-xs text-gray-400">개시 나이가 달라 구간마다 합계가 달라집니다</p>
               </div>
-              <div className="px-5 py-4 space-y-4">
+              <div className="px-4 py-3 space-y-3">
                 {ov.stages.map(stage => (
                   <div key={stage.fromYm}>
-                    <div className="flex items-baseline justify-between mb-1.5 flex-wrap gap-1">
+                    <div className="flex items-baseline justify-between mb-1 flex-wrap gap-1">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-gray-800">
                           만 {stage.fromAge}세부터
@@ -248,7 +241,7 @@ export default function DashboardPage() {
                   </div>
                 ))}
 
-                <div className="flex items-center gap-4 pt-1 text-[11px] text-gray-500">
+                <div className="flex items-center gap-4 text-[11px] text-gray-500">
                   {ov.pensions.map(p => (
                     <span key={p.kind} className="flex items-center gap-1.5">
                       <span className={`inline-block w-2.5 h-2.5 rounded-sm ${TONE[p.kind].bar}`} />
@@ -260,13 +253,13 @@ export default function DashboardPage() {
             </div>
 
             {/* ── 연금별 카드 ── */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {ov.pensions.map(p => {
                 const t = TONE[p.kind]
                 return (
                   <Link key={p.kind} href={p.href}
-                    className={`block rounded-xl border ${t.border} ${t.bg} p-5 hover:shadow-md transition-shadow`}>
-                    <div className="flex items-center gap-2 mb-3">
+                    className={`block rounded-xl border ${t.border} ${t.bg} p-4 hover:shadow-md transition-shadow`}>
+                    <div className="flex items-center gap-2 mb-2">
                       <span className="text-xl">{t.icon}</span>
                       <h3 className={`font-bold ${t.text}`}>{p.label}</h3>
                       <svg className={`w-4 h-4 ml-auto ${t.text} opacity-50`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -275,12 +268,12 @@ export default function DashboardPage() {
                     </div>
 
                     <p className="text-xs text-gray-500">월 수령액 ({p.startAge}세~)</p>
-                    <p className={`text-2xl font-bold tabular-nums ${t.text} leading-tight`}>
+                    <p className={`text-xl font-bold tabular-nums ${t.text} leading-tight`}>
                       {fmt(p.monthly)}<span className="text-sm font-normal ml-0.5">원</span>
                     </p>
                     <p className="text-[11px] text-gray-400 mt-0.5">{p.basis}</p>
 
-                    <div className="mt-4 pt-3 border-t border-gray-200/70 space-y-2">
+                    <div className="mt-3 pt-2 border-t border-gray-200/70 space-y-1.5">
                       <div className="flex items-baseline justify-between">
                         <span className="text-xs text-gray-500">{p.accumulatedLabel}</span>
                         <span className="text-sm font-semibold text-gray-800 tabular-nums">{fmtKRW(p.accumulated)}</span>
