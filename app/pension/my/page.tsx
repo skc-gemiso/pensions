@@ -10,33 +10,28 @@ import {
   type PensionOverview, type PensionKind, type PayoutStage,
 } from "./actions"
 
-/**
- * 이 화면만 어두운 테마다 (디자인 시안 반영).
- * OS 연동(prefers-color-scheme)이 아니라 명시적 색상이라 다른 화면에는 영향이 없다.
- */
 const TONE: Record<PensionKind, {
   text: string; dot: string; bar: string; ring: string
   cardBg: string; cardBorder: string; iconBg: string; track: string
 }> = {
   per: {
-    text: "text-purple-400", dot: "bg-purple-500", bar: "bg-purple-500", ring: "ring-purple-500/25",
-    cardBg: "bg-purple-950/25", cardBorder: "border-purple-500/25",
-    iconBg: "bg-gradient-to-br from-purple-500 to-purple-700", track: "bg-purple-950/60",
+    text: "text-purple-700", dot: "bg-purple-500", bar: "bg-purple-500", ring: "ring-purple-100",
+    cardBg: "bg-purple-50", cardBorder: "border-purple-200",
+    iconBg: "bg-gradient-to-br from-purple-500 to-purple-700", track: "bg-purple-100",
   },
   ret: {
-    text: "text-emerald-400", dot: "bg-emerald-500", bar: "bg-emerald-500", ring: "ring-emerald-500/25",
-    cardBg: "bg-emerald-950/25", cardBorder: "border-emerald-500/25",
-    iconBg: "bg-gradient-to-br from-emerald-500 to-emerald-700", track: "bg-emerald-950/60",
+    text: "text-emerald-700", dot: "bg-emerald-500", bar: "bg-emerald-500", ring: "ring-emerald-100",
+    cardBg: "bg-emerald-50", cardBorder: "border-emerald-200",
+    iconBg: "bg-gradient-to-br from-emerald-500 to-emerald-700", track: "bg-emerald-100",
   },
   nat: {
-    text: "text-blue-400", dot: "bg-blue-500", bar: "bg-blue-500", ring: "ring-blue-500/25",
-    cardBg: "bg-blue-950/25", cardBorder: "border-blue-500/25",
-    iconBg: "bg-gradient-to-br from-blue-500 to-blue-700", track: "bg-blue-950/60",
+    text: "text-blue-700", dot: "bg-blue-500", bar: "bg-blue-500", ring: "ring-blue-100",
+    cardBg: "bg-blue-50", cardBorder: "border-blue-200",
+    iconBg: "bg-gradient-to-br from-blue-500 to-blue-700", track: "bg-blue-100",
   },
 }
 
-const PAGE_BG = "bg-[#080e1c]"
-const CARD = "bg-[#0e1729] border border-white/[0.07] rounded-2xl"
+const CARD = "bg-white border border-gray-200 rounded-2xl"
 
 function fmtYm(ym: string): string {
   const [y, m] = ym.split("-")
@@ -161,7 +156,7 @@ function StageBar({ stage, max }: { stage: PayoutStage; max: number }) {
   ] as { kind: PensionKind; value: number }[]).filter(p => p.value > 0)
 
   return (
-    <div className="flex h-9 rounded-lg overflow-hidden bg-white/[0.04]"
+    <div className="flex h-9 rounded-lg overflow-hidden bg-gray-100"
       style={{ width: `${(stage.total / max) * 100}%` }}>
       {parts.map(p => {
         const v = splitKRW(p.value)
@@ -198,186 +193,184 @@ export default function DashboardPage() {
 
   return (
     <AppLayout>
-      {/* main 의 여백을 상쇄해 화면 끝까지 어둡게 깐다 */}
-      <div className={`${PAGE_BG} -m-4 md:-m-6 p-4 md:p-6 min-h-full`}>
-        <div className="max-w-7xl mx-auto space-y-4">
+      {/* main 의 하단 여백을 상쇄해 화면 아래 공백을 줄인다 */}
+      <div className="max-w-7xl mx-auto space-y-4 -mb-4 md:-mb-6">
 
-          {/* 헤더 */}
-          <div className="flex items-start justify-between flex-wrap gap-2">
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-bold text-white">나의 연금 현황</h1>
-                {ov && <PageHelp ov={ov} />}
-              </div>
-              <p className="text-slate-400 text-sm mt-1">
-                국민연금 · 퇴직연금 · 개인연금을 한 기준으로 합산한 예상 수령액
-              </p>
+        {/* 헤더 */}
+        <div className="flex items-start justify-between flex-wrap gap-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-gray-900">나의 연금 현황</h1>
+              {ov && <PageHelp ov={ov} />}
             </div>
-            {ov && (
-              <p className="text-xs text-slate-400 self-end flex items-center gap-2">
-                현재 만 {ov.currentAge}세
-                <span className="text-slate-600">|</span>
-                {fmtYm(ov.today)} 기준
-              </p>
-            )}
+            <p className="text-gray-500 text-sm mt-1">
+              국민연금 · 퇴직연금 · 개인연금을 한 기준으로 합산한 예상 수령액
+            </p>
           </div>
+          {ov && (
+            <p className="text-xs text-gray-400 self-end flex items-center gap-2">
+              현재 만 {ov.currentAge}세
+              <span className="text-gray-300">|</span>
+              {fmtYm(ov.today)} 기준
+            </p>
+          )}
+        </div>
 
-          {loading && <p className="text-sm text-slate-500 py-10 text-center">불러오는 중…</p>}
+        {loading && <p className="text-sm text-gray-400 py-10 text-center">불러오는 중…</p>}
 
-          {ov && first && last && (
-            <>
-              {/* ── 핵심 요약 ── */}
-              <div className={`${CARD} px-6 py-6`}>
-                <div className="flex items-center gap-6 flex-wrap">
-                  {/* 합산 월 수령액 */}
-                  <div className="flex-shrink-0 pr-6">
-                    <p className="text-slate-400 text-sm">
-                      만 {last.fromAge}세 ~ {fmtYm(last.fromYm)}부터 연금 수령 예상
-                    </p>
-                    <p className="text-white text-[42px] font-bold tabular-nums leading-tight mt-1">
-                      {fmt(last.total)}
-                      <span className="text-base font-medium text-slate-300 ml-1">원 / 월</span>
-                    </p>
-                    <p className="text-slate-400 text-sm mt-1">연 {fmtKRW(last.total * 12)}</p>
-                  </div>
-
-                  {/* 연금별 */}
-                  {ov.pensions.map(p => {
-                    const t = TONE[p.kind]
-                    const v = splitKRW(p.monthly)
-                    return (
-                      <div key={p.kind} className="flex items-center gap-3 px-6 border-l border-white/[0.07]">
-                        <span className={`flex items-center justify-center w-12 h-12 rounded-full text-white flex-shrink-0
-                                          ${t.iconBg} ring-4 ${t.ring}`}>
-                          <PensionIcon kind={p.kind} className="w-6 h-6" />
-                        </span>
-                        <div>
-                          <p className="text-slate-300 text-sm">{p.label}</p>
-                          <p className="text-white text-2xl font-bold tabular-nums leading-tight">
-                            {v.num}<span className="text-sm font-medium ml-0.5">{v.unit}</span>
-                          </p>
-                          <p className={`text-xs font-medium ${t.text}`}>
-                            {Math.round(p.monthly / last.total * 100)}%
-                          </p>
-                        </div>
-                      </div>
-                    )
-                  })}
-
-                  {/* 먼저 받는 시점 */}
-                  <div className="ml-auto rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3">
-                    <p className="text-slate-400 text-xs">
-                      먼저 받는 시점 · 만 {first.fromAge}세
-                    </p>
-                    <p className="text-white text-xl font-bold tabular-nums leading-tight mt-1">
-                      월 {fmtKRW(first.total)}
-                    </p>
-                    <p className="text-slate-400 text-xs mt-1.5 flex items-center gap-1.5">
-                      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
-                        <rect x="3" y="5" width="18" height="16" rx="2" />
-                        <path d="M3 10h18M8 3v4M16 3v4" strokeLinecap="round" />
-                      </svg>
-                      {fmtYm(first.fromYm)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* ── 수령 시점별 ── */}
-              <div className={`${CARD} px-6 py-5`}>
-                <h2 className="text-white font-semibold text-base mb-4">수령 시점별 연금 수령액 시뮬레이션</h2>
-
-                <div className="space-y-3">
-                  {ov.stages.map((stage, i) => {
-                    const st = splitKRW(stage.total)
-                    return (
-                      <div key={stage.fromYm}
-                        className={`flex items-center gap-4 flex-wrap ${i > 0 ? "border-t border-white/[0.06] pt-3" : ""}`}>
-                        <span className="text-white font-semibold w-28 flex-shrink-0">
-                          만 {stage.fromAge}세부터
-                        </span>
-                        <span className="text-slate-400 text-sm w-24 flex-shrink-0">{fmtYm(stage.fromYm)}</span>
-
-                        <span className="flex gap-2 flex-shrink-0">
-                          {stage.starting.map(k => {
-                            const t = TONE[k]
-                            return (
-                              <span key={k}
-                                className={`text-xs font-medium px-2.5 py-1 rounded-full border ${t.cardBorder} ${t.cardBg} ${t.text}`}>
-                                + {ov.pensions.find(p => p.kind === k)?.label} 시작
-                              </span>
-                            )
-                          })}
-                        </span>
-
-                        <div className="flex-1 min-w-[240px]">
-                          <StageBar stage={stage} max={maxTotal} />
-                        </div>
-
-                        <span className="text-white text-lg font-bold tabular-nums flex-shrink-0 w-32 text-right">
-                          월 {st.num}<span className="text-sm font-medium ml-0.5">{st.unit}</span>
-                        </span>
-                      </div>
-                    )
-                  })}
+        {ov && first && last && (
+          <>
+            {/* ── 핵심 요약 ── */}
+            <div className={`${CARD} px-6 py-6`}>
+              <div className="flex items-center gap-6 flex-wrap">
+                {/* 합산 월 수령액 */}
+                <div className="flex-shrink-0 pr-6">
+                  <p className="text-gray-500 text-sm">
+                    만 {last.fromAge}세 ~ {fmtYm(last.fromYm)}부터 연금 수령 예상
+                  </p>
+                  <p className="text-gray-900 text-[42px] font-bold tabular-nums leading-tight mt-1">
+                    {fmt(last.total)}
+                    <span className="text-base font-medium text-gray-500 ml-1">원 / 월</span>
+                  </p>
+                  <p className="text-gray-500 text-sm mt-1">연 {fmtKRW(last.total * 12)}</p>
                 </div>
 
-                <div className="flex items-center gap-5 mt-4 text-xs text-slate-400">
-                  {ov.pensions.map(p => (
-                    <span key={p.kind} className="flex items-center gap-1.5">
-                      <span className={`inline-block w-2.5 h-2.5 rounded-full ${TONE[p.kind].dot}`} />
-                      {p.label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {/* ── 연금별 카드 ── */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* 연금별 */}
                 {ov.pensions.map(p => {
                   const t = TONE[p.kind]
+                  const v = splitKRW(p.monthly)
                   return (
-                    <Link key={p.kind} href={p.href}
-                      className={`block rounded-2xl border ${t.cardBorder} ${t.cardBg} px-5 py-5
-                                  hover:brightness-125 transition-all`}>
-                      <div className="flex items-center gap-3 mb-3">
-                        <span className={`flex items-center justify-center w-11 h-11 rounded-full text-white flex-shrink-0
-                                          ${t.iconBg} ring-4 ${t.ring}`}>
-                          <PensionIcon kind={p.kind} className="w-5 h-5" />
-                        </span>
-                        <div>
-                          <h3 className={`font-bold text-lg ${t.text}`}>{p.label}</h3>
-                          <p className="text-slate-400 text-xs">월 수령액 ({p.startAge}세~)</p>
-                        </div>
+                    <div key={p.kind} className="flex items-center gap-3 px-6 border-l border-gray-100">
+                      <span className={`flex items-center justify-center w-12 h-12 rounded-full text-white flex-shrink-0
+                                        ${t.iconBg} ring-4 ${t.ring}`}>
+                        <PensionIcon kind={p.kind} className="w-6 h-6" />
+                      </span>
+                      <div>
+                        <p className="text-gray-600 text-sm">{p.label}</p>
+                        <p className="text-gray-900 text-2xl font-bold tabular-nums leading-tight">
+                          {v.num}<span className="text-sm font-medium ml-0.5">{v.unit}</span>
+                        </p>
+                        <p className={`text-xs font-medium ${t.text}`}>
+                          {Math.round(p.monthly / last.total * 100)}%
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {/* 먼저 받는 시점 */}
+                <div className="ml-auto rounded-xl border border-gray-200 bg-gray-50 px-5 py-3">
+                  <p className="text-gray-500 text-xs">
+                    먼저 받는 시점 · 만 {first.fromAge}세
+                  </p>
+                  <p className="text-gray-900 text-xl font-bold tabular-nums leading-tight mt-1">
+                    월 {fmtKRW(first.total)}
+                  </p>
+                  <p className="text-gray-400 text-xs mt-1.5 flex items-center gap-1.5">
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <rect x="3" y="5" width="18" height="16" rx="2" />
+                      <path d="M3 10h18M8 3v4M16 3v4" strokeLinecap="round" />
+                    </svg>
+                    {fmtYm(first.fromYm)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* ── 수령 시점별 ── */}
+            <div className={`${CARD} px-6 py-5`}>
+              <h2 className="text-gray-900 font-semibold text-base mb-4">수령 시점별 연금 수령액 시뮬레이션</h2>
+
+              <div className="space-y-3">
+                {ov.stages.map((stage, i) => {
+                  const st = splitKRW(stage.total)
+                  return (
+                    <div key={stage.fromYm}
+                      className={`flex items-center gap-4 flex-wrap ${i > 0 ? "border-t border-gray-100 pt-3" : ""}`}>
+                      <span className="text-gray-900 font-semibold w-28 flex-shrink-0">
+                        만 {stage.fromAge}세부터
+                      </span>
+                      <span className="text-gray-400 text-sm w-24 flex-shrink-0">{fmtYm(stage.fromYm)}</span>
+
+                      <span className="flex gap-2 flex-shrink-0">
+                        {stage.starting.map(k => {
+                          const t = TONE[k]
+                          return (
+                            <span key={k}
+                              className={`text-xs font-medium px-2.5 py-1 rounded-full border ${t.cardBorder} ${t.cardBg} ${t.text}`}>
+                              + {ov.pensions.find(p => p.kind === k)?.label} 시작
+                            </span>
+                          )
+                        })}
+                      </span>
+
+                      <div className="flex-1 min-w-[240px]">
+                        <StageBar stage={stage} max={maxTotal} />
                       </div>
 
-                      <p className={`text-3xl font-bold tabular-nums leading-tight ${t.text}`}>
-                        {fmt(p.monthly)}<span className="text-sm font-medium text-slate-400 ml-1">원</span>
-                      </p>
-                      <p className="text-slate-400 text-xs mt-1">{p.basis}</p>
-
-                      <div className="mt-4 pt-4 border-t border-white/[0.07] space-y-2.5">
-                        <div className="flex items-baseline justify-between">
-                          <span className="text-xs text-slate-400">{p.accumulatedLabel}</span>
-                          <span className="text-sm font-semibold text-slate-100 tabular-nums">
-                            {fmtKRW(p.accumulated)}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs text-slate-400 flex-shrink-0">{p.progressLabel}</span>
-                          <div className={`flex-1 rounded-full h-1.5 ${t.track}`}>
-                            <div className={`${t.bar} h-1.5 rounded-full`} style={{ width: `${p.progressPct}%` }} />
-                          </div>
-                          <span className={`text-xs font-semibold ${t.text} flex-shrink-0`}>{p.progressPct}%</span>
-                        </div>
-                      </div>
-                    </Link>
+                      <span className="text-gray-900 text-lg font-bold tabular-nums flex-shrink-0 w-32 text-right">
+                        월 {st.num}<span className="text-sm font-medium ml-0.5">{st.unit}</span>
+                      </span>
+                    </div>
                   )
                 })}
               </div>
-            </>
-          )}
-        </div>
+
+              <div className="flex items-center gap-5 mt-4 text-xs text-gray-500">
+                {ov.pensions.map(p => (
+                  <span key={p.kind} className="flex items-center gap-1.5">
+                    <span className={`inline-block w-2.5 h-2.5 rounded-full ${TONE[p.kind].dot}`} />
+                    {p.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* ── 연금별 카드 ── */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {ov.pensions.map(p => {
+                const t = TONE[p.kind]
+                return (
+                  <Link key={p.kind} href={p.href}
+                    className={`block rounded-2xl border ${t.cardBorder} ${t.cardBg} px-5 py-5
+                                hover:shadow-md transition-shadow`}>
+                    <div className="flex items-center gap-3 mb-3">
+                      <span className={`flex items-center justify-center w-11 h-11 rounded-full text-white flex-shrink-0
+                                        ${t.iconBg} ring-4 ${t.ring}`}>
+                        <PensionIcon kind={p.kind} className="w-5 h-5" />
+                      </span>
+                      <div>
+                        <h3 className={`font-bold text-lg ${t.text}`}>{p.label}</h3>
+                        <p className="text-gray-500 text-xs">월 수령액 ({p.startAge}세~)</p>
+                      </div>
+                    </div>
+
+                    <p className={`text-3xl font-bold tabular-nums leading-tight ${t.text}`}>
+                      {fmt(p.monthly)}<span className="text-sm font-medium text-gray-500 ml-1">원</span>
+                    </p>
+                    <p className="text-gray-500 text-xs mt-1">{p.basis}</p>
+
+                    <div className="mt-4 pt-4 border-t border-gray-200/70 space-y-2.5">
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-xs text-gray-500">{p.accumulatedLabel}</span>
+                        <span className="text-sm font-semibold text-gray-800 tabular-nums">
+                          {fmtKRW(p.accumulated)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-gray-500 flex-shrink-0">{p.progressLabel}</span>
+                        <div className={`flex-1 rounded-full h-1.5 ${t.track}`}>
+                          <div className={`${t.bar} h-1.5 rounded-full`} style={{ width: `${p.progressPct}%` }} />
+                        </div>
+                        <span className={`text-xs font-semibold ${t.text} flex-shrink-0`}>{p.progressPct}%</span>
+                      </div>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          </>
+        )}
       </div>
     </AppLayout>
   )

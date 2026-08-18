@@ -84,22 +84,18 @@ stages = marks.map(ym => {
 
 ## 화면 (`page.tsx`)
 
-### 다크 테마 — 이 화면만의 예외
+### 라이트 테마 유지
 
-디자인 시안에 맞춰 **이 화면만 어두운 배경**을 쓴다.
-[main_design.md](../../main_design.md) 의 "다크모드 미지원" 규칙과 어긋나 보이지만,
-그 규칙은 OS 연동(`prefers-color-scheme`)을 금지하는 것이고 여기서는
-**명시적 색상 클래스만** 쓴다. 다른 화면에는 영향이 없다.
+디자인 시안은 다크였으나 **레이아웃·구성만 가져오고 색은 라이트로 유지**한다
+([main_design.md](../../main_design.md) 다크모드 미지원 규칙).
 
 ```
-PAGE_BG = "bg-[#080e1c]"                                    페이지 바탕
-CARD    = "bg-[#0e1729] border border-white/[0.07] rounded-2xl"   기본 카드
+CARD = "bg-white border border-gray-200 rounded-2xl"
 ```
 
-- `AppLayout` 의 `main` 이 `p-4 md:p-6` 를 주므로 `-m-4 md:-m-6 p-4 md:p-6` 로
-  상쇄해 화면 끝까지 어둡게 깐다. `min-h-full` 로 세로도 채운다
-- 구분선은 `border-white/[0.07]`, 반투명 면은 `bg-white/[0.03]` 로 통일
-- 도움말 모달은 공용 컴포넌트라 라이트 테마 그대로다 (의도된 대비)
+- 화면 하단 공백을 줄이려고 컨테이너에 `-mb-4 md:-mb-6` 를 걸어
+  `AppLayout` 의 `main` 하단 패딩을 상쇄한다
+- 구분선은 `border-gray-100`, 보조 면은 `bg-gray-50`
 
 ### 색상
 
@@ -107,11 +103,11 @@ CARD    = "bg-[#0e1729] border border-white/[0.07] rounded-2xl"   기본 카드
 
 | 연금 | 색 | 텍스트 | 카드 배경 |
 |------|-----|--------|-----------|
-| 개인연금 | purple | `text-purple-400` | `bg-purple-950/25` + `border-purple-500/25` |
-| 퇴직연금 | emerald | `text-emerald-400` | `bg-emerald-950/25` + `border-emerald-500/25` |
-| 국민연금 | blue | `text-blue-400` | `bg-blue-950/25` + `border-blue-500/25` |
+| 개인연금 | purple | `text-purple-700` | `bg-purple-50` + `border-purple-200` |
+| 퇴직연금 | emerald | `text-emerald-700` | `bg-emerald-50` + `border-emerald-200` |
+| 국민연금 | blue | `text-blue-700` | `bg-blue-50` + `border-blue-200` |
 
-아이콘은 `w-11~12` 원형에 `bg-gradient-to-br` + `ring-4 ring-{color}/25` 로 발광 효과를 준다.
+아이콘은 `w-11~12` 원형에 `bg-gradient-to-br` + `ring-4 ring-{color}-100` 을 준다.
 `PensionIcon` 이 연금별 SVG(사람 / 서류가방 / 은행)를 그린다.
 
 ### 숫자 표기
