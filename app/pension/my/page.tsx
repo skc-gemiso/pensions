@@ -147,7 +147,7 @@ export default function DashboardPage() {
 
   return (
     <AppLayout>
-      <div className="max-w-7xl mx-auto space-y-5">
+      <div className="max-w-7xl mx-auto space-y-2.5">
 
         {/* 헤더 */}
         <div className="flex items-start justify-between flex-wrap gap-2">
@@ -172,41 +172,32 @@ export default function DashboardPage() {
         {ov && first && last && (
           <>
             {/* ── 핵심 요약 ── 한 줄로 압축 */}
-            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl px-6 py-6 text-white
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl px-6 py-8 text-white
                             flex items-center gap-6 flex-wrap">
               <div className="flex-shrink-0">
-                <p className="text-indigo-100 text-xs mb-1">
+                <p className="text-indigo-100 text-sm mb-1">
                   {last.fromAge}세({fmtYm(last.fromYm)})부터 · 세 연금 전부
                 </p>
-                <p className="text-4xl font-bold tabular-nums leading-tight">
+                <p className="text-5xl font-bold tabular-nums leading-tight">
                   월 {fmtKRW(last.total)}
                 </p>
-                <p className="text-indigo-100 text-xs mt-1">연 {fmtKRW(last.total * 12)}</p>
+                <p className="text-indigo-100 text-sm mt-1">연 {fmtKRW(last.total * 12)}</p>
               </div>
 
               <div className="flex gap-5 flex-wrap border-l border-white/20 pl-6">
                 {ov.pensions.map(p => (
                   <div key={p.kind}>
-                    <p className="text-[11px] text-indigo-200">{p.label}</p>
-                    <p className="text-lg font-bold tabular-nums leading-tight">{fmtKRW(p.monthly)}</p>
-                    <p className="text-[11px] text-indigo-200">{Math.round(p.monthly / last.total * 100)}%</p>
+                    <p className="text-xs text-indigo-200">{p.label}</p>
+                    <p className="text-xl font-bold tabular-nums leading-tight">{fmtKRW(p.monthly)}</p>
+                    <p className="text-xs text-indigo-200">{Math.round(p.monthly / last.total * 100)}%</p>
                   </div>
                 ))}
               </div>
 
-              <div className="flex gap-5 flex-wrap border-l border-white/20 pl-6 ml-auto">
-                <div>
-                  <p className="text-[11px] text-indigo-200">먼저 받는 시점</p>
-                  <p className="text-base font-bold leading-tight">{first.fromAge}세 {fmtYm(first.fromYm)}</p>
-                  <p className="text-[11px] text-indigo-200 tabular-nums">월 {fmtKRW(first.total)}</p>
-                </div>
-                <div>
-                  <p className="text-[11px] text-indigo-200">지금까지 쌓은 금액</p>
-                  <p className="text-base font-bold tabular-nums leading-tight">
-                    {fmtKRW(ov.pensions.reduce((s, p) => s + p.accumulated, 0))}
-                  </p>
-                  <p className="text-[11px] text-indigo-200">납부액 + 퇴직금 + 평가액</p>
-                </div>
+              <div className="border-l border-white/20 pl-6 ml-auto">
+                <p className="text-xs text-indigo-200">먼저 받는 시점</p>
+                <p className="text-lg font-bold leading-tight">{first.fromAge}세 {fmtYm(first.fromYm)}</p>
+                <p className="text-xs text-indigo-200 tabular-nums">월 {fmtKRW(first.total)}</p>
               </div>
             </div>
 
