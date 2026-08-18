@@ -96,6 +96,8 @@ CARD = "bg-white border border-gray-200 rounded-2xl"
 - 화면 하단 공백을 줄이려고 컨테이너에 `-mb-4 md:-mb-6` 를 걸어
   `AppLayout` 의 `main` 하단 패딩을 상쇄한다
 - 구분선은 `border-gray-100`, 보조 면은 `bg-gray-50`
+- **요약과 수령 시점별은 한 카드**다. 같은 이야기(합계 → 시점별 분해)라 나눌 이유가 없다.
+  하단 구역만 `bg-gray-50/60` + `border-t` 로 구분하고, 스택 바 트랙은 `bg-gray-200/70` 을 쓴다
 
 ### 색상
 
