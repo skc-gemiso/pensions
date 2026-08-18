@@ -270,6 +270,14 @@ export default function RetirementPensionPage() {
   /** 오늘 기준 만 나이 */
   const currentAge = Math.floor((today.getFullYear() * 12 + today.getMonth() - birthIdx) / 12)
 
+  /** 근속연수별 퇴직소득세 실효세율(%) — 표에 있는 행에서 그대로 뽑는다 */
+  const taxRateAt = (tenureYears: number): number | null => {
+    const r = tableRows.find(x => x.tenureYears === tenureYears)
+    return r && r.grossMan > 0 ? (r.taxMan / r.grossMan) * 100 : null
+  }
+  const rate15 = taxRateAt(15)
+  const rateRetire = taxRateAt(LEGAL_RETIRE_YEAR - 2015)
+
   return (
     <AppLayout>
       <div className="max-w-7xl mx-auto space-y-5">
@@ -312,10 +320,17 @@ export default function RetirementPensionPage() {
                     </Box>
 
                     <Box tone="amber">
-                      <H>IRP·ISA 는 다루지 않습니다</H>
+                      <H>IRP 로 이전하지 않는 이유</H>
                       <p className="text-xs text-gray-700 leading-relaxed">
-                        운용 계획이 없어 뺐습니다. 퇴직금을 일시금으로 받아 일반 계좌에서 운용하는 기준이라,
-                        IRP 로 이전했을 때의 퇴직소득세 이연·감면 효과는 반영돼 있지 않습니다.
+                        <b>퇴직소득세 실효세율이 이미 낮기 때문입니다.</b> 근속연수공제가 커서
+                        {rate15 != null && <> 근속 15년에 <b>{rate15.toFixed(1)}%</b>,</>}
+                        {rateRetire != null && <> 정년({LEGAL_RETIRE_YEAR - 2015}년)에 <b>{rateRetire.toFixed(1)}%</b></>}
+                        {" "}수준입니다. IRP 로 이전하면 이 세금이 이연·감면되지만,
+                        운용 제약과 인출 절차가 따라붙습니다. 아끼는 세금보다 번거로움이 커서
+                        <b> 일시금으로 받아 바로 운용하는 기준</b>으로 잡았습니다.
+                      </p>
+                      <p className="text-xs text-gray-500 mt-2">
+                        ISA 도 같은 이유로 다루지 않습니다.
                       </p>
                     </Box>
                   </>
@@ -713,7 +728,10 @@ export default function RetirementPensionPage() {
                 <div>
                   <p className="text-sm font-semibold text-emerald-800">KODEX 200 타겟위클리커버드콜 100%</p>
                   <p className="text-xs text-emerald-600 mt-0.5">
-                    IRP·ISA 는 운용하지 않으므로 일시금 수령 후 일반 계좌에서 운용하는 기준입니다.
+                    퇴직소득세 실효세율이
+                    {rate15 != null && <> 근속 15년 <b>{rate15.toFixed(1)}%</b>,</>}
+                    {rateRetire != null && <> 정년({LEGAL_RETIRE_YEAR - 2015}년) <b>{rateRetire.toFixed(1)}%</b></>}
+                    로 낮습니다. 운용·인출이 복잡한 IRP 전환보다 일시금으로 받아 바로 운용하는 편이 낫다고 보고 잡은 기준입니다.
                   </p>
                 </div>
                 <div className="text-right">
