@@ -290,11 +290,6 @@ export default function DashboardPage() {
                 )
               })}
             </div>
-
-            <p className="text-[11px] text-gray-400 leading-relaxed">
-              국민연금만 공단 통보값(실적 기반)이고, 퇴직·개인연금은 커버드콜 연 {(ov.ccAnnualRate * 100).toFixed(1)}%가
-              유지된다는 가정 위의 예상치입니다. 물가·건강보험료·세금은 반영하지 않았습니다.
-            </p>
           </>
         )}
       </div>
