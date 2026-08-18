@@ -293,32 +293,29 @@ export default function RetirementPensionPage() {
                     </div>
 
                     <Box>
-                      <H>DB형(확정급여형) 기준입니다</H>
+                      <H>DB형(확정급여형) 기준</H>
                       <p className="text-xs text-gray-700 leading-relaxed">
-                        퇴직금이 운용 성과가 아니라 <b>퇴직 직전 평균임금 × 근속연수</b>로 정해지는 방식입니다.
-                        정년 전까지는 회사가 적립금을 운용하므로 개인이 손댈 수 없고,
-                        퇴직금은 <b>정년({LEGAL_RETIRE_YEAR}년 {retireMonth}월)에 손에 들어옵니다.</b>
+                        퇴직금이 <b>퇴직 직전 평균임금 × 근속연수</b>로 정해집니다.
+                        퇴직 전까지는 회사가 적립금을 운용하므로 개인이 손댈 수 없습니다.
                       </p>
                     </Box>
 
                     <Box>
                       <H>어디서 온 값인가</H>
                       <ColTable rows={[
-                        ["입사일 · 정년", <>공통 프로필 환경 변수(<code>PROFILE_*</code>). 퇴직연금·개인연금이 같은 값을 씁니다</>],
-                        ["평균임금", <>급여명세서 지급액 <b>월 690만원</b>을 코드에 고정해 뒀습니다</>],
-                        ["연봉 인상", <>매년 <b>240만원</b> 균등 인상 가정</>],
-                        ["2030~2034", <>사전 계산해 둔 값(<code>USER_PROJECTIONS</code>)을 그대로 씁니다</>],
-                        ["2026~2029", <>법정 퇴직금 공식(연봉 ÷ 12 × 근속연수)으로 추정합니다</>],
-                        ["분배율", <>KODEX 200 타겟위클리커버드콜의 실제 지급 이력 최근 12회 평균</>],
+                        ["입사일 · 정년", <>공통 프로필 환경 변수(<code>PROFILE_*</code>)</>],
+                        ["평균임금", <>월 <b>690만원</b> 고정 · 매년 <b>240만원</b> 인상 가정</>],
+                        ["2030~2034", <>사전 계산해 둔 값</>],
+                        ["2026~2029", <>법정 공식(연봉 ÷ 12 × 근속연수) 추정</>],
+                        ["분배율", <>커버드콜 실제 지급 이력 최근 12회 평균</>],
                       ]} />
                     </Box>
 
                     <Box tone="amber">
                       <H>IRP·ISA 는 다루지 않습니다</H>
                       <p className="text-xs text-gray-700 leading-relaxed">
-                        운용 계획이 없어 계산에서 뺐습니다. 퇴직금을 일시금으로 받아 <b>일반 계좌</b>에서
-                        운용하는 기준이므로, 분배금에 연금소득세(3.3~5.5%)가 아니라 배당소득세(15.4%)가 붙습니다.
-                        IRP 로 이전하면 퇴직소득세가 이연·감면되므로, 이 화면의 실수령액은 그만큼 보수적입니다.
+                        운용 계획이 없어 뺐습니다. 퇴직금을 일시금으로 받아 일반 계좌에서 운용하는 기준이라,
+                        IRP 로 이전했을 때의 퇴직소득세 이연·감면 효과는 반영돼 있지 않습니다.
                       </p>
                     </Box>
                   </>
@@ -326,24 +323,19 @@ export default function RetirementPensionPage() {
                 { key: "tax", label: "퇴직소득세", body: (
                   <>
                     <Box>
-                      <H>2023년 개정 기준으로 계산합니다</H>
+                      <H>2023년 개정 기준</H>
                       <pre className="text-xs bg-white border border-gray-200 rounded-lg p-3 overflow-x-auto text-gray-700">{`1. 과세표준 = 퇴직급여 − 근속연수공제
 2. 환산급여 = 과세표준 ÷ 근속연수 × 12
 3. 환산급여공제를 뺀 값에 기본세율 적용
 4. 퇴직소득세 = 산출세액 ÷ 12 × 근속연수`}</pre>
-                      <p className="text-xs text-gray-500 mt-2">지방소득세 10%가 포함된 금액입니다.</p>
+                      <p className="text-xs text-gray-500 mt-2">지방소득세 10% 포함.</p>
                     </Box>
 
-                    <Box>
-                      <H>근속연수공제</H>
-                      <ColTable rows={[
-                        ["5년 이하", "100만원 × 근속연수"],
-                        ["5~10년", "500만원 + 200만원 × (근속연수 − 5)"],
-                        ["10~20년", "1,500만원 + 250만원 × (근속연수 − 10)"],
-                        ["20년 초과", "4,000만원 + 300만원 × (근속연수 − 20)"],
-                      ]} />
-                      <p className="text-xs text-gray-500 mt-2">
-                        오래 다닐수록 공제가 커져서, 근속연수가 늘면 세율이 완만하게 낮아집니다.
+                    <Box tone="blue">
+                      <H>오래 다닐수록 세율이 낮아집니다</H>
+                      <p className="text-xs text-gray-700 leading-relaxed">
+                        근속연수공제가 근속 20년 초과 시 <b>4,000만원 + 연 300만원</b>까지 커집니다.
+                        퇴직금이 늘어도 공제가 함께 커져 실효세율은 완만하게 오릅니다.
                       </p>
                     </Box>
                   </>
@@ -352,14 +344,13 @@ export default function RetirementPensionPage() {
                   <Box tone="amber">
                     <H>⚠️ 이 숫자가 그대로 실현되지 않는 이유</H>
                     <ul className="text-xs text-gray-700 space-y-2 list-disc pl-4 leading-relaxed">
-                      <li><b>평균임금이 추정값입니다.</b> DB형 실제 산정은 퇴직 직전 3개월 평균임금 기준이라
+                      <li><b>평균임금·연봉 인상률이 가정입니다.</b> 실제 산정은 퇴직 직전 3개월 평균임금 기준이라
                         상여·수당 구성에 따라 달라집니다.</li>
-                      <li><b>연봉 인상률은 가정입니다.</b> 매년 240만원 균등 인상을 전제로 했습니다.</li>
-                      <li><b>2029~2030년 사이 금액이 크게 뜁니다.</b> 두 구간의 계산 방식이 달라서 생기는 현상입니다.</li>
-                      <li><b>분배율이 유지된다고 봤습니다.</b> 운용사가 분배 정책을 바꾸면 결과가 크게 달라집니다.</li>
-                      <li><b>주가 변동을 반영하지 않았습니다.</b> 주가가 떨어지면 평가액도 분배금도 함께 줄어듭니다.</li>
-                      <li><b>물가를 반영하지 않았습니다.</b></li>
-                      <li><b>중도인출·회사 정책 변경</b>은 계산에 없습니다.</li>
+                      <li><b>2029~2030년 사이가 크게 뜁니다.</b> 추정 구간과 사전 계산값 구간의
+                        계산 방식이 달라서 생기는 현상이라, 그 증가폭은 의미로 읽지 마세요.</li>
+                      <li><b>분배율이 유지된다고 봤고 주가 변동은 없습니다.</b> 주가가 떨어지면
+                        평가액도 분배금도 함께 줄어듭니다.</li>
+                      <li><b>물가·중도인출·회사 정책 변경</b>은 반영돼 있지 않습니다.</li>
                     </ul>
                   </Box>
                 ) },
@@ -629,37 +620,37 @@ export default function RetirementPensionPage() {
               <h2 className="font-semibold text-gray-900">퇴직금 커버드콜 운용 시 분배금 시뮬레이션</h2>
               <HelpModal
                 title="퇴직금 커버드콜 운용 시 분배금"
-                lead={`퇴직·만 ${DB_ACCESS_AGE}세 중 늦은 쪽에 매입 → ${payoutAge}세까지 재투자 → 그 뒤 수령`}
+                lead={`퇴직 시점 매입 → ${payoutAge}세까지 재투자 → 그 뒤 수령`}
                 tabs={[
                   { key: "what", label: "이 표가 뭔가요", body: (
                     <>
                       <div className="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-xl px-5 py-4 text-white">
-                        <p className="font-bold text-base mb-1">퇴직금을 헐지 않고 분배금만 받는 구조</p>
+                        <p className="font-bold text-base mb-1">원금을 헐지 않고 분배금만 받는 구조</p>
                         <p className="text-sm text-emerald-50">
-                          원금(수량)은 그대로 두고 매달 나오는 분배금만 생활비로 쓰는 시나리오입니다.
+                          수량은 그대로 두고 매달 나오는 분배금만 생활비로 쓰는 시나리오입니다.
                         </p>
                       </div>
 
                       <Box>
                         <H>시간 순서</H>
                         <div className="space-y-1.5 text-xs">
-                          <p><b className="text-gray-700">퇴직 시점</b> — 실수령 퇴직금 전액으로 KODEX 200 타겟위클리커버드콜 매입</p>
-                          <p><b className="text-gray-700">~ {payoutAge}세</b> — 분배금 전액 재투자 (정년 퇴직이면 {retireHoldMonths}개월)</p>
-                          <p><b className="text-amber-600">{payoutAge}세부터</b> — 재투자를 멈추고 분배금 수령. 수량이 고정되므로 수령액이 유지됩니다</p>
+                          <p><b className="text-gray-700">퇴직 시점</b> — 실수령 퇴직금 전액으로 커버드콜 매입.
+                            DB형이라 그 전에는 매입도 분배금도 없습니다</p>
+                          <p><b className="text-gray-700">~ {payoutAge}세</b> — 분배금 전액 재투자</p>
+                          <p><b className="text-amber-600">{payoutAge}세부터</b> — 수량을 고정하고 분배금 수령</p>
                         </div>
                       </Box>
 
                       <Box tone="amber">
                         <H>표가 {Math.floor(accessIdx / 12)}년부터 시작하는 이유</H>
                         <p className="text-xs text-gray-700 leading-relaxed">
-                          만 {DB_ACCESS_AGE}세 미만으로 퇴직하면 퇴직급여가 <b>IRP 로 의무 이전</b>되고,
-                          만 {DB_ACCESS_AGE}세가 될 때까지 인출할 수 없습니다.
-                          이 화면은 IRP 를 운용하지 않는다는 전제이므로 그 시나리오가 성립하지 않아
-                          <b> 만 {DB_ACCESS_AGE}세({accessStr}) 이전 퇴직 행은 표에서 제외</b>했습니다.
+                          만 {DB_ACCESS_AGE}세 미만 퇴직은 퇴직급여가 <b>IRP 로 의무 이전</b>되어
+                          만 {DB_ACCESS_AGE}세까지 인출할 수 없습니다. IRP 를 운용하지 않는 전제라
+                          시나리오가 성립하지 않아 제외했습니다.
                         </p>
                         <p className="text-xs text-gray-500 mt-2">
                           위쪽 <b>퇴직 시점별 예상 퇴직금</b> 표에는 그 연도들이 그대로 있습니다 —
-                          퇴직금을 받는 것 자체는 성립하고, 운용 시나리오만 성립하지 않기 때문입니다.
+                          퇴직금을 받는 것 자체는 성립하기 때문입니다.
                         </p>
                       </Box>
                     </>
@@ -667,60 +658,44 @@ export default function RetirementPensionPage() {
                   { key: "cols", label: "컬럼 설명", body: (
                     <Box>
                       <ColTable rows={[
-                        ["투자 원금", <>그 해 퇴직 시 실수령액. 퇴직 시점에 이 금액으로 매입한다고 봅니다</>],
-                        ["매입 시점", <>퇴직한 해의 {retireMonth}월(정년월). 퇴직하는 그 시점에 바로 매입한다고 봅니다</>],
+                        ["투자 원금", <>그 해 퇴직 시 실수령액</>],
+                        ["매입 시점", <>퇴직한 해의 {retireMonth}월(정년월). 행 간 개월 차이가 12의 배수가 됩니다</>],
                         ["재투자", <>매입부터 {payoutAge}세까지의 개월 수. 일찍 퇴직할수록 길어집니다</>],
-                        [`${payoutAge}세 평가액`, <>재투자로 불어난 금액. 주가는 현재가 고정(상승률 0%)이라
-                          분배금만큼만 늘어납니다 — 정년 퇴직 기준 {retireHoldMonths}개월이면 약 <b>{Math.pow(1 + ccAnnualRate / 12, retireHoldMonths).toFixed(2)}배</b></>],
-                        ["월 분배금", <>평가액 × 연 분배율 ÷ 12</>],
-                        ["연 분배금", <>평가액 × 연 분배율</>],
+                        [`${payoutAge}세 평가액`, <>주가는 현재가 고정(상승률 0%)이라 재투자한 분배금만큼만 늘어납니다 —
+                          정년 퇴직 기준 {retireHoldMonths}개월이면 약 <b>{Math.pow(1 + ccAnnualRate / 12, retireHoldMonths).toFixed(2)}배</b></>],
+                        ["월·연 분배금", <>평가액 × 연 분배율. 수량이 고정이라 수령액이 유지됩니다</>],
                       ]} />
+                      <p className="text-xs text-gray-500 mt-3 leading-relaxed">
+                        위 <b>현재 기준 예상 퇴직금</b> 카드의 {payoutAge}세 월 분배금만 기준이 다릅니다.
+                        지금(만 {currentAge}세) 퇴직하는 경우라 만 {DB_ACCESS_AGE}세 매입으로 계산한 <b>참고값</b>입니다.
+                      </p>
                     </Box>
                   ) },
                   { key: "tax", label: "세금", body: (
-                    <>
-                      <Box tone="emerald">
-                        <H>세금을 계산에 넣지 않았습니다</H>
-                        <p className="text-xs text-gray-700 leading-relaxed">
-                          커버드콜 분배금은 대부분 <b>파생상품 매매이익</b>이라 국내 주식형 ETF 기준으로 비과세입니다.
-                          실제 과세 대상은 운용사가 공시하는 <b>주당 과세표준액</b>뿐인데,
-                          최근 12회 기준 분배금의 <b>4~5%</b> 수준입니다.
-                          배당소득세 15.4%를 그 4~5%에만 매기므로 <b>실효세율이 1%에 못 미칩니다.</b>
-                          표를 어지럽힐 뿐이라 계산에서 제외했습니다.
-                        </p>
-                      </Box>
-
-                      <Box>
-                        <H>금융소득종합과세도 사실상 무관합니다</H>
-                        <p className="text-xs text-gray-700 leading-relaxed">
-                          연 2,000만원 기준은 <b>과세표준액</b>으로 따집니다.
-                          과표 비율이 4~5%라면 연 분배금이 <b>5억에 가까워야</b> 그 선에 닿습니다.
-                          평가액으로 환산하면 30억 규모라, 이 표의 어느 행도 해당되지 않습니다.
-                        </p>
-                      </Box>
-
-                      <Box tone="amber">
-                        <H>⚠️ 다만 고정된 성질은 아닙니다</H>
-                        <p className="text-xs text-gray-700 leading-relaxed">
-                          과표 비율은 회차마다 0%~16%로 흔들리고, 운용사가 분배 재원 구성을 바꾸면
-                          과세 대상이 크게 늘 수 있습니다. 세법이 바뀔 가능성도 있습니다.
-                          지금 구조에서 무시할 만하다는 뜻이지, 세금이 없다는 뜻은 아닙니다.
-                        </p>
-                      </Box>
-                    </>
+                    <Box tone="emerald">
+                      <H>세금은 계산에 넣지 않았습니다</H>
+                      <p className="text-xs text-gray-700 leading-relaxed">
+                        커버드콜 분배금은 대부분 파생상품 매매이익이라 실제 과세 대상(과세표준액)이
+                        분배금의 <b>4~5%</b>뿐입니다. 배당소득세 15.4%를 거기에만 매기므로
+                        <b> 실효세율이 1%에 못 미칩니다.</b> 금융소득종합과세(연 2,000만원)도 같은 기준이라
+                        연 분배금이 <b>약 4.8억</b>이어야 걸립니다.
+                      </p>
+                      <p className="text-xs text-gray-500 mt-2">
+                        다만 과표 비율은 회차마다 0%~16%로 흔들립니다. 운용사가 분배 재원 구성을 바꾸면
+                        다시 반영해야 합니다.
+                      </p>
+                    </Box>
                   ) },
                   { key: "limit", label: "⚠️ 주의", body: (
                     <Box tone="amber">
                       <H>⚠️ 깔려 있는 가정</H>
                       <ul className="text-xs text-gray-700 space-y-2 list-disc pl-4 leading-relaxed">
                         <li><b>분배율이 유지된다고 봤습니다.</b> 최근 12회 평균(연 {(ccAnnualRate * 100).toFixed(1)}%)을
-                          재투자 기간(최대 {payoutIdx - accessIdx}개월) 내내 곱합니다. 회차별 편차가 커서 오차가 누적됩니다.</li>
-                        <li><b>세금을 빼고 계산했습니다.</b> 실효세율이 1% 미만이라 무시했지만,
-                          과표 비율이나 세법이 바뀌면 달라집니다.</li>
+                          최대 {payoutIdx - accessIdx}개월 내내 곱하므로 오차가 누적됩니다.</li>
                         <li><b>주가 변동이 없습니다.</b> 떨어지면 평가액이 줄고 분배금도 함께 줍니다.</li>
-                        <li><b>상품이 청산되거나</b> 분배 정책이 바뀔 수 있습니다.</li>
-                        <li><b>물가를 반영하지 않았습니다.</b></li>
-                        <li><b>IRP 를 쓰지 않는 전제</b>입니다. 이전하면 퇴직소득세가 줄어 투자 원금이 더 커집니다.</li>
+                        <li><b>포기하는 근로소득이 빠져 있습니다.</b> 일찍 퇴직할수록 재투자 기간이 길어
+                          수령액이 커 보이지만, 그때까지의 급여는 계산에 없습니다.</li>
+                        <li><b>물가·세금·상품 청산 가능성</b>은 반영돼 있지 않습니다.</li>
                       </ul>
                     </Box>
                   ) },
@@ -728,12 +703,9 @@ export default function RetirementPensionPage() {
               />
             </div>
             <p className="text-xs text-gray-400 mt-0.5">
-              퇴직 시점에 실수령 퇴직금 전액으로 KODEX 200 타겟위클리커버드콜 매입 →
-              <b className="text-gray-500"> {payoutAge}세까지 분배금 전액 재투자</b> →
-              <b className="text-amber-600"> {payoutAge}세부터 분배금 수령</b>
-            </p>
-            <p className="text-xs text-gray-400 mt-1">
-              만 {DB_ACCESS_AGE}세({accessStr}) 이전 퇴직은 퇴직급여가 IRP 로 의무 이전되어 인출할 수 없으므로 표에서 제외했습니다.
+              퇴직 시점 매입 → <b className="text-gray-500">{payoutAge}세까지 분배금 전액 재투자</b> →
+              <b className="text-amber-600"> {payoutAge}세부터 수령</b> ·
+              만 {DB_ACCESS_AGE}세({accessStr}) 이전 퇴직은 IRP 의무 이전으로 제외
             </p>
           </div>
 
@@ -831,43 +803,6 @@ export default function RetirementPensionPage() {
             </table>
           </div>
 
-          <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 text-[11px] text-gray-400 space-y-1">
-            <p>• 분배율은 실제 지급 이력 최근 12회 평균 · 개인연금 화면과 같은 데이터</p>
-            <p>• 원금(수량)은 헐지 않고 분배금만 받는 구조 — 주가가 오르내려도 수량은 유지된다</p>
-            <p>
-              • <span className="text-gray-500 font-medium">세금은 계산에 넣지 않았다.</span>{" "}
-              커버드콜 분배금은 대부분 파생상품 매매이익이라 실제 과세 대상(과세표준액)이 분배금의 4~5%뿐이고,
-              금융소득종합과세(연 2,000만원)도 그 기준이면 연 분배금이 5억에 가까워야 걸린다
-            </p>
-            <p>
-              • <b>매입 시점은 퇴직 시점이다.</b> DB형이라 퇴직 전에는 회사가 적립금을 운용하므로
-              개인이 손댈 수 없고, 그 전에 발생하는 분배금도 없다
-            </p>
-            <p>
-              • <b>표는 만 {DB_ACCESS_AGE}세({accessStr}) 이후 퇴직부터 시작한다.</b>
-              만 {DB_ACCESS_AGE}세 미만으로 퇴직하면 퇴직급여가 IRP 로 의무 이전되고 만 {DB_ACCESS_AGE}세까지 인출할 수 없다 —
-              IRP 를 운용하지 않는다는 전제라 이 시나리오 자체가 성립하지 않아 제외했다
-            </p>
-            <p>
-              • 위 <b>현재 기준 예상 퇴직금</b> 카드의 {payoutAge}세 월 분배금만 예외다.
-              지금(만 {currentAge}세) 퇴직하는 경우라 만 {DB_ACCESS_AGE}세에 매입하는 것으로 계산한 <b>참고값</b>이다
-            </p>
-            <p>• 각 행은 그 해 <b>{retireMonth}월</b>(정년월)에 퇴직한다고 가정 — 행 간 개월 차이가 정확히 12의 배수가 된다</p>
-            <p>• 주가는 현재가 고정(상승률 0%)이라 평가액은 재투자한 분배금만큼만 늘어난다 — 정년 퇴직 기준 {retireHoldMonths}개월이면 약 {Math.pow(1 + ccAnnualRate / 12, retireHoldMonths).toFixed(2)}배</p>
-            <p>• 주가가 떨어지면 평가액이 줄고, 같은 분배율이어도 분배금이 함께 줄어든다</p>
-          </div>
-        </div>
-
-        {/* 계산 가정 및 주의사항 */}
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-xs text-gray-500 space-y-1.5">
-          <p className="font-medium text-gray-600 mb-2">계산 가정 및 주의사항</p>
-          <p>• 연봉 인상: 매년 240만원 균등 인상 가정</p>
-          <p>• 퇴직금 기준: DB형(확정급여형) 기준으로 퇴직 시점 직전 평균임금 × 근속연수 방식</p>
-          <p>• 세금: 2023년 개정 퇴직소득세 기준 (근속연수공제 · 환산급여공제 적용), 지방소득세 10% 포함</p>
-          <p>• 2030~2034년은 사전 계산값(법정 퇴직금보다 높을 수 있음), 2026~2029년은 법정 퇴직금 공식(연봉÷12×근속연수) 적용 추정치</p>
-          <p>• 2029→2030년 사이 금액 차이가 크게 보일 수 있으며, 이는 두 구간의 계산 방식이 다르기 때문입니다</p>
-          <p>• 실제 퇴직금은 운용수익, 중도인출, 회사 정책 등에 따라 달라질 수 있습니다</p>
-          <p>• IRP·ISA 는 운용 계획이 없어 다루지 않습니다. 퇴직금을 IRP 로 이전하면 퇴직소득세가 이연·감면되지만, 이 화면은 일시금 수령 후 일반 계좌에서 운용하는 기준입니다</p>
         </div>
 
       </div>
