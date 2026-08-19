@@ -224,14 +224,14 @@ export default function DashboardPage() {
             <div className={`${CARD} overflow-hidden`}>
 
               {/* 상단 — 합산 요약 */}
-              <div className="px-6 py-7">
+              <div className="px-6 py-6">
                 {/* 합계 + 먼저 받는 시점 */}
                 <div className="flex items-start justify-between gap-6 flex-wrap">
                   <div>
                     <p className="text-gray-500 text-lg">
                       만 {last.fromAge}세 ~ {fmtYm(last.fromYm)}부터 연금 수령 예상
                     </p>
-                    <p className="text-gray-900 text-[64px] font-bold tabular-nums leading-tight mt-1">
+                    <p className="text-gray-900 text-[64px] font-bold tabular-nums leading-tight mt-0.5">
                       {fmt(last.total)}
                       <span className="text-xl font-medium text-gray-500 ml-1.5">원 / 월</span>
                     </p>
