@@ -235,7 +235,7 @@ export default function DashboardPage() {
                       {fmt(last.total)}
                       <span className="text-xl font-medium text-gray-500 ml-1.5">원 / 월</span>
                     </p>
-                    <p className="text-gray-500 text-lg mt-1">연 {fmtKRW(last.total * 12)}</p>
+                    <p className="text-gray-500 text-lg mt-0.5">연 {fmtKRW(last.total * 12)}</p>
                   </div>
 
                   <div className="rounded-xl border border-gray-200 bg-gray-50 px-5 py-3">
@@ -256,7 +256,7 @@ export default function DashboardPage() {
                 </div>
 
                 {/* 연금별 내역 */}
-                <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-3">
+                <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-3">
                   {ov.pensions.map((p, i) => {
                     const t = TONE[p.kind]
                     const v = splitKRW(p.monthly)
