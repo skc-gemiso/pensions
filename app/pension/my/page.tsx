@@ -231,11 +231,11 @@ export default function DashboardPage() {
                     <p className="text-gray-500 text-lg">
                       만 {last.fromAge}세 ~ {fmtYm(last.fromYm)}부터 연금 수령 예상
                     </p>
-                    <p className="text-gray-900 text-[64px] font-bold tabular-nums leading-tight mt-0.5">
+                    <p className="text-gray-900 text-[56px] font-bold tabular-nums leading-tight mt-0.5">
                       {fmt(last.total)}
                       <span className="text-xl font-medium text-gray-500 ml-1.5">원 / 월</span>
                     </p>
-                    <p className="text-gray-500 text-lg mt-0.5">연 {fmtKRW(last.total * 12)}</p>
+                    <p className="text-gray-500 text-base mt-1">연 {fmtKRW(last.total * 12)}</p>
                   </div>
 
                   <div className="rounded-xl border border-gray-200 bg-gray-50 px-5 py-3">
