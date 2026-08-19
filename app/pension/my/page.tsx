@@ -224,54 +224,61 @@ export default function DashboardPage() {
             <div className={`${CARD} overflow-hidden`}>
 
               {/* 상단 — 합산 요약 */}
-              <div className="px-6 py-8 flex items-center gap-6 flex-wrap">
-                <div className="flex-shrink-0 pr-6">
-                  <p className="text-gray-500 text-base">
-                    만 {last.fromAge}세 ~ {fmtYm(last.fromYm)}부터 연금 수령 예상
-                  </p>
-                  <p className="text-gray-900 text-[52px] font-bold tabular-nums leading-tight mt-1">
-                    {fmt(last.total)}
-                    <span className="text-lg font-medium text-gray-500 ml-1">원 / 월</span>
-                  </p>
-                  <p className="text-gray-500 text-base mt-1">연 {fmtKRW(last.total * 12)}</p>
+              <div className="px-6 py-7">
+                {/* 합계 + 먼저 받는 시점 */}
+                <div className="flex items-start justify-between gap-6 flex-wrap">
+                  <div>
+                    <p className="text-gray-500 text-lg">
+                      만 {last.fromAge}세 ~ {fmtYm(last.fromYm)}부터 연금 수령 예상
+                    </p>
+                    <p className="text-gray-900 text-[64px] font-bold tabular-nums leading-tight mt-1">
+                      {fmt(last.total)}
+                      <span className="text-xl font-medium text-gray-500 ml-1.5">원 / 월</span>
+                    </p>
+                    <p className="text-gray-500 text-lg mt-1">연 {fmtKRW(last.total * 12)}</p>
+                  </div>
+
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-5 py-3">
+                    <p className="text-gray-500 text-xs">
+                      먼저 받는 시점 · 만 {first.fromAge}세
+                    </p>
+                    <p className="text-gray-900 text-xl font-bold tabular-nums leading-tight mt-1">
+                      월 {fmtKRW(first.total)}
+                    </p>
+                    <p className="text-gray-400 text-xs mt-1.5 flex items-center gap-1.5">
+                      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <rect x="3" y="5" width="18" height="16" rx="2" />
+                        <path d="M3 10h18M8 3v4M16 3v4" strokeLinecap="round" />
+                      </svg>
+                      {fmtYm(first.fromYm)}
+                    </p>
+                  </div>
                 </div>
 
-                {ov.pensions.map(p => {
-                  const t = TONE[p.kind]
-                  const v = splitKRW(p.monthly)
-                  return (
-                    <div key={p.kind} className="flex items-center gap-3 px-6 border-l border-gray-100">
-                      <span className={`flex items-center justify-center w-12 h-12 rounded-full text-white flex-shrink-0
-                                        ${t.iconBg} ring-4 ${t.ring}`}>
-                        <PensionIcon kind={p.kind} className="w-6 h-6" />
-                      </span>
-                      <div>
-                        <p className="text-gray-600 text-sm">{p.label}</p>
-                        <p className="text-gray-900 text-2xl font-bold tabular-nums leading-tight">
-                          {v.num}<span className="text-sm font-medium ml-0.5">{v.unit}</span>
-                        </p>
-                        <p className={`text-xs font-medium ${t.text}`}>
-                          {Math.round(p.monthly / last.total * 100)}%
-                        </p>
+                {/* 연금별 내역 */}
+                <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-3">
+                  {ov.pensions.map((p, i) => {
+                    const t = TONE[p.kind]
+                    const v = splitKRW(p.monthly)
+                    return (
+                      <div key={p.kind}
+                        className={`flex items-center gap-3.5 px-6 ${i > 0 ? "sm:border-l border-gray-100" : ""}`}>
+                        <span className={`flex items-center justify-center w-14 h-14 rounded-full text-white flex-shrink-0
+                                          ${t.iconBg} ring-4 ${t.ring}`}>
+                          <PensionIcon kind={p.kind} className="w-7 h-7" />
+                        </span>
+                        <div>
+                          <p className="text-gray-600 text-sm">{p.label}</p>
+                          <p className="text-gray-900 text-[26px] font-bold tabular-nums leading-tight">
+                            {v.num}<span className="text-sm font-medium ml-0.5">{v.unit}</span>
+                          </p>
+                          <p className={`text-xs font-medium ${t.text}`}>
+                            전체의 {Math.round(p.monthly / last.total * 100)}%
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
-
-                <div className="ml-auto rounded-xl border border-gray-200 bg-gray-50 px-5 py-3">
-                  <p className="text-gray-500 text-xs">
-                    먼저 받는 시점 · 만 {first.fromAge}세
-                  </p>
-                  <p className="text-gray-900 text-xl font-bold tabular-nums leading-tight mt-1">
-                    월 {fmtKRW(first.total)}
-                  </p>
-                  <p className="text-gray-400 text-xs mt-1.5 flex items-center gap-1.5">
-                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
-                      <rect x="3" y="5" width="18" height="16" rx="2" />
-                      <path d="M3 10h18M8 3v4M16 3v4" strokeLinecap="round" />
-                    </svg>
-                    {fmtYm(first.fromYm)}
-                  </p>
+                    )
+                  })}
                 </div>
               </div>
 
