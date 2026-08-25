@@ -2076,6 +2076,7 @@ export default function SavingsFundPage() {
                       <tr>
                         <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-left">지급기준일</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-left">실지급일</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-right">기준일 종가</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-amber-700 text-right">분배율</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-right">분배금액</th>
                         <th className="px-4 py-2.5 text-xs font-bold text-red-600 text-right">과세표준액</th>
@@ -2089,6 +2090,18 @@ export default function SavingsFundPage() {
                             {r.ref_date}
                           </td>
                           <td className="px-4 py-2 text-gray-500 whitespace-nowrap text-sm">{r.pay_date}</td>
+                          <td className="px-4 py-2 text-right text-gray-700 whitespace-nowrap text-sm">
+                            {r.close_price == null ? (
+                              <span className="text-gray-300">-</span>
+                            ) : (
+                              <>
+                                {r.close_price.toLocaleString()}원
+                                {r.close_date && r.close_date !== r.ref_date && (
+                                  <span className="block text-[10px] text-gray-400">{r.close_date}</span>
+                                )}
+                              </>
+                            )}
+                          </td>
                           <td className="px-4 py-2 text-right">
                             <div className="flex items-center justify-end gap-2">
                               <div className="w-16 bg-gray-100 rounded-full h-1.5 block max-sm:hidden">

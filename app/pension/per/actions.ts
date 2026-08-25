@@ -40,7 +40,12 @@ export type PerOverview = {
   /** 분배금을 받은 횟수 */
   received_count: number
   /** 지급기준일별 내역 (최신순) */
-  received_rows: { ref_date: string; qty: number; per_share: number; amount: number }[]
+  received_rows: {
+    ref_date: string; qty: number; per_share: number; amount: number
+    /** 지급기준일 종가 (원) — 휴장일이면 직전 거래일 */
+    close_price: number | null
+    close_date: string | null
+  }[]
 }
 
 export type PerScenario = {
@@ -107,21 +112,30 @@ export async function getPerOverview(): Promise<PerOverview> {
 
   // 누적 분배금 — 주식 배당 팝업(getMonthlyDividendByAccount)과 같은 규칙.
   // 각 지급기준일의 "해당 월 13일까지 누적 순수량" × 주당 분배금
+  // 지급기준일이 휴장일일 수 있어 그 날짜 이하의 최신 종가를 붙인다
   const { rows: rd } = await pool.query<{
     ref_date: string; qty: number; per_share: number; amount: number
+    e_amt: number | null; e_date: string | null
   }>(`
     SELECT
       TO_CHAR(d.ref_date, 'YYYY-MM-DD')       AS ref_date,
       SUM(ms.qty)::int                        AS qty,
       d.dist_amt::int                         AS per_share,
-      ROUND(SUM(ms.qty) * d.dist_amt)::int    AS amount
+      ROUND(SUM(ms.qty) * d.dist_amt)::int    AS amount,
+      px.e_amt,
+      TO_CHAR(px.e_date, 'YYYY-MM-DD')        AS e_date
     FROM t_etf_dividend d
     JOIN my_stock ms
       ON ms.stock_code = d.stock_code
      AND ms.account_no = $1
      AND ms.s_date <= TO_CHAR(d.ref_date, 'YYYYMM') || '13'
+    LEFT JOIN LATERAL (
+      SELECT e_amt, e_date FROM t_stock_amt
+      WHERE stock_code = d.stock_code AND e_date <= d.ref_date
+      ORDER BY e_date DESC LIMIT 1
+    ) px ON TRUE
     WHERE d.stock_code = $2
-    GROUP BY d.ref_date, d.dist_amt
+    GROUP BY d.ref_date, d.dist_amt, px.e_amt, px.e_date
     HAVING SUM(ms.qty) > 0
     ORDER BY d.ref_date DESC
   `, [cfg.account_no, cfg.stock_code])
@@ -154,6 +168,8 @@ export async function getPerOverview(): Promise<PerOverview> {
       qty: Number(r.qty),
       per_share: Number(r.per_share),
       amount: Number(r.amount),
+      close_price: r.e_amt == null ? null : Number(r.e_amt),
+      close_date: r.e_date ?? null,
     })),
   }
 }

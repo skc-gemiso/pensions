@@ -154,6 +154,18 @@ JOIN my_stock ms
  AND ms.s_date <= TO_CHAR(d.ref_date, 'YYYYMM') || '13'
 ```
 
+각 행에는 **지급기준일 종가**(`close_price`)도 붙인다. 지급기준일이 휴장일일 수 있어
+`LEFT JOIN LATERAL` 로 그 날짜 이하의 최신 `t_stock_amt.e_amt` 를 가져오고,
+종가 일자가 지급기준일과 다르면 화면에 그 일자를 함께 표시한다.
+
+```sql
+LEFT JOIN LATERAL (
+  SELECT e_amt, e_date FROM t_stock_amt
+  WHERE stock_code = d.stock_code AND e_date <= d.ref_date
+  ORDER BY e_date DESC LIMIT 1
+) px ON TRUE
+```
+
 `PerOverview.received_rows` 로 지급기준일별 내역(최신순)을 함께 내려주고,
 화면에서 클릭하면 상세 목록 팝업이 열린다.
 

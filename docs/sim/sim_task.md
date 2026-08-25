@@ -176,7 +176,7 @@ CREATE TABLE pension_sim_savings_fund (
 | `deleteSimulation(id)` | `void` | ID 기준 삭제 (권한 체크 없음 — 알려진 제약 참고) |
 | `getKodex200Series(months?)` | `Kodex200Row[]` | KODEX 200 주가 시계열 |
 | `getCoveredCallSeries(months?)` | `CoveredCallRow[]` | 커버드콜 ETF 시계열 (일반형 대비 비교용) |
-| `getEtfDividendHistory(...)` | `EtfDividendRow[]` | ETF 분배금 지급 이력 |
+| `getEtfDividendHistory(...)` | `EtfDividendRow[]` | ETF 분배금 지급 이력 + **지급기준일 종가** |
 
 ---
 

@@ -298,19 +298,29 @@ export type EtfDividendRow = {
   dist_rate:    number   // 분배율(%)
   dist_amt:     number   // 분배금액(원)
   tax_base_amt: number   // 주당 과세 표준액(원)
+  close_price:  number | null  // 지급기준일 종가 (원)
+  close_date:   string | null  // 그 종가의 일자 — ref_date 가 휴장일이면 직전 거래일
 }
 
 export async function getEtfDividendHistory(stockCode: string): Promise<EtfDividendRow[]> {
   await requireUser()
 
   const db = getPensionPool()
+  // 지급기준일이 휴장일일 수 있어 그 날짜 이하의 최신 종가를 붙인다
   const { rows } = await db.query(
-    `SELECT TO_CHAR(ref_date,'YYYY-MM-DD') AS ref_date,
-            TO_CHAR(pay_date,'YYYY-MM-DD')  AS pay_date,
-            dist_rate, dist_amt, tax_base_amt
-     FROM t_etf_dividend
-     WHERE stock_code = $1
-     ORDER BY ref_date DESC`,
+    `SELECT TO_CHAR(d.ref_date,'YYYY-MM-DD') AS ref_date,
+            TO_CHAR(d.pay_date,'YYYY-MM-DD') AS pay_date,
+            d.dist_rate, d.dist_amt, d.tax_base_amt,
+            px.e_amt,
+            TO_CHAR(px.e_date,'YYYY-MM-DD')  AS e_date
+     FROM t_etf_dividend d
+     LEFT JOIN LATERAL (
+       SELECT e_amt, e_date FROM t_stock_amt
+       WHERE stock_code = d.stock_code AND e_date <= d.ref_date
+       ORDER BY e_date DESC LIMIT 1
+     ) px ON TRUE
+     WHERE d.stock_code = $1
+     ORDER BY d.ref_date DESC`,
     [stockCode]
   )
   return rows.map(r => ({
@@ -319,5 +329,7 @@ export async function getEtfDividendHistory(stockCode: string): Promise<EtfDivid
     dist_rate:    Number(r.dist_rate),
     dist_amt:     Number(r.dist_amt),
     tax_base_amt: Number(r.tax_base_amt),
+    close_price:  r.e_amt == null ? null : Number(r.e_amt),
+    close_date:   r.e_date ?? null,
   }))
 }

@@ -597,6 +597,7 @@ export default function PersonalPensionPage() {
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr className="text-gray-600">
                         <th className="px-4 py-1.5 text-left font-semibold">지급기준일</th>
+                        <th className="px-4 py-1.5 text-right font-semibold">기준일 종가</th>
                         <th className="px-4 py-1.5 text-right font-semibold">보유수량</th>
                         <th className="px-4 py-1.5 text-right font-semibold">주당 분배금</th>
                         <th className="px-4 py-1.5 text-right font-semibold">분배금</th>
@@ -606,6 +607,18 @@ export default function PersonalPensionPage() {
                       {ov.received_rows.map(r => (
                         <tr key={r.ref_date} className="border-b border-gray-100">
                           <td className="px-4 py-1 text-gray-700">{r.ref_date}</td>
+                          <td className="px-4 py-1 text-right text-gray-600 tabular-nums">
+                            {r.close_price == null ? (
+                              <span className="text-gray-300">-</span>
+                            ) : (
+                              <>
+                                {fmt(r.close_price)}원
+                                {r.close_date && r.close_date !== r.ref_date && (
+                                  <span className="ml-1 text-[10px] text-gray-400">({r.close_date})</span>
+                                )}
+                              </>
+                            )}
+                          </td>
                           <td className="px-4 py-1 text-right text-gray-600 tabular-nums">{fmt(r.qty)}주</td>
                           <td className="px-4 py-1 text-right text-gray-600 tabular-nums">{fmt(r.per_share)}원</td>
                           <td className="px-4 py-1 text-right text-amber-600 font-medium tabular-nums">{fmt(r.amount)}원</td>

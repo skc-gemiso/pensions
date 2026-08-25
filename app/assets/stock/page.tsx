@@ -81,7 +81,7 @@ function parseNumToken(token: string): string {
 
 /**
  * 엑셀·표에서 복사한 한 행을 분배금 입력값으로 변환.
- * 열 순서: 지급기준일 / 실지급일 / 분배율 / 주당 분배금 / 과세표준액
+ * 열 순서: 지급기준일 / 실지급일 / 기준일 종가 / 분배율 / 주당 분배금 / 과세표준액
  *   예) "26.08.14\t26.08.19\t1.36%\t270\t3"
  */
 function parseDividendPaste(text: string): { form: DivFormState; rowCount: number } | null {
@@ -1163,6 +1163,7 @@ export default function StockPage() {
                         <tr>
                           <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-left whitespace-nowrap">지급기준일</th>
                           <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-left whitespace-nowrap">실지급일</th>
+                          <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-right whitespace-nowrap">기준일 종가</th>
                           <th className="px-4 py-2.5 text-xs font-semibold text-amber-700 text-right whitespace-nowrap">분배율</th>
                           <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-right whitespace-nowrap">분배금액</th>
                           <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-right whitespace-nowrap">과세표준액</th>
@@ -1186,6 +1187,18 @@ export default function StockPage() {
                               {r.ref_date}
                             </td>
                             <td className="px-4 py-2 text-gray-500 whitespace-nowrap">{r.pay_date}</td>
+                            <td className="px-4 py-2 text-right text-gray-700 whitespace-nowrap">
+                              {r.close_price == null ? (
+                                <span className="text-gray-300">-</span>
+                              ) : (
+                                <>
+                                  {fmt(r.close_price)}원
+                                  {r.close_date && r.close_date !== r.ref_date && (
+                                    <span className="block text-[10px] text-gray-400">{r.close_date}</span>
+                                  )}
+                                </>
+                              )}
+                            </td>
                             <td className="px-4 py-2 text-right">
                               <div className="flex items-center justify-end gap-2">
                                 <div className="w-16 bg-gray-100 rounded-full h-1.5 block max-sm:hidden">
