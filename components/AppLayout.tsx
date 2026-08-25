@@ -280,6 +280,10 @@ const isActive = (href: string) =>
                             </li>
                           ) : (
                             <li key={child.href}>
+                              {/* 그룹 뒤에 오는 단독 항목은 구분선으로 떼어 놓는다 */}
+                              {idx > 0 && item.children?.[idx - 1]?.isGroup && (
+                                <div className="mx-3 my-1 border-t border-gray-100" />
+                              )}
                               <Link
                                 href={child.href}
                                 className={`flex items-center gap-2 mx-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${

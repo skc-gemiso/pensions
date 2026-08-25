@@ -84,7 +84,7 @@ pensions/
 │   ├── RichEditor.tsx                    쇼핑 본문 리치 에디터 (TipTap)
 │   └── Providers.tsx                    세션 Provider
 ├── lib/
-│   ├── auth-db.ts                        인증 DB + 스키마 마이그레이션 (v001~v029, v027·v028 철회)
+│   ├── auth-db.ts                        인증 DB + 스키마 마이그레이션 (v001~v030, v027·v028 철회)
 │   ├── pension-db.ts                    Supabase DB Pool 싱글턴 (전 화면 공용)
 │   ├── guard.ts                          접근 통제 — requireUser / requireAdmin / guardApi
 │   ├── settings.ts                       환경 변수로 관리하는 개인 설정 (PROFILE_* / PENSION_PER_*)
@@ -170,6 +170,10 @@ API 라우트는 미들웨어 matcher(`/((?!api|...))`)에서 아예 제외**돼
 | 2. 서버 액션 | [lib/guard.ts](../lib/guard.ts) | 모든 액션 첫 줄에 `requireUser()` 또는 `requireAdmin()` |
 | 3. API 라우트 | [lib/guard.ts](../lib/guard.ts) | `guardApi()` → 401/403 응답 |
 | 4. 메뉴 노출 | `app_role_menus` | 네비게이션에 보일 메뉴 (v026에서 normal 은 2개) |
+
+> 메뉴를 숨길 때는 `app_menus` 행을 지우지 말고 **`app_role_menus` 에서 권한만 회수**한다.
+> 나중에 되살릴 때 행을 다시 만들 필요가 없다 — `자산(assets)` 이 그렇게 숨겨져 있다 (v030).
+> 화면 경로 자체는 `middleware.ts` 가 막는 게 아니라 서버 액션 가드가 막는다는 점에 주의.
 
 액션별 가드:
 

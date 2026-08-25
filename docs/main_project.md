@@ -18,26 +18,28 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
     └── /pension/per             개인연금 (연금저축펀드 수령액 시뮬레이션)
 /sim                             연금투자 시뮬레이션 (ETF 비교)
 /magic                           복리의 마법 (복리 계산기)
-/assets                          자산 (admin 전용)
-└── /assets/stock                주식 투자 (my_stock / t_stock_amt)
-/invest                                  투자 분석
+/invest                                  투자
 ├── 글로벌 ETF 분석 (etf-group)
 │   ├── /invest/etf                      글로벌 ETF 데이터 수집 (IEMG·EEM·EWY 보유 종목)
 │   ├── /invest/etf/holdings             종목 주가 조회
 │   ├── /invest/etf/analysis/price-rise  주가 상승 분석
 │   ├── /invest/etf/analysis/volume-change 수량 변동 분석
 │   └── /invest/etf/recommend            추천 종목
-└── 미국 경제 지표 분석 (usa-group)
-    ├── /invest/usa                      미국 경제 지표 수집
-    ├── /invest/usa/indicator            지표별 시계열
-    ├── /invest/usa/treasury             미국 국채 보유
-    └── /invest/usa/fx                   원/달러 환율 조회
+├── 미국 경제 지표 분석 (usa-group)
+│   ├── /invest/usa                      미국 경제 지표 수집
+│   ├── /invest/usa/indicator            지표별 시계열
+│   ├── /invest/usa/treasury             미국 국채 보유
+│   └── /invest/usa/fx                   원/달러 환율 조회
+└── /assets/stock                        주식 투자 (my_stock / t_stock_amt)
 /life                            생활 (→ /life/cost 리다이렉트)
 ├── /life/cost                   생활비 관리 (가계부)
 └── /shopping                    쇼핑 (구매 목록 + 참고 자료)
 /login                           로그인
 /register                        회원가입
 ```
+
+> `자산(/assets)` 최상위 메뉴는 **재구성 예정이라 숨겨 뒀다** (v030 — 메뉴 행은 남기고 권한만 회수).
+> 주식 투자 화면 경로는 `/assets/stock` 그대로 두고 메뉴 위치만 `투자` 하위로 옮겼다.
 
 ---
 
@@ -137,7 +139,7 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 
 ---
 
-### 주식 투자 (`/assets/stock`) — admin 전용
+### 주식 투자 (`/assets/stock`) — `투자` 메뉴 하위, admin 전용
 
 | 기능 | 설명 |
 |------|------|
@@ -161,7 +163,7 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 - API 라우트 (미사용): [app/api/stock/price/route.ts](../app/api/stock/price/route.ts), [app/api/stock/daily/route.ts](../app/api/stock/daily/route.ts), [app/api/stock/search/route.ts](../app/api/stock/search/route.ts)
 - 독립 스크립트: [scripts/sync-stock-prices.mjs](../scripts/sync-stock-prices.mjs)
 - Vercel 설정: [vercel.json](../vercel.json)
-- DB 마이그레이션: `v015_add_stock_menu` (lib/auth-db.ts)
+- DB 마이그레이션: `v015_add_stock_menu`, `v030_move_stock_to_invest` (lib/auth-db.ts)
 - 상세 문서: [assets/stock/stock_project.md](assets/stock/stock_project.md), [assets/stock/stock_task.md](assets/stock/stock_task.md)
 
 ---

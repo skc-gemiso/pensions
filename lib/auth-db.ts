@@ -239,7 +239,7 @@ async function _applyMigrations(): Promise<void> {
     // admin: 신규 카테고리 메뉴 권한 부여
     await pool.query(`
       INSERT INTO app_role_menus (role, menu_id)
-      SELECT 'admin', unnest(ARRAY['pension','assets','invest','shopping','life']::text[])
+      SELECT 'admin', unnest(ARRAY['pension','invest','shopping','life']::text[])
       ON CONFLICT DO NOTHING
     `)
     await pool.query(
@@ -403,7 +403,7 @@ async function _applyMigrations(): Promise<void> {
   if (v015.length === 0) {
     await pool.query(`
       INSERT INTO app_menus (id, label, href, parent_id, sort_order)
-      VALUES ('stock', '주식 투자', '/assets/stock', 'assets', 10)
+      VALUES ('stock', '주식 투자', '/assets/stock', 'invest', 30)
       ON CONFLICT (id) DO NOTHING
     `)
     await pool.query(`
@@ -784,6 +784,20 @@ async function _applyMigrations(): Promise<void> {
   // 개인 정보와 개인연금 적립 계획은 DB 테이블이 아니라 config/.env 로 관리한다
   // → lib/settings.ts. 두 테이블은 수동으로 DROP 했고 마이그레이션도 제거했다.
   // app_migrations 에 남은 v027/v028 기록은 재실행을 막을 뿐이라 그대로 둔다.
+
+  // v030: 주식 투자를 자산 → 투자 로 이동하고, 자산 메뉴를 숨긴다
+  const { rows: v030 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v030_move_stock_to_invest'"
+  )
+  if (v030.length === 0) {
+    // 투자 하위: 글로벌 ETF(10) · 미국 경제 지표(20) 다음
+    await pool.query(`
+      UPDATE app_menus SET parent_id = 'invest', sort_order = 30 WHERE id = 'stock'
+    `)
+    // 자산은 나중에 재구성할 예정이라 메뉴 행은 남기고 권한만 회수해 숨긴다
+    await pool.query(`DELETE FROM app_role_menus WHERE menu_id = 'assets'`)
+    await pool.query("INSERT INTO app_migrations (name) VALUES ('v030_move_stock_to_invest')")
+  }
 
   // v029: 노령연금 메뉴 삭제 (화면·문서 함께 제거)
   const { rows: v029 } = await pool.query<{ name: string }>(
