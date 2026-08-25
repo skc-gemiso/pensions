@@ -3,7 +3,7 @@ import Credentials from "next-auth/providers/credentials"
 import Google from "next-auth/providers/google"
 import { createHmac } from "crypto"
 import { authConfig } from "./auth.config"
-import { ensureAuthTables, ensureMigrations, sha256, findUser, findUserByEmail, getMenusForRole, type MenuRow } from "@/lib/auth-db"
+import { ensureAuthTables, ensureMigrations, sha256, findUser, findUserByEmail } from "@/lib/auth-db"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -26,16 +26,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!user) return null
         if (sha256(String(credentials?.password ?? "")) !== user.password_hash) return null
 
-        const menus = await getMenusForRole(user.role)
-        const loginAt = new Date().toISOString()
-
+        // 메뉴는 토큰에 담지 않는다 — app/actions/menus.ts 가 매번 DB 에서 읽는다
         return {
           id: user.id,
           name: user.name,
           role: user.role,
-          loginAt,
-          menus,
-        } as ReturnType<typeof Object.assign> & { menus: MenuRow[] }
+          loginAt: new Date().toISOString(),
+        }
       },
     }),
   ],
@@ -63,16 +60,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const u = user as Record<string, unknown>
         token.role    = u.role    as string | undefined
         token.loginAt = u.loginAt as string | undefined
-        token.menus   = u.menus
       }
       if (account?.provider === "google" && profile?.email) {
         const dbUser = await findUserByEmail(profile.email)
         if (dbUser) {
-          const menus = await getMenusForRole(dbUser.role)
           token.name    = dbUser.name
           token.role    = dbUser.role
           token.loginAt = new Date().toISOString()
-          token.menus   = menus
         }
       }
       return token

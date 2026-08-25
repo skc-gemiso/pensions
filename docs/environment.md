@@ -28,6 +28,7 @@ pensions/
 │   ├── register/page.tsx                 회원가입 화면
 │   ├── actions/
 │   │   ├── auth.ts                       로그인·로그아웃 Server Actions
+│   │   ├── menus.ts                      getMyMenus() — 역할별 메뉴를 DB 에서 조회
 │   │   ├── profile.ts                    개인 정보 조회 (PROFILE_* 환경 변수) — 연금 메뉴 공통
 │   │   └── visitor.ts                    방문자 기록 Server Action
 │   ├── api/
@@ -144,7 +145,9 @@ import HelpModal, { H, Box, ColTable } from "@/components/HelpModal"
 ### 구조
 
 - NextAuth v5 — **Google OAuth + Credentials** 두 Provider
-- JWT 세션 (`strategy: "jwt"`, `maxAge` 30일): 사용자명(name), 역할(role), 메뉴 권한이 JWT에 포함
+- JWT 세션 (`strategy: "jwt"`, `maxAge` 30일): 사용자명(name), 역할(role), 로그인 시각이 JWT에 담긴다
+- **메뉴는 JWT 에 담지 않는다.** `AppLayout` 이 마운트 시
+  [app/actions/menus.ts](../app/actions/menus.ts) `getMyMenus()` 로 DB 에서 읽는다
 - DB 기반 사용자·메뉴 관리 (`lib/auth-db.ts`) — 로그인 시 `ensureMigrations()` 가 실행돼
   스키마 마이그레이션이 적용된다
 
@@ -174,6 +177,22 @@ API 라우트는 미들웨어 matcher(`/((?!api|...))`)에서 아예 제외**돼
 > 메뉴를 숨길 때는 `app_menus` 행을 지우지 말고 **`app_role_menus` 에서 권한만 회수**한다.
 > 나중에 되살릴 때 행을 다시 만들 필요가 없다 — `자산(assets)` 이 그렇게 숨겨져 있다 (v030).
 > 화면 경로 자체는 `middleware.ts` 가 막는 게 아니라 서버 액션 가드가 막는다는 점에 주의.
+
+### 메뉴는 세션이 아니라 DB 에서 읽는다
+
+예전에는 로그인 시점의 메뉴 목록을 JWT 에 복사해 두고 `session.user.menus` 로 꺼내 썼다.
+그래서 **메뉴 구조를 바꿔도 기존 세션에는 반영되지 않았다** — 세션 쿠키가 30일이라
+모바일처럼 로그아웃 없이 계속 쓰는 환경에서는 옛 메뉴가 오래 남았다.
+
+지금은 `AppLayout` 이 마운트할 때마다 `getMyMenus()` 로 DB 를 읽는다.
+
+- `app_menus` · `app_role_menus` 를 고치면 **새로고침만으로 반영**된다 (재로그인 불필요)
+- JWT 에는 `name` / `role` / `loginAt` 만 남아 쿠키가 가벼워졌다
+- 메뉴 로딩 중에는 네비게이션 자리에 스켈레톤을 보여준다 (`navLoading`)
+
+> 세션 만료는 별개 문제다. 화면의 30분 자동 로그아웃은 **클라이언트 `setTimeout`** 이라
+> 탭을 닫거나 모바일에서 백그라운드로 보내면 동작하지 않는다.
+> 서버 기준 만료는 `maxAge` 30일 하나뿐이다.
 
 액션별 가드:
 

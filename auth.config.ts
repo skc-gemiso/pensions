@@ -10,7 +10,6 @@ export const authConfig = {
         const u = user as Record<string, unknown>
         token.role    = u.role    as string | undefined
         token.loginAt = u.loginAt as string | undefined
-        token.menus   = u.menus
       }
       return token
     },
@@ -22,7 +21,6 @@ export const authConfig = {
           name:    token.name    as string | undefined,
           role:    token.role    as string | undefined,
           loginAt: token.loginAt as string | undefined,
-          menus:   token.menus,
         },
       }
     },

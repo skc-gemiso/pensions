@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { logout } from "@/app/actions/auth"
 import { getVisitorIp } from "@/app/actions/visitor"
+import { getMyMenus } from "@/app/actions/menus"
 import type { MenuRow } from "@/lib/auth-db"
 
 type NavLeaf  = { href: string; label: string }
@@ -92,11 +93,27 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     role?: string
     name?: string
     loginAt?: string
-    menus?: MenuRow[]
   } | undefined
 
-  const rawMenus = status === "authenticated" ? (user?.menus ?? []) : []
+  // 메뉴는 세션(JWT)이 아니라 DB 에서 매번 읽는다 — 구조를 바꾸면 즉시 반영된다
+  const [rawMenus, setRawMenus] = useState<MenuRow[]>([])
+  const [menusLoaded, setMenusLoaded] = useState(false)
+  useEffect(() => {
+    if (status !== "authenticated") {
+      setRawMenus([])
+      setMenusLoaded(status === "unauthenticated")
+      return
+    }
+    let alive = true
+    getMyMenus()
+      .then(m => { if (alive) setRawMenus(m) })
+      .catch(() => {})
+      .finally(() => { if (alive) setMenusLoaded(true) })
+    return () => { alive = false }
+  }, [status])
+
   const NAV = buildNavTree(rawMenus)
+  const navLoading = status === "loading" || (status === "authenticated" && !menusLoaded)
 
 const isActive = (href: string) =>
     href === "/" ? path === "/" : path === href || path.startsWith(href + "/")
@@ -217,7 +234,7 @@ const isActive = (href: string) =>
 
           {/* 중앙: 네비게이션 (데스크톱) */}
           <nav className="flex max-md:hidden flex-1 justify-center">
-            {status === "loading" ? (
+            {navLoading ? (
               <div className="flex items-center px-4">
                 <div className="h-3 w-48 bg-white/20 rounded animate-pulse" />
               </div>
