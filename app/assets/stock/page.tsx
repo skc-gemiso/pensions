@@ -992,7 +992,7 @@ export default function StockPage() {
           const totalTax   = latestAcctDiv.reduce((s, r) => s + r.tax_total, 0) || null
           return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[1224px] max-h-[90vh] flex flex-col overflow-hidden">
                 {/* 헤더 */}
                 <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-5">
                   <div className="flex items-start justify-between">
