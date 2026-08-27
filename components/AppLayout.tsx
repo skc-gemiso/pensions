@@ -189,6 +189,8 @@ const isActive = (href: string) =>
   }
 
   // 로그인 사용자 활동 감지 → 세션 타이머 리셋 (60초 스로틀)
+  // 서버도 토큰의 loginAt 으로 30분 만료를 검사하므로 update() 로 함께 갱신한다.
+  // 이걸 빼면 화면을 쓰고 있어도 로그인 30분 뒤에 끊긴다.
   const lastActivityResetRef = useRef<number>(0)
   function handleUserActivity() {
     const now = Date.now()
@@ -196,6 +198,7 @@ const isActive = (href: string) =>
     lastActivityResetRef.current = now
     setSessionSeconds(SESSION_LIMIT_SEC)
     setShowSessionWarning(false)
+    void update()
   }
   useEffect(() => {
     if (status !== "authenticated") return

@@ -68,6 +68,22 @@ derivePeriod('2026-07')  →  { start: '2026-06-22', end: '2026-07-21' }
   `'N'` 이면 할인 0원으로 계산한다.
 - TV수신료는 분리 고지되어 관리하지 않는다.
 
+### 진행 중인 달도 입력할 수 있어야 한다
+
+고지서는 검침일(21일) 이후에 나오지만 사용량은 **매일** 적어야 한다.
+그래서 `my_power_bill` 행이 없어도 일별 사용량 화면이 열린다.
+
+- `getDailyUsage()` 는 청구가 없으면 `target_kwh`·`usage_kwh` 를 `null` 로 두고
+  사용기간(`derivePeriod`)만으로 날짜 행을 만든다 (예전에는 `null` 을 반환해 화면이 비었다)
+- 화면의 요금월 드롭다운에는 `billingYm(오늘)` 로 구한 **진행 중인 달**을 앞에 끼워 넣고
+  `(진행 중)` 을 붙인다. 그 달에는 `합계를 청구 사용량으로 반영` 버튼 대신 안내 문구를 보여준다
+- `billingYm(date)` 은 `derivePeriod` 의 역함수다 — 21일을 넘기면 다음 달 청구분이다
+
+```typescript
+billingYm(2026-08-21) → '2026-08'   // 기간 2026-07-22 ~ 2026-08-21
+billingYm(2026-08-22) → '2026-09'   // 기간 2026-08-22 ~ 2026-09-21
+```
+
 ### `my_power_daily` — 일별 사용량
 
 ```sql
@@ -222,7 +238,7 @@ my_power_daily (
 | `getBill(yyyymm)` | 청구 1건 |
 | `upsertBill(data)` | 청구 등록·수정 (`yyyymm` 기준 UPSERT) |
 | `deleteBill(yyyymm)` | 청구 삭제 (일별 사용량 함께 삭제) |
-| `getDailyUsage(yyyymm)` | 해당 요금월 일별 사용량 + 합계·목표·잔여량 |
+| `getDailyUsage(yyyymm)` | 해당 요금월 일별 사용량 + 합계·목표·잔여량. **청구가 없어도 조회된다** |
 | `upsertDailyUsage(yyyymm, use_date, kwh)` | 일별 사용량 1건 저장 (`kwh` null이면 삭제) |
 | `getRates()` | 요금표 전체 (적용시작일 최신순) |
 | `upsertRate(data)` | 요금표 등록·수정 |

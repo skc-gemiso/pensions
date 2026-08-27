@@ -1,8 +1,9 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import AppLayout from "@/components/AppLayout"
 import { fmt, cc } from "@/lib/fmt"
+import { billingYm } from "@/lib/power-calc"
 import {
   getBills, upsertBill, deleteBill,
   getDailyUsage, upsertDailyUsage, applyDailyTotalToBill, setTargetKwh,
@@ -468,9 +469,22 @@ function DailyTab({ bills, onChanged }: { bills: PowerBill[]; onChanged: () => v
   const [view, setView] = useState<DailyView | null>(null)
   const [loading, setLoading] = useState(false)
 
+  /**
+   * 선택 가능한 요금월.
+   *
+   * 고지서는 검침일(21일) 뒤에 나오지만 사용량은 매일 적어야 하므로,
+   * 청구가 아직 없는 **진행 중인 달**도 목록에 넣는다.
+   */
+  const months = useMemo(() => {
+    const list = bills.map(b => b.yyyymm)
+    const current = billingYm(new Date())
+    return list.includes(current) ? list : [current, ...list]
+  }, [bills])
+  const isPending = (ym: string) => !bills.some(b => b.yyyymm === ym)
+
   useEffect(() => {
-    if (!yyyymm && bills.length > 0) setYyyymm(bills[0].yyyymm)
-  }, [bills, yyyymm])
+    if (!yyyymm && months.length > 0) setYyyymm(months[0])
+  }, [months, yyyymm])
 
   const reload = useCallback(async () => {
     if (!yyyymm) { setView(null); return }
@@ -516,19 +530,25 @@ function DailyTab({ bills, onChanged }: { bills: PowerBill[]; onChanged: () => v
           value={yyyymm}
           onChange={e => setYyyymm(e.target.value)}
         >
-          {bills.map(b => <option key={b.yyyymm} value={b.yyyymm}>{b.yyyymm}</option>)}
+          {months.map(m => (
+            <option key={m} value={m}>{m}{isPending(m) ? " (진행 중)" : ""}</option>
+          ))}
         </select>
         {view && (
           <span className="text-xs text-gray-500">{view.period_start} ~ {view.period_end}</span>
         )}
-        {view && (
+        {view && (isPending(yyyymm) ? (
+          <span className="ml-auto text-xs text-amber-600">
+            청구서가 아직 없는 달입니다 — 사용량만 기록해 둡니다
+          </span>
+        ) : (
           <button onClick={applyTotal} className="ml-auto text-xs text-blue-600 border border-blue-300 rounded px-3 py-1 hover:bg-blue-50">
             합계를 청구 사용량으로 반영
           </button>
-        )}
+        ))}
       </div>
 
-      {bills.length === 0 ? (
+      {months.length === 0 ? (
         <div className="text-center py-10 text-gray-400 text-sm">먼저 월별 청구를 등록하세요</div>
       ) : loading ? (
         <div className="text-center py-10 text-gray-400 text-sm">불러오는 중...</div>

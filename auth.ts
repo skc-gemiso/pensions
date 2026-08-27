@@ -2,7 +2,7 @@ import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 import Google from "next-auth/providers/google"
 import { createHmac } from "crypto"
-import { authConfig } from "./auth.config"
+import { authConfig, applyIdleExpiry } from "./auth.config"
 import { ensureAuthTables, ensureMigrations, sha256, findUser, findUserByEmail } from "@/lib/auth-db"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -55,7 +55,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       return true
     },
-    async jwt({ token, user, account, profile }) {
+    async jwt({ token, user, account, profile, trigger }) {
       if (user) {
         const u = user as Record<string, unknown>
         token.role    = u.role    as string | undefined
@@ -69,7 +69,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.loginAt = new Date().toISOString()
         }
       }
-      return token
+      // 무활동 30분 만료 검사 — auth.config.ts 와 같은 규칙
+      return applyIdleExpiry(token, trigger)
     },
   },
 })

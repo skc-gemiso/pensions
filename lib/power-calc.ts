@@ -85,6 +85,21 @@ export function derivePeriod(yyyymm: string): { start: string; end: string } {
   }
 }
 
+/**
+ * 날짜가 속한 요금월 'YYYY-MM'.
+ * 검침일(21일) 다음 날부터는 다음 달 청구분이다 — derivePeriod 의 역함수.
+ */
+export function billingYm(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0")
+  let y = date.getFullYear()
+  let m = date.getMonth() + 1
+  if (date.getDate() > METER_DAY) {
+    m += 1
+    if (m > 12) { m = 1; y += 1 }
+  }
+  return `${y}-${pad(m)}`
+}
+
 /** 'YYYY-MM-DD' → UTC 기준 Date (타임존 밀림 방지) */
 function toUTCDate(iso: string): Date {
   const [y, m, d] = iso.slice(0, 10).split("-").map(Number)

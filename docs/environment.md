@@ -190,9 +190,28 @@ API 라우트는 미들웨어 matcher(`/((?!api|...))`)에서 아예 제외**돼
 - JWT 에는 `name` / `role` / `loginAt` 만 남아 쿠키가 가벼워졌다
 - 메뉴 로딩 중에는 네비게이션 자리에 스켈레톤을 보여준다 (`navLoading`)
 
-> 세션 만료는 별개 문제다. 화면의 30분 자동 로그아웃은 **클라이언트 `setTimeout`** 이라
-> 탭을 닫거나 모바일에서 백그라운드로 보내면 동작하지 않는다.
-> 서버 기준 만료는 `maxAge` 30일 하나뿐이다.
+### 무활동 30분 만료는 서버가 검사한다
+
+화면의 30분 카운트다운은 클라이언트 `setTimeout` 이라 탭을 닫거나 모바일에서
+백그라운드로 보내면 동작하지 않는다. 그래서 토큰의 `loginAt` 을 **서버에서 매번 검사**한다.
+
+```typescript
+// auth.config.ts
+export const SESSION_IDLE_MS = 30 * 60 * 1000
+
+export function applyIdleExpiry(token, trigger) {
+  if (trigger === "update") token.loginAt = new Date().toISOString()
+  return isSessionExpired(token.loginAt) ? null : token   // null → 세션 끊김
+}
+```
+
+- `jwt` 콜백이 `null` 을 돌려주면 세션이 무효가 되고 미들웨어가 `/login` 으로 보낸다
+- **`auth.ts` 와 `auth.config.ts` 양쪽에 적용해야 한다.** `auth.ts` 가
+  `...authConfig.callbacks` 를 펼친 뒤 `jwt` 를 다시 정의해 덮어쓰기 때문이다
+  (미들웨어는 `auth.config.ts`, 서버 액션·페이지는 `auth.ts` 경로를 탄다)
+- 활동이 있으면 `AppLayout` 이 60초 스로틀로 `update()` 를 호출해 `loginAt` 을 갱신한다.
+  **이 호출을 빼면 화면을 쓰고 있어도 로그인 30분 뒤에 끊긴다**
+- 쿠키 자체의 `maxAge` 는 30일 그대로다 — 만료 판정은 `loginAt` 이 한다
 
 액션별 가드:
 

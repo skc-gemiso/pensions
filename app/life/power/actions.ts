@@ -236,13 +236,19 @@ export async function getDailyUsage(yyyymm: string): Promise<DailyView | null> {
   await requireAdmin()
 
   const pool = getPensionPool()
+  // 청구가 아직 없어도 (진행 중인 달) 일별 사용량은 기록할 수 있어야 한다.
+  // 요금 고지서는 검침일 이후에 나오는데 사용량은 매일 적어야 하기 때문이다.
   const { rows: bills } = await pool.query(`
     SELECT yyyymm, target_kwh::float8 AS target_kwh, usage_kwh::float8 AS usage_kwh
     FROM my_power_bill WHERE yyyymm = $1
   `, [yyyymm])
-  if (bills.length === 0) return null
   const period = derivePeriod(yyyymm)
-  const bill = { ...bills[0], period_start: period.start, period_end: period.end }
+  const bill = {
+    target_kwh: (bills[0]?.target_kwh ?? null) as number | null,
+    usage_kwh: (bills[0]?.usage_kwh ?? null) as number | null,
+    period_start: period.start,
+    period_end: period.end,
+  }
 
   const { rows: daily } = await pool.query(`
     SELECT use_date::text AS use_date, usage_kwh::float8 AS usage_kwh
@@ -263,7 +269,7 @@ export async function getDailyUsage(yyyymm: string): Promise<DailyView | null> {
   const total = rows.reduce((s, r) => s + (r.usage_kwh ?? 0), 0)
 
   // 목표: 직접 지정값 우선, 없으면 안분 1구간 상한
-  let target = bill.target_kwh as number | null
+  let target = bill.target_kwh
   if (target == null) {
     const rates = await getRates()
     const picked = pickRates(rates, bill.period_end)
