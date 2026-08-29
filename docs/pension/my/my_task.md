@@ -17,10 +17,17 @@ app/pension/my/
 
 | 대상 | 재사용 모듈 |
 |------|-------------|
-| 퇴직연금 | `lib/pension-ret-calc.ts` |
+| 퇴직연금 | `lib/pension-ret-calc.ts` — 미래 예상은 `buildRetirementRows`·`grownValue`, 과거 추이는 `calcCurrentSeverance`·`calcTenure` |
 | 개인연금 | `lib/pension-per-calc.ts` `simulatePer()` |
 | 프로필 | `lib/profile.ts` `ageOn` / `ymAtAge` / `retireEndYm` |
 | 적립 계획 | `lib/settings.ts` `perSettingsFromEnv()` |
+
+액션은 두 개다.
+
+| 액션 | 내용 |
+|------|------|
+| `getPensionOverview()` | 요약 + 수령 시점별 (미래) |
+| `getPensionHistory()` | 월별 과거 실적 추이 |
 
 ---
 
@@ -82,6 +89,57 @@ stages = marks.map(ym => {
 
 ---
 
+## `getPensionHistory()` — 월별 과거 실적 추이
+
+새 테이블을 만들지 않고 기존 데이터로 재구성한다.
+`getPensionOverview()` 와 **분리된 액션**이다 — 화면 첫 페인트를 막지 않으려고 따로 부른다.
+
+```typescript
+type PensionHistory = {
+  kind: PensionKind
+  label: string              // '연금저축펀드 평가액' / '실수령 퇴직금' / '총 납부 보험료'
+  points: { ym: string; value: number }[]
+  changePct: number | null   // 첫 점 대비 마지막 점
+  rangeLabel: string         // '2026.05 → 2026.08' / '최근 12개월' / '확인 3회 · …'
+}
+```
+
+### 연금마다 촘촘함이 다르다 — 억지로 맞추지 않는다
+
+| 연금 | 산출 | 범위 |
+|------|------|------|
+| 개인연금 | 월말 거래일의 누적 순수량 × 그날 종가 (SQL 1회) | 보유가 생긴 달부터 |
+| 퇴직연금 | `calcCurrentSeverance()` 를 과거 월말로 재호출 — **DB 조회 없음** | 최근 `RET_HISTORY_MONTHS`(12)개월 |
+| 국민연금 | `np_snapshots` 를 그대로 | 확인 시점 3건 |
+
+```sql
+-- 개인연금: 월별 마지막 거래일 기준
+WITH months AS (
+  SELECT TO_CHAR(e_date,'YYYY-MM') AS ym, MAX(e_date) AS eom
+  FROM t_stock_amt WHERE stock_code = $2 GROUP BY 1
+)
+SELECT m.ym, ((SELECT COALESCE(SUM(s.qty),0) FROM my_stock s
+               WHERE s.account_no=$1 AND s.stock_code=$2
+                 AND TO_DATE(s.s_date,'YYYYMMDD') <= m.eom) * a.e_amt)::bigint AS value
+FROM months m JOIN t_stock_amt a ON a.stock_code=$2 AND a.e_date=m.eom
+ORDER BY m.ym
+```
+
+- 보유수량이 0인 달은 버린다 — 앞에 0원 구간이 길게 붙으면 추이가 안 보인다
+- **국민연금은 월 단위가 아니다.** 스냅샷 사이를 보간하지 않는다 —
+  없는 데이터를 지어내는 셈이기 때문이다. `확인 3회` 로 표기한다
+- 퇴직연금 이번 달 점은 월말이 아니라 **오늘까지**의 근속으로 계산한다
+
+실측(2026-08 기준):
+
+| 연금 | 범위 | 변화 |
+|------|------|------|
+| 개인연금 | 2026.05 → 2026.08 | 4,635만 → 3,848만 **−17.0%** (2026-07 주가 하락) |
+| 퇴직연금 | 최근 12개월 | 7,128만 → 7,748만 **+8.7%** |
+| 국민연금 | 2023.05 → 2026.05 | 1.16억 → 1.44억 **+24.2%** |
+
+---
+
 ## 화면 (`page.tsx`)
 
 ### 라이트 테마 유지
@@ -116,6 +174,32 @@ CARD = "bg-white border border-gray-200 rounded-2xl"
 
 `splitKRW()` 로 숫자와 단위를 나눠 **단위만 작게** 쓴다 (`578` + `만원`).
 합산 금액만 원 단위로 풀어 자릿수를 드러낸다 (`11,061,053원 / 월`).
+
+### 같은 숫자를 두 번 쓰지 않는다
+
+상단 카드에 연금별 **월 수령액**을 크게 쓰던 구역이 있었는데,
+아래 스택 바(막대 안 금액)·연금별 카드(`5,779,923원`)와 **삼중 중복**이었다.
+그 자리를 과거 추이로 바꿨다.
+
+| 무엇 | 어디에서 |
+|------|----------|
+| 월 수령액 (금액) | 스택 바 + 연금별 카드 |
+| 비중(%) | 스택 바 **범례** (`● 개인연금 52%`) |
+| 적립 현황 (금액) | 연금별 카드 |
+| 과거 추이 (변화율) | **상단 카드** |
+
+상단 추이 구역에 **절대 금액을 쓰지 않는 것**이 요점이다.
+쓰는 순간 연금별 카드의 `accumulated` 와 다시 중복된다 — 기간과 변화율만 둔다.
+
+### 스파크라인 (`Sparkline`)
+
+점이 3~12개뿐이라 recharts 를 쓰지 않고 SVG 로 직접 그린다.
+
+- `viewBox="0 0 100 30"` + `preserveAspectRatio="none"`, 선은 `vectorEffect="non-scaling-stroke"`
+  로 가로 늘림에도 굵기가 일정하다
+- 색은 `stroke="currentColor"` 로 부모의 `TONE[kind].spark` 를 상속받는다
+- **점이 4개 이하면 각 시점에 원을 찍는다** — 국민연금(3회)은 선만으론 안 읽힌다
+- 값이 모두 같으면 가운데 점선, 점이 1개면 수평 점선
 
 ### 스택 바 (`StageBar`)
 

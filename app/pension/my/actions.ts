@@ -205,3 +205,117 @@ export async function getPensionOverview(): Promise<PensionOverview> {
     ccAnnualRate,
   }
 }
+
+// ── 월별 과거 실적 추이 ────────────────────────────────────────────────────────
+
+export type HistoryPoint = { ym: string; value: number }
+
+export type PensionHistory = {
+  kind: PensionKind
+  /** 무엇의 추이인지 — 연금마다 지표가 다르다 */
+  label: string
+  points: HistoryPoint[]
+  /** 첫 점 대비 마지막 점 변화율(%) */
+  changePct: number | null
+  /** 실제 데이터 범위 설명 */
+  rangeLabel: string
+}
+
+/** 퇴직연금 추이를 몇 개월 보여줄지 — 계산은 무한정 가능하지만 최근 것만 쓴다 */
+const RET_HISTORY_MONTHS = 12
+
+function pctChange(points: HistoryPoint[]): number | null {
+  if (points.length < 2) return null
+  const first = points[0].value
+  if (first === 0) return null
+  return ((points[points.length - 1].value - first) / first) * 100
+}
+
+const dotYm = (ym: string) => ym.replace("-", ".")
+
+/**
+ * 세 연금의 과거 실적 추이.
+ *
+ * 새 테이블을 만들지 않고 기존 데이터로 재구성한다. 연금마다 성질이 달라
+ * **범위와 촘촘함이 다르다** — 억지로 맞추지 않고 각자의 범위를 그대로 쓴다.
+ *   개인연금  매수 내역 × 월말 종가 → 월 단위 정확
+ *   퇴직연금  근속일수 기반 재계산 → 월 단위, 최근 12개월만
+ *   국민연금  공단 확인 스냅샷      → 월 단위가 아님 (보간하지 않는다)
+ *
+ * 요약(getPensionOverview)과 분리해 둔다. 화면 첫 페인트를 막지 않기 위해서다.
+ */
+export async function getPensionHistory(): Promise<PensionHistory[]> {
+  await requireAdmin()
+
+  const pool = getPensionPool()
+  const profile = await getProfile()
+  const cfg = perSettingsFromEnv()
+
+  // ── 개인연금 — 월말 거래일의 누적 순수량 × 그날 종가 ──────────────────────
+  const { rows: perRows } = await pool.query<{ ym: string; value: string }>(`
+    WITH months AS (
+      SELECT TO_CHAR(e_date, 'YYYY-MM') AS ym, MAX(e_date) AS eom
+      FROM t_stock_amt WHERE stock_code = $2
+      GROUP BY 1
+    )
+    SELECT m.ym,
+           ((SELECT COALESCE(SUM(s.qty), 0) FROM my_stock s
+             WHERE s.account_no = $1 AND s.stock_code = $2
+               AND TO_DATE(s.s_date, 'YYYYMMDD') <= m.eom) * a.e_amt)::bigint AS value
+    FROM months m
+    JOIN t_stock_amt a ON a.stock_code = $2 AND a.e_date = m.eom
+    ORDER BY m.ym
+  `, [cfg.account_no, cfg.stock_code])
+
+  // 아직 보유가 없던 달은 버린다 — 0원 구간이 앞에 길게 붙으면 추이가 안 보인다
+  const perPoints: HistoryPoint[] = perRows
+    .map(r => ({ ym: r.ym, value: Number(r.value) }))
+    .filter(p => p.value > 0)
+
+  // ── 퇴직연금 — 근속일수로 재계산 (DB 조회 없음) ───────────────────────────
+  const joinDate = toDate(profile.join_date)
+  const now = new Date()
+  const retPoints: HistoryPoint[] = []
+  for (let i = RET_HISTORY_MONTHS - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i + 1, 0) // 그 달 말일
+    if (d > now) d.setTime(now.getTime())                            // 이번 달은 오늘까지
+    if (d <= joinDate) continue
+    const { totalDays } = calcTenure(joinDate, d)
+    const { netMan } = calcCurrentSeverance(MONTHLY_SALARY_WON, totalDays)
+    retPoints.push({
+      ym: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+      value: netMan * 10_000,
+    })
+  }
+
+  // ── 국민연금 — 확인 스냅샷 그대로. 월 단위가 아니라 보간하지 않는다 ───────
+  const { rows: natRows } = await pool.query<{ check_date: string; total_premium: string }>(`
+    SELECT check_date, total_premium FROM np_snapshots ORDER BY check_date
+  `)
+  const natPoints: HistoryPoint[] = natRows.map(r => ({
+    ym: r.check_date.replace(/\./g, "-").slice(0, 7),
+    value: Number(r.total_premium),
+  }))
+
+  const range = (points: HistoryPoint[]) =>
+    points.length === 0 ? "데이터 없음"
+      : points.length === 1 ? dotYm(points[0].ym)
+      : `${dotYm(points[0].ym)} → ${dotYm(points[points.length - 1].ym)}`
+
+  return [
+    {
+      kind: "per", label: "연금저축펀드 평가액",
+      points: perPoints, changePct: pctChange(perPoints), rangeLabel: range(perPoints),
+    },
+    {
+      kind: "ret", label: "실수령 퇴직금",
+      points: retPoints, changePct: pctChange(retPoints),
+      rangeLabel: retPoints.length > 1 ? `최근 ${retPoints.length}개월` : range(retPoints),
+    },
+    {
+      kind: "nat", label: "총 납부 보험료",
+      points: natPoints, changePct: pctChange(natPoints),
+      rangeLabel: natPoints.length > 1 ? `확인 ${natPoints.length}회 · ${range(natPoints)}` : range(natPoints),
+    },
+  ]
+}

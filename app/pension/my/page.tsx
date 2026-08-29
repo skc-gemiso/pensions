@@ -4,28 +4,31 @@ import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import AppLayout from "@/components/AppLayout"
 import HelpModal, { H, Box, ColTable } from "@/components/HelpModal"
-import { fmt, fmtKRW } from "@/lib/fmt"
+import { fmt, fmtKRW, cc } from "@/lib/fmt"
 import {
-  getPensionOverview,
-  type PensionOverview, type PensionKind, type PayoutStage,
+  getPensionOverview, getPensionHistory,
+  type PensionOverview, type PensionKind, type PayoutStage, type PensionHistory,
 } from "./actions"
 
 const TONE: Record<PensionKind, {
-  text: string; dot: string; bar: string; ring: string
+  text: string; dot: string; bar: string; ring: string; spark: string
   cardBg: string; cardBorder: string; iconBg: string; track: string
 }> = {
   per: {
     text: "text-purple-700", dot: "bg-purple-500", bar: "bg-purple-500", ring: "ring-purple-100",
+    spark: "text-purple-500",
     cardBg: "bg-purple-50", cardBorder: "border-purple-200",
     iconBg: "bg-gradient-to-br from-purple-500 to-purple-700", track: "bg-purple-100",
   },
   ret: {
     text: "text-emerald-700", dot: "bg-emerald-500", bar: "bg-emerald-500", ring: "ring-emerald-100",
+    spark: "text-emerald-500",
     cardBg: "bg-emerald-50", cardBorder: "border-emerald-200",
     iconBg: "bg-gradient-to-br from-emerald-500 to-emerald-700", track: "bg-emerald-100",
   },
   nat: {
     text: "text-blue-700", dot: "bg-blue-500", bar: "bg-blue-500", ring: "ring-blue-100",
+    spark: "text-blue-500",
     cardBg: "bg-blue-50", cardBorder: "border-blue-200",
     iconBg: "bg-gradient-to-br from-blue-500 to-blue-700", track: "bg-blue-100",
   },
@@ -148,6 +151,44 @@ function PageHelp({ ov }: { ov: PensionOverview }) {
 }
 
 // ─────────────────────────────────────────────
+/**
+ * 점 몇 개짜리 추이선. recharts 를 쓸 규모가 아니라 SVG 로 직접 그린다.
+ * 선 색은 부모의 text 색을 currentColor 로 상속받는다.
+ */
+function Sparkline({ values, className = "" }: { values: number[]; className?: string }) {
+  const W = 100, H = 30, PAD = 4
+  if (values.length === 0) return <div className={`h-[30px] ${className}`} />
+
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const span = max - min
+  const x = (i: number) => values.length === 1 ? W / 2 : (i / (values.length - 1)) * W
+  // 값이 모두 같으면 가운데 수평선
+  const y = (v: number) => span === 0 ? H / 2 : PAD + (1 - (v - min) / span) * (H - PAD * 2)
+
+  const last = values.length - 1
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+      className={`w-full h-[30px] overflow-visible ${className}`} aria-hidden>
+      {values.length === 1 ? (
+        <line x1="0" y1={H / 2} x2={W} y2={H / 2} stroke="currentColor" strokeWidth={2}
+          strokeDasharray="4 4" vectorEffect="non-scaling-stroke" opacity={0.4} />
+      ) : (
+        <polyline points={values.map((v, i) => `${x(i)},${y(v)}`).join(" ")}
+          fill="none" stroke="currentColor" strokeWidth={2}
+          strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+      )}
+      {/* 점이 적으면 각 시점을 찍는다 — 국민연금처럼 3회짜리는 선만으론 안 읽힌다 */}
+      {values.length <= 4 && values.map((v, i) => (
+        <circle key={i} cx={x(i)} cy={y(v)} r={2.5} fill="currentColor" opacity={0.5} />
+      ))}
+      <circle cx={x(last)} cy={y(values[last])} r={3.5} fill="currentColor" />
+    </svg>
+  )
+}
+
+// ─────────────────────────────────────────────
 function StageBar({ stage, max }: { stage: PayoutStage; max: number }) {
   const parts = ([
     { kind: "per", value: stage.per },
@@ -186,6 +227,16 @@ export default function DashboardPage() {
     setLoading(false)
   }, [])
   useEffect(() => { load() }, [load])
+
+  // 과거 추이는 요약과 따로 부른다 — 첫 페인트를 막지 않도록
+  const [history, setHistory] = useState<PensionHistory[] | null>(null)
+  useEffect(() => {
+    let alive = true
+    getPensionHistory()
+      .then(h => { if (alive) setHistory(h) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [])
 
   const first = ov?.stages[0]
   const last = ov?.stages[ov.stages.length - 1]
@@ -255,11 +306,11 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* 연금별 내역 */}
+                {/* 연금별 과거 추이 — 금액은 아래 카드에 있으므로 변화만 보여준다 */}
                 <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-3">
                   {ov.pensions.map((p, i) => {
                     const t = TONE[p.kind]
-                    const v = splitKRW(p.monthly)
+                    const h = history?.find(x => x.kind === p.kind)
                     return (
                       <div key={p.kind}
                         className={`flex items-center gap-3.5 px-6 ${i > 0 ? "sm:border-l border-gray-100" : ""}`}>
@@ -267,13 +318,26 @@ export default function DashboardPage() {
                                           ${t.iconBg} ring-4 ${t.ring}`}>
                           <PensionIcon kind={p.kind} className="w-7 h-7" />
                         </span>
-                        <div>
-                          <p className="text-gray-600 text-sm">{p.label}</p>
-                          <p className="text-gray-900 text-[26px] font-bold tabular-nums leading-tight">
-                            {v.num}<span className="text-sm font-medium ml-0.5">{v.unit}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-gray-600 text-sm truncate">
+                            {p.label} <span className="text-gray-400">{h?.label ?? p.accumulatedLabel}</span>
                           </p>
-                          <p className={`text-xs font-medium ${t.text}`}>
-                            전체의 {Math.round(p.monthly / last.total * 100)}%
+
+                          {h == null ? (
+                            <div className="h-[30px] flex items-center">
+                              <div className="h-1.5 w-full max-w-[140px] bg-gray-100 rounded animate-pulse" />
+                            </div>
+                          ) : (
+                            <Sparkline values={h.points.map(pt => pt.value)} className={t.spark} />
+                          )}
+
+                          <p className="text-xs text-gray-400 truncate">
+                            {h?.rangeLabel ?? "불러오는 중…"}
+                            {h?.changePct != null && (
+                              <span className={`ml-1.5 font-semibold ${cc(h.changePct)}`}>
+                                {h.changePct > 0 ? "+" : ""}{fmt(h.changePct, 1)}%
+                              </span>
+                            )}
                           </p>
                         </div>
                       </div>
@@ -291,6 +355,9 @@ export default function DashboardPage() {
                       <span key={p.kind} className="flex items-center gap-1.5">
                         <span className={`inline-block w-2.5 h-2.5 rounded-full ${TONE[p.kind].dot}`} />
                         {p.label}
+                        <b className={`font-semibold ${TONE[p.kind].text}`}>
+                          {Math.round(p.monthly / last.total * 100)}%
+                        </b>
                       </span>
                     ))}
                   </div>
