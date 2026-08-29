@@ -201,7 +201,9 @@ function HistoryTable({ h }: { h: PensionHistory }) {
               {h.baseLabel && (
                 <td className={`${TD} text-right text-gray-700`}>
                   {r.base == null ? "-"
-                    : h.kind === "per" ? `${fmt(r.base)}주` : fmtKRW(r.base)}
+                    : h.baseUnit === "shares" ? `${fmt(r.base)}주`
+                    : h.baseUnit === "pct" ? `${fmt(r.base, 2)}%`
+                    : fmtKRW(r.base)}
                 </td>
               )}
               {isAll && (["per", "ret", "nat"] as PensionKind[]).map(k => (

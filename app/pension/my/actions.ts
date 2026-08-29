@@ -8,7 +8,7 @@ import { ageOn, ymAtAge, retireEndYm } from "@/lib/profile"
 import { simulatePer } from "@/lib/pension-per-calc"
 import {
   buildRetirementRows, calcCurrentSeverance, calcTenure, grownValue, toDate,
-  CC_STOCK_CODE, CC_FALLBACK_ANNUAL_RATE, MONTHLY_SALARY_WON, DB_ACCESS_AGE,
+  CC_STOCK_CODE, CC_FALLBACK_ANNUAL_RATE, MONTHLY_SALARY_WON,
 } from "@/lib/pension-ret-calc"
 
 /** 국민연금 개시 나이 — 1969년 이후 출생자 기준 */
@@ -228,6 +228,8 @@ export type PensionHistory = {
   kind: HistoryKind
   /** 부가 지표 컬럼명 — null 이면 그 컬럼을 그리지 않는다 */
   baseLabel: string | null
+  /** base 의 단위 — 표기 방식이 달라진다 */
+  baseUnit: "shares" | "won" | "pct" | null
   /** 월 수령액 컬럼명 — 연금마다 성격이 달라 이름이 다르다 */
   monthlyLabel: string
   /** 그 월 수령액이 어떤 전제로 나온 값인지 — 카드의 값과 기준이 달라 반드시 밝힌다 */
@@ -282,16 +284,24 @@ export async function getPensionHistory(): Promise<PensionHistory[]> {
   const profile = await getProfile()
   const cfg = perSettingsFromEnv()
 
-  // 분배율은 현재 값(최근 12회 평균)으로 고정한다. 과거 분배율까지 되살리면
-  // 수량·주가 변화가 묻혀서, 정작 보고 싶은 "내 적립이 얼마나 늘었나"가 안 보인다.
-  const { rows: dr } = await pool.query<{ rate: number }>(`
-    SELECT COALESCE(AVG(dist_rate), 0)::float8 AS rate FROM (
-      SELECT dist_rate FROM t_etf_dividend WHERE stock_code = $1
-      ORDER BY ref_date DESC LIMIT 12
-    ) t
+  // 분배율도 그 달 시점의 값으로 되살린다. 요약 카드가 "최근 12회 평균"을 쓰므로,
+  // 과거 달도 그 달까지의 12회 평균을 쓰면 "그때 이 화면을 봤다면 나왔을 값"이 된다.
+  const { rows: divRows } = await pool.query<{ ref_date: Date; dist_rate: number }>(`
+    SELECT ref_date, dist_rate::float8 AS dist_rate FROM t_etf_dividend
+    WHERE stock_code = $1 ORDER BY ref_date
   `, [CC_STOCK_CODE])
-  const monthlyRate = Number(dr[0]?.rate ?? 0) / 100
-  const ccAnnualRate = monthlyRate > 0 ? monthlyRate * 12 : CC_FALLBACK_ANNUAL_RATE
+
+  /** 기준일까지의 최근 12회 평균 월 분배율. 이력이 없으면 대체값 */
+  function monthlyRateAt(on: Date): number {
+    const past = divRows.filter(r => r.ref_date <= on).slice(-12)
+    if (past.length === 0) return CC_FALLBACK_ANNUAL_RATE / 12
+    return past.reduce((s, r) => s + Number(r.dist_rate), 0) / past.length / 100
+  }
+  /** 'YYYY-MM' 의 말일 — 그 달까지 확정된 분배만 반영하려고 쓴다 */
+  const endOfMonth = (ym: string) => {
+    const [y, m] = ym.split("-").map(Number)
+    return new Date(y, m, 0, 23, 59, 59)
+  }
 
   // ── 개인연금 — 월말 거래일의 누적 순수량 × 그날 종가로 그때의 예상을 재현 ──
   const { rows: perRows } = await pool.query<{ ym: string; price: number; quantity: number }>(`
@@ -321,7 +331,8 @@ export async function getPensionHistory(): Promise<PensionHistory[]> {
         const quantity = Number(r.quantity)
         const price = Number(r.price)
         const sim = simulatePer({
-          quantity, price, monthlyRate,
+          quantity, price,
+          monthlyRate: monthlyRateAt(endOfMonth(r.ym)),
           monthlyAmount: cfg.monthly_amount,
           startYm: r.ym,
           retireYm: perRetireYm,
@@ -331,24 +342,28 @@ export async function getPensionHistory(): Promise<PensionHistory[]> {
       })
   )
 
-  // ── 퇴직연금 — 근속일수로 재계산 (DB 조회 없음) ───────────────────────────
-  // 만 55세에 커버드콜로 매입해 수령 나이까지 재투자하는 전제. 거치 개월이 고정이라
-  // 월 분배금이 퇴직금에 정비례한다 — 퇴직연금 화면의 "현재 기준" 카드와 같은 기준이다.
-  const retHoldMonths = Math.max(0, (cfg.payout_age - DB_ACCESS_AGE) * 12)
-  const joinDate = toDate(profile.join_date)
+  // ── 퇴직연금 — 요약 카드와 완전히 같은 기준 (정년 퇴직금 × 거치) ──────────
+  // 원금(회사 사전 계산값)도 거치 개월도 고정이라, 달마다 변하는 값은 분배율뿐이다.
+  // 그래서 이 표의 증감은 곧 "분배율이 움직인 만큼"이다.
+  const retireNetMan = buildRetirementRows(
+    new Date().getFullYear(), toDate(profile.retire_date).getFullYear()
+  ).find(r => r.isLegal)?.netMan ?? 0
+  const retHoldMonths = Math.max(
+    0,
+    idxOf(profile.birth_date.slice(0, 7)) + cfg.payout_age * 12 - idxOf(profile.retire_date.slice(0, 7))
+  )
+
   const now = new Date()
   const retSeries: { ym: string; base: number | null; monthly: number }[] = []
   for (let i = RET_HISTORY_MONTHS - 1; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i + 1, 0) // 그 달 말일
     if (d > now) d.setTime(now.getTime())                            // 이번 달은 오늘까지
-    if (d <= joinDate) continue
-    const { totalDays } = calcTenure(joinDate, d)
-    const { netMan } = calcCurrentSeverance(MONTHLY_SALARY_WON, totalDays)
-    const valueMan = grownValue(netMan, ccAnnualRate, retHoldMonths)
+    const annual = monthlyRateAt(d) * 12
+    const valueMan = grownValue(retireNetMan, annual, retHoldMonths)
     retSeries.push({
       ym: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
-      base: null,
-      monthly: Math.round(valueMan * ccAnnualRate / 12) * 10_000,
+      base: annual * 100,
+      monthly: Math.round(valueMan * annual / 12) * 10_000,
     })
   }
   const retHistory = withDiff(retSeries)
@@ -415,29 +430,29 @@ export async function getPensionHistory(): Promise<PensionHistory[]> {
   return [
     {
       kind: "all",
-      baseLabel: null, monthlyLabel: "합계",
-      basisNote: "세 연금이 모두 값을 갖는 달만 담습니다 — 하나가 중간에 끼어들면 합계가 껑충 뛰어 추세가 아니라 착시가 됩니다"
-        + (natEstimatedCount > 0 ? ". 국민연금 * 는 확인 시점 사이를 보간한 추정치" : "")
-        + `. 퇴직연금이 '그 달에 퇴직' 기준이라 위 ${cfg.payout_age}세 합계와는 다른 값입니다`,
+      baseLabel: null, baseUnit: null, monthlyLabel: "합계",
+      basisNote: `그 달에 이 화면을 봤다면 나왔을 ${cfg.payout_age}·${NAT_PAYOUT_AGE}세 수령액입니다. `
+        + "세 연금이 모두 값을 갖는 달만 담습니다 — 하나가 중간에 끼어들면 합계가 껑충 뛰어 추세가 아니라 착시가 됩니다"
+        + (natEstimatedCount > 0 ? ". 국민연금 * 는 확인 시점 사이를 보간한 추정치" : ""),
       rows: allHistory, changePct: pctChange(allHistory), rangeLabel: range(allHistory),
     },
     {
       kind: "per",
-      baseLabel: "보유 수량", monthlyLabel: "월 수령액 예상",
-      basisNote: `그 달의 보유수량·주가로 다시 계산한 ${cfg.payout_age}세 예상 수령액입니다`,
+      baseLabel: "보유 수량", baseUnit: "shares", monthlyLabel: "월 수령액 예상",
+      basisNote: `그 달의 보유수량·주가·분배율로 다시 계산한 ${cfg.payout_age}세 예상 수령액입니다`,
       rows: perHistory, changePct: pctChange(perHistory), rangeLabel: range(perHistory),
     },
     {
       kind: "ret",
-      baseLabel: null, monthlyLabel: "월 분배금",
-      basisNote: `그 달까지의 근속으로 계산 — 만 ${DB_ACCESS_AGE}세에 매입해 ${cfg.payout_age}세부터 받는 기준이라, `
-        + `정년까지 다닌 기준인 아래 퇴직연금 카드와 금액이 다릅니다`,
+      baseLabel: "연 분배율", baseUnit: "pct", monthlyLabel: "월 분배금",
+      basisNote: `정년(${dotYm(profile.retire_date.slice(0, 7))}) 퇴직금을 ${cfg.payout_age}세까지 굴리는 기준 — `
+        + "원금도 거치 기간도 고정이라, 달마다 변하는 값은 분배율뿐입니다",
       rows: retHistory, changePct: pctChange(retHistory),
       rangeLabel: retHistory.length > 1 ? `최근 ${retHistory.length}개월` : range(retHistory),
     },
     {
       kind: "nat",
-      baseLabel: "총 납부액", monthlyLabel: "월 수령 예상 (세후)",
+      baseLabel: "총 납부액", baseUnit: "won", monthlyLabel: "월 수령 예상 (세후)",
       basisNote: "공단이 통보한 값 그대로입니다 — 확인한 시점에만 기록이 남습니다",
       rows: natHistory, changePct: pctChange(natHistory),
       rangeLabel: natHistory.length > 1 ? `확인 ${natHistory.length}회 · ${range(natHistory)}` : range(natHistory),
