@@ -8,7 +8,7 @@ import { ageOn, ymAtAge, retireEndYm } from "@/lib/profile"
 import { simulatePer } from "@/lib/pension-per-calc"
 import {
   buildRetirementRows, calcCurrentSeverance, calcTenure, grownValue, toDate,
-  CC_STOCK_CODE, CC_FALLBACK_ANNUAL_RATE, MONTHLY_SALARY_WON,
+  CC_STOCK_CODE, CC_FALLBACK_ANNUAL_RATE, MONTHLY_SALARY_WON, DB_ACCESS_AGE,
 } from "@/lib/pension-ret-calc"
 
 /** 국민연금 개시 나이 — 1969년 이후 출생자 기준 */
@@ -208,14 +208,27 @@ export async function getPensionOverview(): Promise<PensionOverview> {
 
 // ── 월별 과거 실적 추이 ────────────────────────────────────────────────────────
 
-export type HistoryPoint = { ym: string; value: number }
+export type HistoryRow = {
+  ym: string
+  /** 연금별 부가 지표 — 개인=보유수량(주), 국민=총 납부액(원). 퇴직연금은 없다 */
+  base: number | null
+  /** 월 수령액 (원) — 세 연금을 같은 축에 놓는 값 */
+  monthly: number
+  /** 직전 시점 대비 월 수령액 증감 */
+  diff: number | null
+  diffPct: number | null
+}
 
 export type PensionHistory = {
   kind: PensionKind
-  /** 무엇의 추이인지 — 연금마다 지표가 다르다 */
-  label: string
-  points: HistoryPoint[]
-  /** 첫 점 대비 마지막 점 변화율(%) */
+  /** 부가 지표 컬럼명 — null 이면 그 컬럼을 그리지 않는다 */
+  baseLabel: string | null
+  /** 월 수령액 컬럼명 — 연금마다 성격이 달라 이름이 다르다 */
+  monthlyLabel: string
+  /** 그 월 수령액이 어떤 전제로 나온 값인지 — 카드의 값과 기준이 달라 반드시 밝힌다 */
+  basisNote: string
+  rows: HistoryRow[]
+  /** 첫 행 대비 마지막 행 변화율(%) */
   changePct: number | null
   /** 실제 데이터 범위 설명 */
   rangeLabel: string
@@ -224,11 +237,23 @@ export type PensionHistory = {
 /** 퇴직연금 추이를 몇 개월 보여줄지 — 계산은 무한정 가능하지만 최근 것만 쓴다 */
 const RET_HISTORY_MONTHS = 12
 
-function pctChange(points: HistoryPoint[]): number | null {
-  if (points.length < 2) return null
-  const first = points[0].value
+/** 직전 행 대비 증감을 채운다. rows 는 오름차순이어야 한다 */
+function withDiff(rows: { ym: string; base: number | null; monthly: number }[]): HistoryRow[] {
+  return rows.map((r, i) => {
+    const prev = i > 0 ? rows[i - 1].monthly : null
+    return {
+      ...r,
+      diff: prev == null ? null : r.monthly - prev,
+      diffPct: prev == null || prev === 0 ? null : ((r.monthly - prev) / prev) * 100,
+    }
+  })
+}
+
+function pctChange(rows: HistoryRow[]): number | null {
+  if (rows.length < 2) return null
+  const first = rows[0].monthly
   if (first === 0) return null
-  return ((points[points.length - 1].value - first) / first) * 100
+  return ((rows[rows.length - 1].monthly - first) / first) * 100
 }
 
 const dotYm = (ym: string) => ym.replace("-", ".")
@@ -238,10 +263,11 @@ const dotYm = (ym: string) => ym.replace("-", ".")
  *
  * 새 테이블을 만들지 않고 기존 데이터로 재구성한다. 연금마다 성질이 달라
  * **범위와 촘촘함이 다르다** — 억지로 맞추지 않고 각자의 범위를 그대로 쓴다.
- *   개인연금  매수 내역 × 월말 종가 → 월 단위 정확
+ *   개인연금  매수 내역 × 월말 종가 → 그 시점에 예상했던 월 수령액
  *   퇴직연금  근속일수 기반 재계산 → 월 단위, 최근 12개월만
  *   국민연금  공단 확인 스냅샷      → 월 단위가 아님 (보간하지 않는다)
  *
+ * 세 연금 모두 **월 수령액**을 공통 축으로 삼고, 증감도 그 값 기준으로 낸다.
  * 요약(getPensionOverview)과 분리해 둔다. 화면 첫 페인트를 막지 않기 위해서다.
  */
 export async function getPensionHistory(): Promise<PensionHistory[]> {
@@ -251,71 +277,115 @@ export async function getPensionHistory(): Promise<PensionHistory[]> {
   const profile = await getProfile()
   const cfg = perSettingsFromEnv()
 
-  // ── 개인연금 — 월말 거래일의 누적 순수량 × 그날 종가 ──────────────────────
-  const { rows: perRows } = await pool.query<{ ym: string; value: string }>(`
+  // 분배율은 현재 값(최근 12회 평균)으로 고정한다. 과거 분배율까지 되살리면
+  // 수량·주가 변화가 묻혀서, 정작 보고 싶은 "내 적립이 얼마나 늘었나"가 안 보인다.
+  const { rows: dr } = await pool.query<{ rate: number }>(`
+    SELECT COALESCE(AVG(dist_rate), 0)::float8 AS rate FROM (
+      SELECT dist_rate FROM t_etf_dividend WHERE stock_code = $1
+      ORDER BY ref_date DESC LIMIT 12
+    ) t
+  `, [CC_STOCK_CODE])
+  const monthlyRate = Number(dr[0]?.rate ?? 0) / 100
+  const ccAnnualRate = monthlyRate > 0 ? monthlyRate * 12 : CC_FALLBACK_ANNUAL_RATE
+
+  // ── 개인연금 — 월말 거래일의 누적 순수량 × 그날 종가로 그때의 예상을 재현 ──
+  const { rows: perRows } = await pool.query<{ ym: string; price: number; quantity: number }>(`
     WITH months AS (
       SELECT TO_CHAR(e_date, 'YYYY-MM') AS ym, MAX(e_date) AS eom
       FROM t_stock_amt WHERE stock_code = $2
       GROUP BY 1
     )
     SELECT m.ym,
-           ((SELECT COALESCE(SUM(s.qty), 0) FROM my_stock s
-             WHERE s.account_no = $1 AND s.stock_code = $2
-               AND TO_DATE(s.s_date, 'YYYYMMDD') <= m.eom) * a.e_amt)::bigint AS value
+           a.e_amt::float8 AS price,
+           (SELECT COALESCE(SUM(s.qty), 0) FROM my_stock s
+            WHERE s.account_no = $1 AND s.stock_code = $2
+              AND TO_DATE(s.s_date, 'YYYYMMDD') <= m.eom)::float8 AS quantity
     FROM months m
     JOIN t_stock_amt a ON a.stock_code = $2 AND a.e_date = m.eom
     ORDER BY m.ym
   `, [cfg.account_no, cfg.stock_code])
 
-  // 아직 보유가 없던 달은 버린다 — 0원 구간이 앞에 길게 붙으면 추이가 안 보인다
-  const perPoints: HistoryPoint[] = perRows
-    .map(r => ({ ym: r.ym, value: Number(r.value) }))
-    .filter(p => p.value > 0)
+  const perPayoutYm = ymAtAge(profile.birth_date, cfg.payout_age)
+  const perRetireYm = retireEndYm(profile)
+
+  // 아직 보유가 없던 달은 버린다 — 0 구간이 앞에 길게 붙으면 추이가 안 보인다
+  const perHistory = withDiff(
+    perRows
+      .filter(r => Number(r.quantity) > 0)
+      .map(r => {
+        const quantity = Number(r.quantity)
+        const price = Number(r.price)
+        const sim = simulatePer({
+          quantity, price, monthlyRate,
+          monthlyAmount: cfg.monthly_amount,
+          startYm: r.ym,
+          retireYm: perRetireYm,
+          payoutYm: perPayoutYm,
+        })
+        return { ym: r.ym, base: Math.round(quantity), monthly: sim.monthlyPayout }
+      })
+  )
 
   // ── 퇴직연금 — 근속일수로 재계산 (DB 조회 없음) ───────────────────────────
+  // 만 55세에 커버드콜로 매입해 수령 나이까지 재투자하는 전제. 거치 개월이 고정이라
+  // 월 분배금이 퇴직금에 정비례한다 — 퇴직연금 화면의 "현재 기준" 카드와 같은 기준이다.
+  const retHoldMonths = Math.max(0, (cfg.payout_age - DB_ACCESS_AGE) * 12)
   const joinDate = toDate(profile.join_date)
   const now = new Date()
-  const retPoints: HistoryPoint[] = []
+  const retSeries: { ym: string; base: number | null; monthly: number }[] = []
   for (let i = RET_HISTORY_MONTHS - 1; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i + 1, 0) // 그 달 말일
     if (d > now) d.setTime(now.getTime())                            // 이번 달은 오늘까지
     if (d <= joinDate) continue
     const { totalDays } = calcTenure(joinDate, d)
     const { netMan } = calcCurrentSeverance(MONTHLY_SALARY_WON, totalDays)
-    retPoints.push({
+    const valueMan = grownValue(netMan, ccAnnualRate, retHoldMonths)
+    retSeries.push({
       ym: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
-      value: netMan * 10_000,
+      base: null,
+      monthly: Math.round(valueMan * ccAnnualRate / 12) * 10_000,
     })
   }
+  const retHistory = withDiff(retSeries)
 
   // ── 국민연금 — 확인 스냅샷 그대로. 월 단위가 아니라 보간하지 않는다 ───────
-  const { rows: natRows } = await pool.query<{ check_date: string; total_premium: string }>(`
-    SELECT check_date, total_premium FROM np_snapshots ORDER BY check_date
+  const { rows: natRows } = await pool.query<{
+    check_date: string; total_premium: string; monthly_net: string
+  }>(`
+    SELECT check_date, total_premium, monthly_net FROM np_snapshots ORDER BY check_date
   `)
-  const natPoints: HistoryPoint[] = natRows.map(r => ({
+  const natHistory = withDiff(natRows.map(r => ({
     ym: r.check_date.replace(/\./g, "-").slice(0, 7),
-    value: Number(r.total_premium),
-  }))
+    base: Number(r.total_premium),
+    monthly: Number(r.monthly_net),
+  })))
 
-  const range = (points: HistoryPoint[]) =>
-    points.length === 0 ? "데이터 없음"
-      : points.length === 1 ? dotYm(points[0].ym)
-      : `${dotYm(points[0].ym)} → ${dotYm(points[points.length - 1].ym)}`
+  const range = (rows: HistoryRow[]) =>
+    rows.length === 0 ? "데이터 없음"
+      : rows.length === 1 ? dotYm(rows[0].ym)
+      : `${dotYm(rows[0].ym)} → ${dotYm(rows[rows.length - 1].ym)}`
 
   return [
     {
-      kind: "per", label: "연금저축펀드 평가액",
-      points: perPoints, changePct: pctChange(perPoints), rangeLabel: range(perPoints),
+      kind: "per",
+      baseLabel: "보유 수량", monthlyLabel: "월 수령액 예상",
+      basisNote: `그 달의 보유수량·주가로 다시 계산한 ${cfg.payout_age}세 예상 수령액입니다`,
+      rows: perHistory, changePct: pctChange(perHistory), rangeLabel: range(perHistory),
     },
     {
-      kind: "ret", label: "실수령 퇴직금",
-      points: retPoints, changePct: pctChange(retPoints),
-      rangeLabel: retPoints.length > 1 ? `최근 ${retPoints.length}개월` : range(retPoints),
+      kind: "ret",
+      baseLabel: null, monthlyLabel: "월 분배금",
+      basisNote: `그 달까지의 근속으로 계산 — 만 ${DB_ACCESS_AGE}세에 매입해 ${cfg.payout_age}세부터 받는 기준이라, `
+        + `정년까지 다닌 기준인 아래 퇴직연금 카드와 금액이 다릅니다`,
+      rows: retHistory, changePct: pctChange(retHistory),
+      rangeLabel: retHistory.length > 1 ? `최근 ${retHistory.length}개월` : range(retHistory),
     },
     {
-      kind: "nat", label: "총 납부 보험료",
-      points: natPoints, changePct: pctChange(natPoints),
-      rangeLabel: natPoints.length > 1 ? `확인 ${natPoints.length}회 · ${range(natPoints)}` : range(natPoints),
+      kind: "nat",
+      baseLabel: "총 납부액", monthlyLabel: "월 수령 예상 (세후)",
+      basisNote: "공단이 통보한 값 그대로입니다 — 확인한 시점에만 기록이 남습니다",
+      rows: natHistory, changePct: pctChange(natHistory),
+      rangeLabel: natHistory.length > 1 ? `확인 ${natHistory.length}회 · ${range(natHistory)}` : range(natHistory),
     },
   ]
 }

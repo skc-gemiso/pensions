@@ -11,24 +11,21 @@ import {
 } from "./actions"
 
 const TONE: Record<PensionKind, {
-  text: string; dot: string; bar: string; ring: string; spark: string
+  text: string; dot: string; bar: string; ring: string
   cardBg: string; cardBorder: string; iconBg: string; track: string
 }> = {
   per: {
     text: "text-purple-700", dot: "bg-purple-500", bar: "bg-purple-500", ring: "ring-purple-100",
-    spark: "text-purple-500",
     cardBg: "bg-purple-50", cardBorder: "border-purple-200",
     iconBg: "bg-gradient-to-br from-purple-500 to-purple-700", track: "bg-purple-100",
   },
   ret: {
     text: "text-emerald-700", dot: "bg-emerald-500", bar: "bg-emerald-500", ring: "ring-emerald-100",
-    spark: "text-emerald-500",
     cardBg: "bg-emerald-50", cardBorder: "border-emerald-200",
     iconBg: "bg-gradient-to-br from-emerald-500 to-emerald-700", track: "bg-emerald-100",
   },
   nat: {
     text: "text-blue-700", dot: "bg-blue-500", bar: "bg-blue-500", ring: "ring-blue-100",
-    spark: "text-blue-500",
     cardBg: "bg-blue-50", cardBorder: "border-blue-200",
     iconBg: "bg-gradient-to-br from-blue-500 to-blue-700", track: "bg-blue-100",
   },
@@ -152,39 +149,55 @@ function PageHelp({ ov }: { ov: PensionOverview }) {
 
 // ─────────────────────────────────────────────
 /**
- * 점 몇 개짜리 추이선. recharts 를 쓸 규모가 아니라 SVG 로 직접 그린다.
- * 선 색은 부모의 text 색을 currentColor 로 상속받는다.
+ * 연금별 과거 추이 표.
+ *
+ * 컬럼 구성이 연금마다 다르다 (개인=보유수량, 국민=총 납부액, 퇴직=없음).
+ * 최신 달이 위로 오게 뒤집어 보여준다.
  */
-function Sparkline({ values, className = "" }: { values: number[]; className?: string }) {
-  const W = 100, H = 30, PAD = 4
-  if (values.length === 0) return <div className={`h-[30px] ${className}`} />
+function HistoryTable({ h }: { h: PensionHistory }) {
+  const TH = "px-3 py-1.5 font-semibold text-gray-600 whitespace-nowrap"
+  const TD = "px-3 py-1.5 tabular-nums whitespace-nowrap"
 
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  const span = max - min
-  const x = (i: number) => values.length === 1 ? W / 2 : (i / (values.length - 1)) * W
-  // 값이 모두 같으면 가운데 수평선
-  const y = (v: number) => span === 0 ? H / 2 : PAD + (1 - (v - min) / span) * (H - PAD * 2)
-
-  const last = values.length - 1
+  if (h.rows.length === 0) {
+    return <p className="text-xs text-gray-400 py-6 text-center">기록된 자료가 없습니다</p>
+  }
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
-      className={`w-full h-[30px] overflow-visible ${className}`} aria-hidden>
-      {values.length === 1 ? (
-        <line x1="0" y1={H / 2} x2={W} y2={H / 2} stroke="currentColor" strokeWidth={2}
-          strokeDasharray="4 4" vectorEffect="non-scaling-stroke" opacity={0.4} />
-      ) : (
-        <polyline points={values.map((v, i) => `${x(i)},${y(v)}`).join(" ")}
-          fill="none" stroke="currentColor" strokeWidth={2}
-          strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-      )}
-      {/* 점이 적으면 각 시점을 찍는다 — 국민연금처럼 3회짜리는 선만으론 안 읽힌다 */}
-      {values.length <= 4 && values.map((v, i) => (
-        <circle key={i} cx={x(i)} cy={y(v)} r={2.5} fill="currentColor" opacity={0.5} />
-      ))}
-      <circle cx={x(last)} cy={y(values[last])} r={3.5} fill="currentColor" />
-    </svg>
+    <div className="max-h-[188px] overflow-y-auto rounded-lg border border-gray-200">
+      <table className="w-full text-xs">
+        <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+          <tr>
+            <th className={`${TH} text-left`}>월</th>
+            {h.baseLabel && <th className={`${TH} text-right`}>{h.baseLabel}</th>}
+            <th className={`${TH} text-right`}>{h.monthlyLabel}</th>
+            <th className={`${TH} text-right`}>증가</th>
+            <th className={`${TH} text-right`}>증가율</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {[...h.rows].reverse().map(r => (
+            <tr key={r.ym} className="hover:bg-gray-50">
+              <td className={`${TD} text-left text-gray-700`}>{r.ym.replace("-", ".")}</td>
+              {h.baseLabel && (
+                <td className={`${TD} text-right text-gray-700`}>
+                  {r.base == null ? "-"
+                    : h.kind === "per" ? `${fmt(r.base)}주` : fmtKRW(r.base)}
+                </td>
+              )}
+              <td className={`${TD} text-right font-semibold text-gray-900`}>{fmt(r.monthly)}원</td>
+              <td className={`${TD} text-right ${cc(r.diff ?? 0)}`}>
+                {r.diff == null ? <span className="text-gray-300">-</span>
+                  : <>{r.diff > 0 ? "+" : ""}{fmt(r.diff)}</>}
+              </td>
+              <td className={`${TD} text-right font-semibold ${cc(r.diffPct ?? 0)}`}>
+                {r.diffPct == null ? <span className="text-gray-300">-</span>
+                  : <>{r.diffPct > 0 ? "+" : ""}{fmt(r.diffPct, 1)}%</>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
@@ -230,6 +243,7 @@ export default function DashboardPage() {
 
   // 과거 추이는 요약과 따로 부른다 — 첫 페인트를 막지 않도록
   const [history, setHistory] = useState<PensionHistory[] | null>(null)
+  const [tab, setTab] = useState<PensionKind>("per")
   useEffect(() => {
     let alive = true
     getPensionHistory()
@@ -237,6 +251,7 @@ export default function DashboardPage() {
       .catch(() => {})
     return () => { alive = false }
   }, [])
+  const active = history?.find(h => h.kind === tab) ?? null
 
   const first = ov?.stages[0]
   const last = ov?.stages[ov.stages.length - 1]
@@ -306,43 +321,42 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* 연금별 과거 추이 — 금액은 아래 카드에 있으므로 변화만 보여준다 */}
-                <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-3">
-                  {ov.pensions.map((p, i) => {
-                    const t = TONE[p.kind]
-                    const h = history?.find(x => x.kind === p.kind)
-                    return (
-                      <div key={p.kind}
-                        className={`flex items-center gap-3.5 px-6 ${i > 0 ? "sm:border-l border-gray-100" : ""}`}>
-                        <span className={`flex items-center justify-center w-14 h-14 rounded-full text-white flex-shrink-0
-                                          ${t.iconBg} ring-4 ${t.ring}`}>
-                          <PensionIcon kind={p.kind} className="w-7 h-7" />
+                {/* 연금별 과거 추이 — 연금마다 컬럼이 달라 탭으로 나눈다 */}
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <div className="flex items-center justify-between flex-wrap gap-2 mb-2.5">
+                    <div className="flex items-center gap-1.5">
+                      {ov.pensions.map(p => {
+                        const t = TONE[p.kind]
+                        const on = tab === p.kind
+                        return (
+                          <button key={p.kind} type="button" onClick={() => setTab(p.kind)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors
+                              ${on ? `${t.cardBg} ${t.cardBorder} ${t.text}`
+                                   : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"}`}>
+                            <PensionIcon kind={p.kind} className="w-3.5 h-3.5" />
+                            {p.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <p className="text-xs text-gray-400">
+                      {active?.rangeLabel ?? "불러오는 중…"}
+                      {active?.changePct != null && (
+                        <span className={`ml-1.5 font-semibold ${cc(active.changePct)}`}>
+                          {active.changePct > 0 ? "+" : ""}{fmt(active.changePct, 1)}%
                         </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-gray-600 text-sm truncate">
-                            {p.label} <span className="text-gray-400">{h?.label ?? p.accumulatedLabel}</span>
-                          </p>
+                      )}
+                    </p>
+                  </div>
 
-                          {h == null ? (
-                            <div className="h-[30px] flex items-center">
-                              <div className="h-1.5 w-full max-w-[140px] bg-gray-100 rounded animate-pulse" />
-                            </div>
-                          ) : (
-                            <Sparkline values={h.points.map(pt => pt.value)} className={t.spark} />
-                          )}
-
-                          <p className="text-xs text-gray-400 truncate">
-                            {h?.rangeLabel ?? "불러오는 중…"}
-                            {h?.changePct != null && (
-                              <span className={`ml-1.5 font-semibold ${cc(h.changePct)}`}>
-                                {h.changePct > 0 ? "+" : ""}{fmt(h.changePct, 1)}%
-                              </span>
-                            )}
-                          </p>
-                        </div>
-                      </div>
-                    )
-                  })}
+                  {active == null ? (
+                    <div className="h-[188px] rounded-lg border border-gray-200 bg-gray-50/50 animate-pulse" />
+                  ) : (
+                    <>
+                      <p className="text-[11px] text-gray-400 mb-1.5">{active.basisNote}</p>
+                      <HistoryTable h={active} />
+                    </>
+                  )}
                 </div>
               </div>
 
