@@ -7,13 +7,19 @@ import HelpModal, { H, Box, ColTable } from "@/components/HelpModal"
 import { fmt, fmtKRW, cc } from "@/lib/fmt"
 import {
   getPensionOverview, getPensionHistory,
-  type PensionOverview, type PensionKind, type PayoutStage, type PensionHistory,
+  type PensionOverview, type PensionKind, type PayoutStage,
+  type PensionHistory, type HistoryKind,
 } from "./actions"
 
-const TONE: Record<PensionKind, {
+const TONE: Record<HistoryKind, {
   text: string; dot: string; bar: string; ring: string
   cardBg: string; cardBorder: string; iconBg: string; track: string
 }> = {
+  all: {
+    text: "text-gray-900", dot: "bg-gray-800", bar: "bg-gray-800", ring: "ring-gray-100",
+    cardBg: "bg-gray-100", cardBorder: "border-gray-300",
+    iconBg: "bg-gradient-to-br from-gray-700 to-gray-900", track: "bg-gray-100",
+  },
   per: {
     text: "text-purple-700", dot: "bg-purple-500", bar: "bg-purple-500", ring: "ring-purple-100",
     cardBg: "bg-purple-50", cardBorder: "border-purple-200",
@@ -31,6 +37,10 @@ const TONE: Record<PensionKind, {
   },
 }
 
+const LABEL: Record<HistoryKind, string> = {
+  all: "3연금 합계", per: "개인연금", ret: "퇴직연금", nat: "국민연금",
+}
+
 const CARD = "bg-white border border-gray-200 rounded-2xl"
 
 function fmtYm(ym: string): string {
@@ -45,7 +55,13 @@ function splitKRW(n: number): { num: string; unit: string } {
   return m ? { num: m[1], unit: m[2] } : { num: s, unit: "" }
 }
 
-function PensionIcon({ kind, className = "w-5 h-5" }: { kind: PensionKind; className?: string }) {
+function PensionIcon({ kind, className = "w-5 h-5" }: { kind: HistoryKind; className?: string }) {
+  // 합계 — 세 막대를 쌓은 모양
+  if (kind === "all") return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+      <path d="M3 17h4v4H3zm7-6h4v10h-4zm7-8h4v18h-4z" />
+    </svg>
+  )
   if (kind === "per") return (
     <svg viewBox="0 0 24 24" className={className} fill="currentColor">
       <circle cx="12" cy="7.5" r="3.5" />
@@ -157,6 +173,7 @@ function PageHelp({ ov }: { ov: PensionOverview }) {
 function HistoryTable({ h }: { h: PensionHistory }) {
   const TH = "px-3 py-1.5 font-semibold text-gray-600 whitespace-nowrap"
   const TD = "px-3 py-1.5 tabular-nums whitespace-nowrap"
+  const isAll = h.kind === "all"
 
   if (h.rows.length === 0) {
     return <p className="text-xs text-gray-400 py-6 text-center">기록된 자료가 없습니다</p>
@@ -169,6 +186,9 @@ function HistoryTable({ h }: { h: PensionHistory }) {
           <tr>
             <th className={`${TH} text-left`}>월</th>
             {h.baseLabel && <th className={`${TH} text-right`}>{h.baseLabel}</th>}
+            {isAll && (["per", "ret", "nat"] as PensionKind[]).map(k => (
+              <th key={k} className={`${TH} text-right font-medium ${TONE[k].text}`}>{LABEL[k]}</th>
+            ))}
             <th className={`${TH} text-right`}>{h.monthlyLabel}</th>
             <th className={`${TH} text-right`}>증가</th>
             <th className={`${TH} text-right`}>증가율</th>
@@ -184,6 +204,13 @@ function HistoryTable({ h }: { h: PensionHistory }) {
                     : h.kind === "per" ? `${fmt(r.base)}주` : fmtKRW(r.base)}
                 </td>
               )}
+              {isAll && (["per", "ret", "nat"] as PensionKind[]).map(k => (
+                <td key={k} className={`${TD} text-right text-gray-500`}>
+                  {fmt(r.parts?.[k] ?? 0)}
+                  {/* 국민연금은 확인 시점이 드물어 사이를 보간한다 — 추정치임을 표시 */}
+                  {k === "nat" && r.parts?.natEstimated && <span className="text-gray-400">*</span>}
+                </td>
+              ))}
               <td className={`${TD} text-right font-semibold text-gray-900`}>{fmt(r.monthly)}원</td>
               <td className={`${TD} text-right ${cc(r.diff ?? 0)}`}>
                 {r.diff == null ? <span className="text-gray-300">-</span>
@@ -243,7 +270,7 @@ export default function DashboardPage() {
 
   // 과거 추이는 요약과 따로 부른다 — 첫 페인트를 막지 않도록
   const [history, setHistory] = useState<PensionHistory[] | null>(null)
-  const [tab, setTab] = useState<PensionKind>("per")
+  const [tab, setTab] = useState<HistoryKind>("all")
   useEffect(() => {
     let alive = true
     getPensionHistory()
@@ -324,17 +351,18 @@ export default function DashboardPage() {
                 {/* 연금별 과거 추이 — 연금마다 컬럼이 달라 탭으로 나눈다 */}
                 <div className="mt-4 pt-4 border-t border-gray-100">
                   <div className="flex items-center justify-between flex-wrap gap-2 mb-2.5">
-                    <div className="flex items-center gap-1.5">
-                      {ov.pensions.map(p => {
-                        const t = TONE[p.kind]
-                        const on = tab === p.kind
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {(["all", "per", "ret", "nat"] as HistoryKind[]).map(k => {
+                        const t = TONE[k]
+                        const on = tab === k
                         return (
-                          <button key={p.kind} type="button" onClick={() => setTab(p.kind)}
+                          <button key={k} type="button" onClick={() => setTab(k)}
                             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors
                               ${on ? `${t.cardBg} ${t.cardBorder} ${t.text}`
-                                   : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"}`}>
-                            <PensionIcon kind={p.kind} className="w-3.5 h-3.5" />
-                            {p.label}
+                                   : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"}
+                              ${k === "all" ? "mr-1.5" : ""}`}>
+                            <PensionIcon kind={k} className="w-3.5 h-3.5" />
+                            {LABEL[k]}
                           </button>
                         )
                       })}

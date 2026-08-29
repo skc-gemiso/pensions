@@ -208,6 +208,9 @@ export async function getPensionOverview(): Promise<PensionOverview> {
 
 // ── 월별 과거 실적 추이 ────────────────────────────────────────────────────────
 
+/** 추이 탭 — 세 연금 + 합계 */
+export type HistoryKind = PensionKind | "all"
+
 export type HistoryRow = {
   ym: string
   /** 연금별 부가 지표 — 개인=보유수량(주), 국민=총 납부액(원). 퇴직연금은 없다 */
@@ -217,10 +220,12 @@ export type HistoryRow = {
   /** 직전 시점 대비 월 수령액 증감 */
   diff: number | null
   diffPct: number | null
+  /** 합계 탭에서만 — 그 달의 연금별 내역 */
+  parts?: { per: number; ret: number; nat: number; natEstimated: boolean }
 }
 
 export type PensionHistory = {
-  kind: PensionKind
+  kind: HistoryKind
   /** 부가 지표 컬럼명 — null 이면 그 컬럼을 그리지 않는다 */
   baseLabel: string | null
   /** 월 수령액 컬럼명 — 연금마다 성격이 달라 이름이 다르다 */
@@ -238,7 +243,7 @@ export type PensionHistory = {
 const RET_HISTORY_MONTHS = 12
 
 /** 직전 행 대비 증감을 채운다. rows 는 오름차순이어야 한다 */
-function withDiff(rows: { ym: string; base: number | null; monthly: number }[]): HistoryRow[] {
+function withDiff(rows: Omit<HistoryRow, "diff" | "diffPct">[]): HistoryRow[] {
   return rows.map((r, i) => {
     const prev = i > 0 ? rows[i - 1].monthly : null
     return {
@@ -360,12 +365,62 @@ export async function getPensionHistory(): Promise<PensionHistory[]> {
     monthly: Number(r.monthly_net),
   })))
 
+  // ── 합계 — 세 연금이 모두 값을 갖는 달만 ──────────────────────────────────
+  // 한 연금이 중간에 끼어들면 합계가 껑충 뛰어 추세가 아니라 착시가 된다.
+  // 국민연금만 확인 시점이 드물어 예외적으로 보간한다 (아래 natAt 참고).
+  const natSnaps = natHistory.map(r => ({ idx: idxOf(r.ym), value: r.monthly }))
+
+  /**
+   * 국민연금 월 수령 예상액을 그 달 기준으로 추정한다.
+   *   확인 시점 사이  → 직선 보간
+   *   마지막 확인 이후 → 마지막 값 유지 (없는 상승을 지어내지 않는다)
+   *   첫 확인 이전    → 없음
+   */
+  function natAt(ym: string): { value: number; estimated: boolean } | null {
+    if (natSnaps.length === 0) return null
+    const at = idxOf(ym)
+    const exact = natSnaps.find(s => s.idx === at)
+    if (exact) return { value: exact.value, estimated: false }
+    if (at < natSnaps[0].idx) return null
+    const last = natSnaps[natSnaps.length - 1]
+    if (at > last.idx) return { value: last.value, estimated: true }
+    const hi = natSnaps.findIndex(s => s.idx > at)
+    const a = natSnaps[hi - 1], b = natSnaps[hi]
+    const t = (at - a.idx) / (b.idx - a.idx)
+    return { value: Math.round(a.value + (b.value - a.value) * t), estimated: true }
+  }
+
+  const perMap = new Map(perHistory.map(r => [r.ym, r.monthly]))
+  const retMap = new Map(retHistory.map(r => [r.ym, r.monthly]))
+  const allSeries: Omit<HistoryRow, "diff" | "diffPct">[] = []
+  for (const ym of [...perMap.keys()].sort()) {
+    const ret = retMap.get(ym)
+    const nat = natAt(ym)
+    if (ret == null || nat == null) continue
+    const per = perMap.get(ym)!
+    allSeries.push({
+      ym, base: null,
+      monthly: per + ret + nat.value,
+      parts: { per, ret, nat: nat.value, natEstimated: nat.estimated },
+    })
+  }
+  const allHistory = withDiff(allSeries)
+  const natEstimatedCount = allHistory.filter(r => r.parts?.natEstimated).length
+
   const range = (rows: HistoryRow[]) =>
     rows.length === 0 ? "데이터 없음"
       : rows.length === 1 ? dotYm(rows[0].ym)
       : `${dotYm(rows[0].ym)} → ${dotYm(rows[rows.length - 1].ym)}`
 
   return [
+    {
+      kind: "all",
+      baseLabel: null, monthlyLabel: "합계",
+      basisNote: "세 연금이 모두 값을 갖는 달만 담습니다 — 하나가 중간에 끼어들면 합계가 껑충 뛰어 추세가 아니라 착시가 됩니다"
+        + (natEstimatedCount > 0 ? ". 국민연금 * 는 확인 시점 사이를 보간한 추정치" : "")
+        + `. 퇴직연금이 '그 달에 퇴직' 기준이라 위 ${cfg.payout_age}세 합계와는 다른 값입니다`,
+      rows: allHistory, changePct: pctChange(allHistory), rangeLabel: range(allHistory),
+    },
     {
       kind: "per",
       baseLabel: "보유 수량", monthlyLabel: "월 수령액 예상",
