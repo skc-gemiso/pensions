@@ -17,7 +17,7 @@ app/pension/my/
 
 | 대상 | 재사용 모듈 |
 |------|-------------|
-| 퇴직연금 | `lib/pension-ret-calc.ts` — 미래 예상은 `buildRetirementRows`·`grownValue`, 과거 추이는 `calcCurrentSeverance`·`calcTenure` |
+| 퇴직연금 | `lib/pension-ret-calc.ts` — `buildRetirementRows`·`grownValue`. 급여 기준은 `retSettingsFromEnv()` (`PENSION_RET_*`) |
 | 개인연금 | `lib/pension-per-calc.ts` `simulatePer()` |
 | 프로필 | `lib/profile.ts` `ageOn` / `ymAtAge` / `retireEndYm` |
 | 적립 계획 | `lib/settings.ts` `perSettingsFromEnv()` |
@@ -185,15 +185,15 @@ ORDER BY m.ym
 
 한때 퇴직연금 추이를 `calcCurrentSeverance()`(그 달에 퇴직 → 만 55세 매입 → 96개월 거치)로
 냈었다. 근속이 쌓이는 만큼 우상향해 추이로는 보기 좋았지만, **아래 퇴직연금 카드(397만)와
-값이 달라(431만)** 같은 화면에서 두 숫자가 충돌했다.
+값이 달라** 같은 화면에서 두 숫자가 충돌했다.
 
-원인은 두 요인이 반대로 움직여 상쇄되지 않았기 때문이다.
+원인은 두 요인이 반대로 움직여 상쇄되지 않았기 때문이다 (현재 평균임금 789만원 기준).
 
 ```
-원금  7,748만 / 16,700만 = 0.46배   ← 그 달 퇴직이 불리
+원금  8,815만 / 16,700만 = 0.53배   ← 그 달 퇴직이 불리
 거치  ×3.90  / ×1.67     = 2.34배   ← 그 달 퇴직이 유리 (55세 매입 → 8년 거치)
                            ─────
-                           1.09배
+                           1.24배   → 월 490만원, 카드보다 93만원 많다
 ```
 
 지금은 **정년 기준 하나로 통일**했다. 화면 안에서 같은 이름의 값이 다른 뜻을 갖지 않는 게

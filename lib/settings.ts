@@ -13,6 +13,7 @@
  */
 
 import type { Profile, RetireRule } from "@/lib/profile"
+import type { SalaryBasis } from "@/lib/pension-ret-calc"
 
 const RETIRE_RULES: RetireRule[] = ["birthday", "month_end", "year_end"]
 
@@ -73,5 +74,29 @@ export function perSettingsFromEnv(): PerSettings {
     monthly_amount: int("PENSION_PER_MONTHLY_AMOUNT", 500000),
     account_no: str("PENSION_PER_ACCOUNT_NO", "201-04-931585"),
     stock_code: str("PENSION_PER_STOCK_CODE", "498400"),
+  }
+}
+
+/** 퇴직금 산정 기준 — 타입은 계산 모듈이 갖는다 (화면도 같은 모양을 받는다) */
+export type RetSettings = SalaryBasis
+
+/**
+ * 퇴직금 산정 기준.
+ *
+ * PENSION_RET_MONTHLY_WAGE   급여명세서 지급액 계 (원/월)
+ * PENSION_RET_ANNUAL_BONUS   연 상여금 (원)
+ * PENSION_RET_ANNUAL_RAISE   연봉 인상 (원/년)
+ * PENSION_RET_WAGE_BASE_YM   명세서 연월 YYYY-MM
+ */
+export function retSettingsFromEnv(): RetSettings {
+  const ym = str("PENSION_RET_WAGE_BASE_YM", "2026-08")
+  if (!/^\d{4}-\d{2}$/.test(ym)) {
+    throw new Error(`PENSION_RET_WAGE_BASE_YM 형식이 올바르지 않습니다 (YYYY-MM): ${ym}`)
+  }
+  return {
+    monthly_wage: int("PENSION_RET_MONTHLY_WAGE", 7_140_000),
+    annual_bonus: int("PENSION_RET_ANNUAL_BONUS", 9_000_000),
+    annual_raise: int("PENSION_RET_ANNUAL_RAISE", 2_400_000),
+    wage_base_ym: ym,
   }
 }

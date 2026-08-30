@@ -8,8 +8,15 @@
 
 ```
 app/pension/ret/
-└── page.tsx      클라이언트 컴포넌트 (계산 로직 + UI 전체)
+├── page.tsx      클라이언트 컴포넌트 (UI + 도움말)
+└── actions.ts    getRetConfig() — PENSION_RET_* 를 화면으로 전달
+
+lib/pension-ret-calc.ts   계산 전체 (순수 함수). /pension/my 와 공용
 ```
+
+`page.tsx` 가 클라이언트 컴포넌트라 서버 전용인 `lib/settings.ts` 를 직접 import 할 수 없다.
+그래서 `actions.ts` 가 한 겹 끼어 있고, `lib/pension-ret-calc.ts` 는 `process.env` 를 읽지 않는다 —
+값은 전부 호출자가 인자로 넘긴다.
 
 ---
 
@@ -36,12 +43,53 @@ const progress = monthDiff(JOIN_DATE, today) / monthDiff(JOIN_DATE, retireDate) 
 
 ---
 
+## 평균임금 — 퇴직금의 출발점
+
+값은 `PENSION_RET_*` 환경 변수에서 온다 (`lib/settings.ts` `retSettingsFromEnv()`).
+
+```
+월 평균임금 = 급여명세서 지급액 계 + 연 상여금 ÷ 12
+            = 7,140,000 + 9,000,000 ÷ 12
+            = 7,890,000원
+```
+
+**상여금을 ÷12 로 얹는 이유** — 법정 평균임금은 퇴직 전 3개월 임금총액에 연 상여금의 `3/12` 를
+더해 산정한다. 월로 환산하면 `연 상여금 ÷ 12` 다. 명절·연말 300만 + 5월 인센티브 600만 = 연 900만원.
+
+**지급액 계에 무엇이 들어가나** (2026-08 명세서, 총 7,140,000원)
+
+| 항목 | 금액 | 산입 |
+|------|------|------|
+| 기본급 | 5,465,720 | ○ |
+| 연장근로수당 | 1,124,280 | ○ 통상시급 × 주 6h × 4.34 × 1.5 |
+| 식대보조금 | 250,000 | ○ 정기·일률 지급 |
+| 자가운전보조금 | 200,000 | ○ — 아래 참고 |
+| 통신비 | 50,000 | ○ |
+| 간식비 | 50,000 | ○ |
+
+> 자가운전보조금은 실비변상 성격이면 임금이 아니지만, 매월 고정액을 일률 지급하면 임금성이
+> 인정된다는 판례를 따라 **포함**한다. 빼려면 `PENSION_RET_MONTHLY_WAGE` 를 `6940000` 으로
+> 낮추면 된다 — 오늘 기준 실수령이 8,815만 → 8,600만으로 바뀐다.
+
+연도별 평균임금은 인상분을 얹어 구한다 (`avgMonthlyWageAt()`).
+
+```
+평균임금(연도) = 평균임금 + (연도 − PENSION_RET_WAGE_BASE_YM 의 연도) × 연 인상액 ÷ 12
+```
+
+기준 연월을 상수로 박지 않고 환경 변수에 둔 이유는, 명세서만 갱신하고 기준 연도를 안 바꾸면
+인상분이 조용히 어긋나기 때문이다.
+
+---
+
 ## 퇴직소득세 계산 (2023년 개정)
 
 ### 계산 흐름
 
 ```
-1. 퇴직급여 = 평균임금 × 30일 × 근속연수
+1. 퇴직급여 = 월 평균임금 × 재직일수 ÷ 365
+   (= 근속 1년당 한 달치 평균임금. 법정 산식 "1일 평균임금 × 30일 × 재직일수/365" 의
+    월 단위 근사로, 월을 30.42일이 아닌 30일로 보는 만큼 약 1.4% 크게 나온다)
 2. 근속연수 공제액 계산
    - 5년 이하: 100만원 × 근속연수
    - 5~10년: 500만원 + 200만원 × (근속연수 - 5)
@@ -177,7 +225,7 @@ holdMonths = payoutIdx − buyIdx           // 행마다 다르다
 
 | 퇴직 시점 | 투자 원금 | 매입 시점 | 재투자 | 63세 평가액 | 월 분배금 |
 |---|---|---|---|---|---|
-| 2029년 | 1억 1,009만원 | 2029.06 | 96개월 | 4억 2,924만원 | 613만원 |
+| 2029년 | 1억 1,762만원 | 2029.06 | 96개월 | 4억 5,860만원 | 655만원 |
 | 2030년 | 1억 4,200만원 | 2030.06 | 84개월 | 4억 6,706만원 | 667만원 |
 | 2034년 | 1억 6,700만원 | 2034.06 | 36개월 | 2억 7,818만원 | 397만원 |
 
@@ -186,38 +234,61 @@ holdMonths = payoutIdx − buyIdx           // 행마다 다르다
 꼭짓점 위치 자체가 데이터 아티팩트일 수 있고, 포기하는 근로소득도 반영돼 있지 않다.
 행 간 방향성으로만 읽어야 한다.
 
+> 평균임금을 명세서 기준으로 고친 뒤 2029년 행이 613만 → 655만원이 되어
+> 2030년(667만원)과 거의 붙었다. 꼭짓점이 원래 뾰족하지 않았다는 뜻이다.
+
 ---
 
 ## 데이터 구조
 
-### `USER_PROJECTIONS` (하드코딩)
+### `SalaryBasis` — 급여 기준 (환경 변수)
 
 ```typescript
-const USER_PROJECTIONS: YearlyProjection[] = [
-  { year: 2026, avgSalary: number, severanceFund: number },
-  // ... 2034까지
-]
+export type SalaryBasis = {
+  monthly_wage: number   // 급여명세서 지급액 계 (원/월)
+  annual_bonus: number   // 연 상여금 (원)
+  annual_raise: number   // 연봉 인상 (원/년)
+  wage_base_ym: string   // 명세서 연월 'YYYY-MM'
+}
+export function avgMonthlyWage(b): number          // 지급액 + 상여 ÷ 12
+export function avgMonthlyWageAt(b, year): number  // + 인상분
 ```
 
-각 연도별 예상 평균임금과 퇴직금을 수동 관리.
+타입은 `lib/pension-ret-calc.ts` 가 갖고, `lib/settings.ts` 는 `RetSettings = SalaryBasis` 로
+별칭만 둔다 — 화면과 서버가 같은 모양을 주고받게 하려는 것이다.
 
-### `ComputedRetirement`
+### `USER_PROJECTIONS` — 회사 사전 계산값 (하드코딩)
 
 ```typescript
-interface ComputedRetirement {
-  year: number
-  grossSeverance: number    // 세전 퇴직금
-  retirementTax: number     // 퇴직소득세
-  netSeverance: number      // 세후 퇴직금
-  holdMonths: number        // 재투자 개월 (payoutIdx − buyIdx)
-  buyYm: string             // 매입 시점 'YYYY.MM' (= 퇴직 시점)
-
-  // 아래는 모두 수령 개시(63세) 시점 기준
-  valueMan: number          // 재투자 후 평가액
-  monthlyDist: number       // 월 분배금
-  yearlyDist: number        // 연 분배금
+export const USER_PROJECTIONS: Record<number, { salaryMan; grossMan; netMan }> = {
+  2030: { salaryMan: 9_992, grossMan: 14_800, netMan: 14_200 },
+  // ... 2034까지
 }
 ```
+
+**2030~2034년만** 있다. 회사가 준 값이라 산식으로 재현하지 않고 그대로 쓴다
+(`taxMan = grossMan − netMan`). 2026~2029년은 위 평균임금으로 추정한다.
+
+`salaryMan`(연봉)의 정의가 우리 추정과 달라 **2029→2030 경계에서 연봉 열이 오히려 낮아진다.**
+퇴직금은 반대로 크게 뛴다. 도움말 `읽는 법` 탭에 그대로 밝혀 두었다.
+
+### `RetirementRow`
+
+```typescript
+export type RetirementRow = {
+  year: number
+  tenureYears: number       // 퇴직소득세 공제용 근속연수
+  salaryMan: number         // 예상 연봉 (만원)
+  grossMan: number          // 세전 퇴직금
+  netMan: number            // 세후 퇴직금
+  taxMan: number            // 퇴직소득세
+  isConfirmed: boolean      // 회사 사전 계산값이면 true
+  isLegal: boolean          // 정년 행이면 true
+}
+```
+
+`buildRetirementRows(startYear, retireYear, basis, joinDate, retireDate)` 가 만든다.
+`retireDate` 의 월·일을 각 연도에 대입해 "그 해 그 날 퇴직"으로 보고 재직일수를 센다.
 
 ---
 
@@ -277,9 +348,12 @@ interface ComputedRetirement {
 
 ## 알려진 제약 사항
 
-- 평균임금이 코드에 하드코딩됨 (입사일·정년은 `PROFILE_*` 환경 변수로 이전 완료)
 - `USER_PROJECTIONS` 수동 관리 필요 (DB 연동 미구현)
-- 퇴직금 기준이 되는 평균임금은 추정값 사용
+- 평균임금이 **한 장의 명세서** 기준이다 — 연장근로수당(월 112만원)이 그 달 근무에 따라
+  변하는데 고정으로 본다. 실제 퇴직금은 퇴직 직전 3개월로 산정된다
+- 퇴직금을 `평균임금 × 재직일수 ÷ 365` 로 계산한다. 법정 `1일 평균임금 × 30일` 대비
+  약 1.4% 크게 나온다 (월을 30.42일이 아닌 30일로 보는 차이)
+- 퇴직소득세의 근속연수를 표는 반올림, 법정은 올림(1년 미만은 1년)으로 처리한다
 - 주가 변동을 반영하지 않는다 — 분배율만 곱하므로 평가액 하락 시 분배금도 함께 준다
 - 분배금 세금을 계산하지 않는다 — 실효세율 1% 미만이라 무시했다.
   과표 비율이나 세법이 바뀌면 다시 넣어야 한다

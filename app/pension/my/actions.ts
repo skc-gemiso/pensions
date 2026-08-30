@@ -3,12 +3,12 @@
 import { getPensionPool } from "@/lib/pension-db"
 import { requireAdmin } from "@/lib/guard"
 import { getProfile } from "@/app/actions/profile"
-import { perSettingsFromEnv } from "@/lib/settings"
+import { perSettingsFromEnv, retSettingsFromEnv } from "@/lib/settings"
 import { ageOn, ymAtAge, retireEndYm } from "@/lib/profile"
 import { simulatePer } from "@/lib/pension-per-calc"
 import {
   buildRetirementRows, calcCurrentSeverance, calcTenure, grownValue, toDate,
-  CC_STOCK_CODE, CC_FALLBACK_ANNUAL_RATE, MONTHLY_SALARY_WON,
+  avgMonthlyWage, CC_STOCK_CODE, CC_FALLBACK_ANNUAL_RATE,
 } from "@/lib/pension-ret-calc"
 
 /** 국민연금 개시 나이 — 1969년 이후 출생자 기준 */
@@ -106,7 +106,12 @@ export async function getPensionOverview(): Promise<PensionOverview> {
   const natPaidMonths = Math.max(0, Math.min(NAT_TOTAL_MONTHS, idxOf(todayYm) - idxOf(NAT_START_YM)))
 
   // ── 퇴직연금 — 정년 퇴직금을 커버드콜로 굴려 수령 개시 나이부터 받는다 ──
-  const retRows = buildRetirementRows(now.getFullYear(), toDate(profile.retire_date).getFullYear())
+  const ret = retSettingsFromEnv()
+  const joinDate = toDate(profile.join_date)
+  const retireDate = toDate(profile.retire_date)
+  const retRows = buildRetirementRows(
+    now.getFullYear(), retireDate.getFullYear(), ret, joinDate, retireDate
+  )
   const retireRow = retRows.find(r => r.isLegal)
   const retireNetMan = retireRow?.netMan ?? 0
 
@@ -116,11 +121,9 @@ export async function getPensionOverview(): Promise<PensionOverview> {
   const retValueMan = grownValue(retireNetMan, ccAnnualRate, retHoldMonths)
   const retMonthly = Math.round(retValueMan * ccAnnualRate / 12) * 10_000
 
-  const tenure = calcTenure(toDate(profile.join_date), now)
-  const retCurrent = calcCurrentSeverance(MONTHLY_SALARY_WON, tenure.totalDays)
-  const retTotalDays = Math.floor(
-    (toDate(profile.retire_date).getTime() - toDate(profile.join_date).getTime()) / 86_400_000
-  )
+  const tenure = calcTenure(joinDate, now)
+  const retCurrent = calcCurrentSeverance(avgMonthlyWage(ret), tenure.totalDays)
+  const retTotalDays = Math.floor((retireDate.getTime() - joinDate.getTime()) / 86_400_000)
 
   // ── 개인연금 — 연금저축펀드 적립 + 분배금 재투자 ────────────────────────
   const { rows: hold } = await pool.query<{ quantity: number }>(`
@@ -345,8 +348,10 @@ export async function getPensionHistory(): Promise<PensionHistory[]> {
   // ── 퇴직연금 — 요약 카드와 완전히 같은 기준 (정년 퇴직금 × 거치) ──────────
   // 원금(회사 사전 계산값)도 거치 개월도 고정이라, 달마다 변하는 값은 분배율뿐이다.
   // 그래서 이 표의 증감은 곧 "분배율이 움직인 만큼"이다.
+  const retireDate = toDate(profile.retire_date)
   const retireNetMan = buildRetirementRows(
-    new Date().getFullYear(), toDate(profile.retire_date).getFullYear()
+    new Date().getFullYear(), retireDate.getFullYear(),
+    retSettingsFromEnv(), toDate(profile.join_date), retireDate,
   ).find(r => r.isLegal)?.netMan ?? 0
   const retHoldMonths = Math.max(
     0,

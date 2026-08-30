@@ -88,7 +88,7 @@ pensions/
 │   ├── auth-db.ts                        인증 DB + 스키마 마이그레이션 (v001~v030, v027·v028 철회)
 │   ├── pension-db.ts                    Supabase DB Pool 싱글턴 (전 화면 공용)
 │   ├── guard.ts                          접근 통제 — requireUser / requireAdmin / guardApi
-│   ├── settings.ts                       환경 변수로 관리하는 개인 설정 (PROFILE_* / PENSION_PER_*)
+│   ├── settings.ts                       환경 변수로 관리하는 개인 설정 (PROFILE_* / PENSION_PER_* / PENSION_RET_*)
 │   ├── profile.ts                        정년일 계산 등 개인 정보 헬퍼 (calcRetireDate / ageOn / ymAtAge)
 │   ├── pension-per-calc.ts               개인연금 월 단위 복리 시뮬레이션 (적립·거치·수령)
 │   ├── pension-ret-calc.ts               퇴직연금 계산 (퇴직소득세·시점별 퇴직금·재투자 평가액)
@@ -323,6 +323,10 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `PENSION_PER_MONTHLY_AMOUNT` | 개인연금 월 적립액 (원) | 기본 `500000` |
 | `PENSION_PER_ACCOUNT_NO` | 개인연금 재원 계좌번호 | 기본 `201-04-931585` |
 | `PENSION_PER_STOCK_CODE` | 개인연금 재원 종목코드 | 기본 `498400` |
+| `PENSION_RET_MONTHLY_WAGE` | 급여명세서 지급액 계 (원/월) | 기본 `7140000` · 기본급+연장근로+식대+자가운전+통신비+간식비 |
+| `PENSION_RET_ANNUAL_BONUS` | 연 상여금 (원) | 기본 `9000000` · 평균임금에 `÷12` 로 산입 |
+| `PENSION_RET_ANNUAL_RAISE` | 연봉 인상 (원/년) | 기본 `2400000` |
+| `PENSION_RET_WAGE_BASE_YM` | 명세서 연월 `YYYY-MM` | 기본 `2026-08` · 인상분 기산점 |
 
 ### 개인 설정을 DB 가 아니라 환경 변수로 두는 이유
 
@@ -410,6 +414,7 @@ Vercel 프로젝트 Settings > Environment Variables 에 아래 변수 등록:
 | `CARD_ENC_KEY` | 카드 민감정보 암호화 키 — 로컬 `config/.env`와 **동일한 값**을 등록해야 기존 데이터 복호화 가능 |
 | `PROFILE_*` | 생년월일·입사일·정년. 누락 시 `lib/settings.ts` 기본값으로 동작하므로 **틀린 값이 조용히 표시된다** |
 | `PENSION_PER_*` | 개인연금 수령 나이·월 적립액·재원 계좌/종목. 위와 같음 |
+| `PENSION_RET_*` | 퇴직금 산정 기준(급여명세서 지급액·연 상여금·인상액·명세서 연월). 위와 같음 |
 
 ---
 

@@ -5,12 +5,37 @@
  * 산식은 docs/pension/ret/ret_task.md 참고.
  */
 
-/** 급여명세서 지급액 (원/월) */
-export const MONTHLY_SALARY_WON = 6_900_000
-/** 연봉 인상 가정 (만원/년) */
-export const ANNUAL_SALARY_INCREASE_MAN = 240
-/** 입사 연도 — 근속연수 계산 기준 */
-export const JOIN_YEAR = 2015
+/**
+ * 퇴직금 산정 기준. 값은 `PENSION_RET_*` 환경 변수에서 오고
+ * (`lib/settings.ts` `retSettingsFromEnv()`), 이 모듈은 순수 함수로 남는다 —
+ * 클라이언트 컴포넌트도 import 하므로 여기서 process.env 를 읽으면 안 된다.
+ */
+export type SalaryBasis = {
+  /** 급여명세서 지급액 계 (원/월) */
+  monthly_wage: number
+  /** 연 상여금 (원) — 명절·연말 + 인센티브 */
+  annual_bonus: number
+  /** 연봉 인상 (원/년) */
+  annual_raise: number
+  /** 그 명세서의 연월 'YYYY-MM' — 인상분 기산점 */
+  wage_base_ym: string
+}
+
+/**
+ * 월 평균임금 = 지급액 계 + 연 상여금 ÷ 12.
+ *
+ * 법정 평균임금은 퇴직 전 3개월 임금총액에 **연 상여금의 3/12** 를 더해 산정하므로,
+ * 월로 환산하면 연 상여금 ÷ 12 가 된다.
+ */
+export function avgMonthlyWage(b: Pick<SalaryBasis, "monthly_wage" | "annual_bonus">): number {
+  return b.monthly_wage + b.annual_bonus / 12
+}
+
+/** 그 해 퇴직한다고 볼 때의 월 평균임금 — 기준 연도 이후 인상분을 얹는다 */
+export function avgMonthlyWageAt(b: SalaryBasis, year: number): number {
+  const baseYear = Number(b.wage_base_ym.slice(0, 4))
+  return avgMonthlyWage(b) + (year - baseYear) * (b.annual_raise / 12)
+}
 
 /** 회사가 사전 계산해 준 값 (2030~2034) */
 export const USER_PROJECTIONS: Record<number, { salaryMan: number; grossMan: number; netMan: number }> = {
@@ -82,20 +107,31 @@ export function calcRetirementTax(grossMan: number, tenureYears: number): number
  * 퇴직 시점별 예상 퇴직금.
  *
  * 2030~2034년은 회사 사전 계산값을 그대로 쓰고 (`taxMan = grossMan − netMan`),
- * 그 이전은 법정 공식(연봉 ÷ 12 × 근속연수)으로 추정한다.
- * 두 구간의 계산 방식이 달라 경계에서 금액이 크게 뛴다.
+ * 그 이전은 급여명세서 기반 평균임금으로 추정한다 — `calcCurrentSeverance` 와 같은
+ * 산식(평균임금 × 재직일수 ÷ 365)이라 "현재 기준" 카드와 표가 이어진다.
+ * 두 구간의 계산 방식이 달라 경계에서 금액이 뛴다.
+ *
+ * @param basis      급여명세서 기준 (PENSION_RET_*)
+ * @param joinDate   입사일 — 재직일수 계산
+ * @param retireDate 정년일 — 각 행은 "그 해의 같은 월·일에 퇴직"으로 본다
  */
-export function buildRetirementRows(startYear: number, retireYear: number): RetirementRow[] {
+export function buildRetirementRows(
+  startYear: number,
+  retireYear: number,
+  basis: SalaryBasis,
+  joinDate: Date,
+  retireDate: Date,
+): RetirementRow[] {
   const rows: RetirementRow[] = []
 
   for (let year = Math.max(startYear, 2026); year <= retireYear; year++) {
-    const tenureYears = year - JOIN_YEAR
     const isLegal = year === retireYear
     const d = USER_PROJECTIONS[year]
 
     if (d) {
       rows.push({
-        year, tenureYears,
+        year,
+        tenureYears: year - joinDate.getFullYear(),
         salaryMan: d.salaryMan,
         grossMan: d.grossMan,
         netMan: d.netMan,
@@ -103,13 +139,15 @@ export function buildRetirementRows(startYear: number, retireYear: number): Reti
         isConfirmed: true, isLegal,
       })
     } else {
-      const salaryMan = USER_PROJECTIONS[2030].salaryMan + (year - 2030) * ANNUAL_SALARY_INCREASE_MAN
-      const grossMan = Math.round(salaryMan / 12 * tenureYears)
-      const taxMan = calcRetirementTax(grossMan, tenureYears)
+      const leaveOn = new Date(year, retireDate.getMonth(), retireDate.getDate())
+      const { totalDays } = calcTenure(joinDate, leaveOn)
+      const monthlyWage = avgMonthlyWageAt(basis, year)
+      const { grossMan, taxMan, netMan } = calcCurrentSeverance(monthlyWage, totalDays)
       rows.push({
-        year, tenureYears, salaryMan, grossMan,
-        netMan: grossMan - taxMan,
-        taxMan,
+        year,
+        tenureYears: Math.max(1, Math.round(totalDays / 365)),
+        salaryMan: Math.round(monthlyWage * 12 / 10_000),
+        grossMan, netMan, taxMan,
         isConfirmed: false, isLegal,
       })
     }
@@ -117,7 +155,7 @@ export function buildRetirementRows(startYear: number, retireYear: number): Reti
   return rows
 }
 
-/** 오늘까지의 근속만 반영한 추정 퇴직금 */
+/** 그 시점까지의 근속만 반영한 추정 퇴직금 */
 export function calcCurrentSeverance(monthlyWon: number, tenureDays: number) {
   const grossMan = Math.round((monthlyWon * (tenureDays / 365)) / 10_000)
   const tenureYears = Math.max(1, Math.round(tenureDays / 365))

@@ -7,14 +7,20 @@ import { getProfile, type ProfileView } from "@/app/actions/profile"
 import { getEtfDividendHistory } from "@/app/sim/actions"
 // 수령 개시 나이는 개인연금과 같은 값을 쓴다 (PENSION_PER_PAYOUT_AGE)
 import { getPerConfig } from "@/app/pension/per/actions"
+import { getRetConfig } from "./actions"
 import {
   buildRetirementRows, calcCurrentSeverance, calcTenure, grownValue, toDate,
-  CC_STOCK_CODE, CC_FALLBACK_ANNUAL_RATE, DB_ACCESS_AGE, MONTHLY_SALARY_WON,
+  avgMonthlyWage, CC_STOCK_CODE, CC_FALLBACK_ANNUAL_RATE, DB_ACCESS_AGE,
+  type SalaryBasis,
 } from "@/lib/pension-ret-calc"
 
 // 프로필(config/.env → lib/settings.ts)을 못 읽었을 때만 쓰는 값
 const FALLBACK_JOIN = "2015-02-23"
 const FALLBACK_RETIRE = "2034-06-30"
+const FALLBACK_SALARY: SalaryBasis = {
+  monthly_wage: 7_140_000, annual_bonus: 9_000_000,
+  annual_raise: 2_400_000, wage_base_ym: "2026-08",
+}
 
 function fmtMan(man: number): string {
   if (man >= 10_000) {
@@ -48,6 +54,11 @@ export default function RetirementPensionPage() {
   const [payoutAge, setPayoutAge] = useState(63)
   useEffect(() => { getPerConfig().then(c => setPayoutAge(c.payout_age)).catch(() => {}) }, [])
 
+  // 퇴직금 산정 기준 (PENSION_RET_* — 급여명세서 지급액 + 연 상여금)
+  const [salary, setSalary] = useState<SalaryBasis>(FALLBACK_SALARY)
+  useEffect(() => { getRetConfig().then(setSalary).catch(() => {}) }, [])
+  const monthlyWage = avgMonthlyWage(salary)
+
   const ccAnnualRate = ccRate?.annual ?? CC_FALLBACK_ANNUAL_RATE
 
   // 입사일·정년은 공통 프로필에서 온다 (정년 규정: 만 60세가 되는 달의 말일 등)
@@ -79,14 +90,14 @@ export default function RetirementPensionPage() {
 
   const tenure = useMemo(() => calcTenure(JOIN_DATE, today), [JOIN_DATE, today])
 
-  // 현재 기준 추정 퇴직금 (급여명세서 지급액 기준: 6,900,000원/월)
+  // 현재 기준 추정 퇴직금 (평균임금 = 명세서 지급액 계 + 연 상여금 ÷ 12)
   // 지금(만 52세) 그만두면 만 55세가 되어야 굴릴 수 있다 — 표와 달리 참고값으로 남겨 둔다
   const currentHoldMonths = Math.max(0, payoutIdx - accessIdx)
   const currentSeverance = useMemo(() => {
-    const base = calcCurrentSeverance(MONTHLY_SALARY_WON, tenure.totalDays)
+    const base = calcCurrentSeverance(monthlyWage, tenure.totalDays)
     const grown = grownValue(base.netMan, ccAnnualRate, currentHoldMonths)
     return { ...base, ccMonthlyMan: Math.round(grown * ccAnnualRate / 12) }
-  }, [tenure.totalDays, ccAnnualRate, currentHoldMonths])
+  }, [monthlyWage, tenure.totalDays, ccAnnualRate, currentHoldMonths])
 
   // 정년까지 남은 기간
   const remaining = useMemo(() => calcTenure(today, retireDate), [today, retireDate])
@@ -100,8 +111,8 @@ export default function RetirementPensionPage() {
 
   // 퇴직 시점별 예상 퇴직금 — 산식은 lib/pension-ret-calc.ts
   const tableRows = useMemo(
-    () => buildRetirementRows(today.getFullYear(), LEGAL_RETIRE_YEAR),
-    [today, LEGAL_RETIRE_YEAR]
+    () => buildRetirementRows(today.getFullYear(), LEGAL_RETIRE_YEAR, salary, JOIN_DATE, retireDate),
+    [today, LEGAL_RETIRE_YEAR, salary, JOIN_DATE, retireDate]
   )
 
   /**
@@ -130,7 +141,7 @@ export default function RetirementPensionPage() {
       }
     }), [tableRows, ccAnnualRate, retireDate, accessIdx, holdMonthsOf])
 
-  const joinStr = "2015.02.23"
+  const joinStr = (profile?.join_date ?? FALLBACK_JOIN).replace(/-/g, ".")
   const retireStr = `${LEGAL_RETIRE_YEAR}년 ${String(retireDate.getMonth() + 1).padStart(2, "0")}월`
   const retireMonth = retireDate.getMonth() + 1
   /** 만 55세가 되는 연·월 표기 */
@@ -182,9 +193,13 @@ export default function RetirementPensionPage() {
                       <H>어디서 온 값인가</H>
                       <ColTable rows={[
                         ["입사일 · 정년", <>공통 프로필 환경 변수(<code>PROFILE_*</code>)</>],
-                        ["평균임금", <>월 <b>690만원</b> 고정 · 매년 <b>240만원</b> 인상 가정</>],
+                        ["평균임금", <>월 <b>{fmtMan(Math.round(monthlyWage / 10_000))}</b> —
+                          {salary.wage_base_ym.replace("-", ".")} 급여명세서 지급액 계 {fmtMan(Math.round(salary.monthly_wage / 10_000))}
+                          {" + "}연 상여금 {fmtMan(Math.round(salary.annual_bonus / 10_000))} ÷ 12
+                          (<code>PENSION_RET_*</code>)</>],
+                        ["연봉 인상", <>매년 <b>{fmtMan(Math.round(salary.annual_raise / 10_000))}</b> 오른다고 가정</>],
                         ["2030~2034", <>사전 계산해 둔 값</>],
-                        ["2026~2029", <>법정 공식(연봉 ÷ 12 × 근속연수) 추정</>],
+                        ["2026~2029", <>평균임금 × 재직일수 ÷ 365 로 추정</>],
                         ["분배율", <>커버드콜 실제 지급 이력 최근 12회 평균</>],
                       ]} />
                     </Box>
@@ -233,8 +248,9 @@ export default function RetirementPensionPage() {
                   <Box tone="amber">
                     <H>⚠️ 이 숫자가 그대로 실현되지 않는 이유</H>
                     <ul className="text-xs text-gray-700 space-y-2 list-disc pl-4 leading-relaxed">
-                      <li><b>평균임금·연봉 인상률이 가정입니다.</b> 실제 산정은 퇴직 직전 3개월 평균임금 기준이라
-                        상여·수당 구성에 따라 달라집니다.</li>
+                      <li><b>평균임금·연봉 인상률이 가정입니다.</b> 실제 산정은 퇴직 직전 3개월 임금총액 기준이라
+                        그때의 연장근로·상여 구성에 따라 달라집니다. 자가운전보조금을 실비변상으로 보아
+                        제외하면 평균임금이 월 20만원 낮아집니다.</li>
                       <li><b>2029~2030년 사이가 크게 뜁니다.</b> 추정 구간과 사전 계산값 구간의
                         계산 방식이 달라서 생기는 현상이라, 그 증가폭은 의미로 읽지 마세요.</li>
                       <li><b>분배율이 유지된다고 봤고 주가 변동은 없습니다.</b> 주가가 떨어지면
@@ -340,7 +356,7 @@ export default function RetirementPensionPage() {
                 { key: "cols", label: "값 설명", body: (
                   <Box>
                     <ColTable rows={[
-                      ["세전 퇴직금", <>월 690만원 × 근속일수({tenure.totalDays}일) ÷ 365. <b>근속 1년당 한 달치 급여</b>라는 법정 산식입니다</>],
+                      ["세전 퇴직금", <>월 평균임금 {fmtMan(Math.round(monthlyWage / 10_000))} × 근속일수({tenure.totalDays}일) ÷ 365. <b>근속 1년당 한 달치 평균임금</b>이라는 법정 산식입니다</>],
                       ["퇴직소득세", <>2023년 개정 기준 근사치. 근속연수공제·환산급여공제를 적용합니다 — 자세한 식은 페이지 도움말의 <b>퇴직소득세</b> 탭에</>],
                       ["실수령액", <>세전 퇴직금 − 퇴직소득세. 아래 커버드콜 시뮬레이션의 <b>투자 원금</b>이 되는 금액입니다</>],
                       [`${payoutAge}세 월 분배금`, <>실수령액을 만 {DB_ACCESS_AGE}세에 커버드콜로 매입하고 {payoutAge}세까지 분배금을 재투자했을 때, {payoutAge}세부터 매달 받는 금액</>],
@@ -407,8 +423,9 @@ export default function RetirementPensionPage() {
                     <Box>
                       <ColTable rows={[
                         ["퇴직 시점", <>그 해에 퇴직한다고 가정한 연도. <b>정년</b> 배지가 붙은 행이 {LEGAL_RETIRE_YEAR}년입니다</>],
-                        ["근속연수", <>입사 연도(2015)부터의 햇수. 퇴직소득세 공제액을 정하는 값입니다</>],
-                        ["평균임금", <>그 해 기준 연봉. 2030년부터 매년 240만원씩 오른다고 봅니다</>],
+                        ["근속연수", <>입사({joinStr})부터의 햇수. 퇴직소득세 공제액을 정하는 값입니다</>],
+                        ["예상 연봉", <>2026~2029년은 급여명세서 기준(지급액 계 × 12 + 상여)이고 매년 {fmtMan(Math.round(salary.annual_raise / 10_000))}씩 오른다고 봅니다.
+                          2030년부터는 회사가 준 값이라 <b>정의가 달라</b> 경계에서 낮아 보일 수 있습니다</>],
                         ["세전 퇴직금", <>퇴직소득세를 떼기 전 금액</>],
                         ["퇴직소득세", <>2023년 개정 기준 근사치 (지방소득세 10% 포함)</>],
                         ["실수령액", <>세전 − 세금. 아래 커버드콜 시뮬레이션의 투자 원금이 됩니다</>],
@@ -423,11 +440,12 @@ export default function RetirementPensionPage() {
                           두 구간의 계산 방식이 다르기 때문입니다.
                         </p>
                         <ColTable rows={[
-                          ["2026~2029", <>법정 퇴직금 공식(연봉 ÷ 12 × 근속연수)으로 <b>추정</b>한 값</>],
+                          ["2026~2029", <>급여명세서 평균임금 × 재직일수 ÷ 365 로 <b>추정</b>한 값 — 위 &ldquo;현재 기준&rdquo; 카드와 같은 산식입니다</>],
                           ["2030~2034", <>사전에 계산해 둔 값. 법정 퇴직금보다 높을 수 있습니다</>],
                         ]} />
                         <p className="text-xs text-gray-500 mt-2">
                           계산 방식이 바뀌는 경계라 그 구간의 증가폭은 의미로 읽지 마세요.
+                          연봉 정의도 달라서 <b>예상 연봉 열은 2030년에 오히려 낮아집니다.</b>
                         </p>
                       </Box>
 
@@ -443,7 +461,9 @@ export default function RetirementPensionPage() {
                 ]}
               />
             </div>
-            <p className="text-xs text-gray-400 mt-0.5">매년 240만원 연봉 인상 가정 · 2026~2029년은 법정 퇴직금 추정 · 2030~2034년은 사전 계산값</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              매년 {fmtMan(Math.round(salary.annual_raise / 10_000))} 연봉 인상 가정 · 2026~2029년은 급여명세서 평균임금 추정 · 2030~2034년은 사전 계산값
+            </p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
