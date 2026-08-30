@@ -8,7 +8,8 @@ import { ageOn, ymAtAge, retireEndYm } from "@/lib/profile"
 import { simulatePer } from "@/lib/pension-per-calc"
 import {
   buildRetirementRows, calcCurrentSeverance, calcTenure, grownValue, toDate,
-  avgMonthlyWage, CC_STOCK_CODE, CC_FALLBACK_ANNUAL_RATE,
+  avgMonthlyWage, calcWithdrawScenario, CC_STOCK_CODE, CC_FALLBACK_ANNUAL_RATE,
+  type WithdrawScenario,
 } from "@/lib/pension-ret-calc"
 
 /** 국민연금 개시 나이 — 1969년 이후 출생자 기준 */
@@ -64,6 +65,8 @@ export type PensionOverview = {
   peakMonthly: number
   /** 커버드콜 연 분배율 (0.1713) — 퇴직·개인연금 공통 전제 */
   ccAnnualRate: number
+  /** 중도인출 참고 시나리오. PENSION_RET_WITHDRAW_DATE 가 비어 있으면 null */
+  withdraw: WithdrawScenario | null
 }
 
 function ymOf(idx: number): string {
@@ -124,6 +127,14 @@ export async function getPensionOverview(): Promise<PensionOverview> {
   const tenure = calcTenure(joinDate, now)
   const retCurrent = calcCurrentSeverance(avgMonthlyWage(ret), tenure.totalDays)
   const retTotalDays = Math.floor((retireDate.getTime() - joinDate.getTime()) / 86_400_000)
+
+  // 중도인출 참고 시나리오 — DB 조회가 없는 순수 계산이라 요약과 같이 내려도 비용이 없다
+  const payoutDate = new Date(Math.floor(payoutIdx / 12), payoutIdx % 12, 1)
+  const withdraw = ret.withdraw_date
+    ? calcWithdrawScenario(
+        ret, joinDate, toDate(ret.withdraw_date), retireDate, payoutDate, ccAnnualRate
+      )
+    : null
 
   // ── 개인연금 — 연금저축펀드 적립 + 분배금 재투자 ────────────────────────
   const { rows: hold } = await pool.query<{ quantity: number }>(`
@@ -206,6 +217,7 @@ export async function getPensionOverview(): Promise<PensionOverview> {
     stages,
     peakMonthly: stages.length > 0 ? stages[stages.length - 1].total : 0,
     ccAnnualRate,
+    withdraw,
   }
 }
 

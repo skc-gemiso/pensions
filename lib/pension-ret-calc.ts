@@ -195,3 +195,104 @@ export function calcTenure(from: Date, to: Date) {
   if (months < 0) { years -= 1; months += 12 }
   return { years, months, days: to.getDate(), totalDays }
 }
+
+// ── 중도인출 참고 시나리오 ────────────────────────────────────────────────────
+
+/** 퇴직금 한 몫 — 인출·수령 시점이 다르면 굴러가는 기간도 다르다 */
+export type SeveranceLeg = {
+  label: string
+  fromYm: string
+  toYm: string
+  /** 세법상 근속연수 (몫마다 따로 잡힌다) */
+  tenureYears: number
+  /** 실제 재직 기간 (년, 소수) */
+  tenureFloat: number
+  monthlyWageMan: number
+  grossMan: number
+  taxMan: number
+  netMan: number
+  /** 커버드콜 매입 시점 'YYYY.MM' */
+  buyYm: string
+  holdMonths: number
+  valueMan: number
+  monthlyMan: number
+}
+
+export type WithdrawScenario = {
+  withdrawYm: string
+  /** 중도인출로 먼저 받는 몫 */
+  early: SeveranceLeg
+  /** 인출 후 계속 재직해 정년에 **새로 발생**하는 몫 — 남은 잔액이 아니다 */
+  final: SeveranceLeg
+  totalMonthlyMan: number
+  totalNetMan: number
+  totalTaxMan: number
+  /** 중도인출 없이 정년에 한 번에 받았을 때 (비교 기준) */
+  baseMonthlyMan: number
+  baseNetMan: number
+  baseTaxMan: number
+}
+
+const ymOfDate = (d: Date) => `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}`
+const monthIdx = (d: Date) => d.getFullYear() * 12 + d.getMonth()
+
+/**
+ * 중도인출 후 계속 재직하는 시나리오.
+ *
+ * 퇴직금을 **두 번** 받는다. 두 몫은 매입 시점이 달라 굴러가는 기간이 다르고,
+ * 세금도 각각 따로 매겨진다(근속연수가 몫마다 다시 잡힌다).
+ *
+ *   early  입사 ~ 인출일          → 인출 즉시 매입 → 수령 개시까지 거치
+ *   final  인출일 ~ 정년          → 정년에 매입    → 수령 개시까지 거치
+ *
+ * `final` 이 인출일부터 기산되는 이유는 **중간정산 시 퇴직금 기산일이 정산 시점으로
+ * 리셋**되기 때문이다. 그래서 퇴직금 총액은 한 번에 받는 것보다 오히려 적어진다 —
+ * 인출분이 그 시점의 (더 낮은) 평균임금으로 정산되기 때문이다.
+ */
+export function calcWithdrawScenario(
+  basis: SalaryBasis,
+  joinDate: Date,
+  withdrawDate: Date,
+  retireDate: Date,
+  payoutDate: Date,
+  ccAnnualRate: number,
+): WithdrawScenario {
+  const leg = (label: string, from: Date, to: Date, buyOn: Date): SeveranceLeg => {
+    const { totalDays } = calcTenure(from, to)
+    const monthlyWage = avgMonthlyWageAt(basis, to)
+    const { grossMan, taxMan, netMan, tenureYears } = calcCurrentSeverance(monthlyWage, totalDays)
+    const holdMonths = Math.max(0, monthIdx(payoutDate) - monthIdx(buyOn))
+    const valueMan = grownValue(netMan, ccAnnualRate, holdMonths)
+    return {
+      label,
+      fromYm: ymOfDate(from), toYm: ymOfDate(to),
+      tenureYears, tenureFloat: totalDays / 365,
+      monthlyWageMan: Math.round(monthlyWage / 10_000),
+      grossMan, taxMan, netMan,
+      buyYm: ymOfDate(buyOn), holdMonths,
+      valueMan: Math.round(valueMan),
+      monthlyMan: Math.round(valueMan * ccAnnualRate / 12),
+    }
+  }
+
+  // 인출한 돈은 바로 커버드콜로 넣는다 (이 앱은 IRP 를 운용하지 않는다)
+  const early = leg("중도인출분", joinDate, withdrawDate, withdrawDate)
+  // 정년 퇴직금은 DB형이라 정년 전에는 손댈 수 없다
+  const final = leg("정년 추가분", withdrawDate, retireDate, retireDate)
+
+  // 비교 기준 — 중도인출 없이 정년에 한 번에 받는 경우
+  const { totalDays } = calcTenure(joinDate, retireDate)
+  const base = calcCurrentSeverance(avgMonthlyWageAt(basis, retireDate), totalDays)
+  const baseHold = Math.max(0, monthIdx(payoutDate) - monthIdx(retireDate))
+
+  return {
+    withdrawYm: ymOfDate(withdrawDate),
+    early, final,
+    totalMonthlyMan: early.monthlyMan + final.monthlyMan,
+    totalNetMan: early.netMan + final.netMan,
+    totalTaxMan: early.taxMan + final.taxMan,
+    baseMonthlyMan: Math.round(grownValue(base.netMan, ccAnnualRate, baseHold) * ccAnnualRate / 12),
+    baseNetMan: base.netMan,
+    baseTaxMan: base.taxMan,
+  }
+}

@@ -280,6 +280,17 @@ export function avgMonthlyWage(b): number            // 지급액 + 상여 ÷ 12
 export function avgMonthlyWageAt(b, on: Date): number // + 그날까지 지나온 인상분
 ```
 
+이 모듈이 내보내는 계산 함수는 다음과 같다.
+
+| 함수 | 쓰는 곳 |
+|------|---------|
+| `calcRetirementTax(grossMan, tenureYears)` | 퇴직소득세 (2023 개정) |
+| `taxTenureYears(tenureDays)` | 세법상 근속연수 — 올림 |
+| `calcCurrentSeverance(monthlyWon, tenureDays)` | 그 시점 기준 퇴직금 `{ grossMan, taxMan, netMan, tenureYears }` |
+| `buildRetirementRows(...)` | 퇴직 시점별 표 (`/pension/ret`) |
+| `grownValue(원금, 연분배율, 개월)` | 재투자 후 평가액 |
+| `calcWithdrawScenario(...)` | 중도인출 참고 시나리오 (`/pension/my` 전용) — 산출은 [my_task.md](../my/my_task.md) 참고 |
+
 타입은 `lib/pension-ret-calc.ts` 가 갖고, `lib/settings.ts` 는 `RetSettings = SalaryBasis` 로
 별칭만 둔다 — 화면과 서버가 같은 모양을 주고받게 하려는 것이다.
 

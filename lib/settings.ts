@@ -77,8 +77,11 @@ export function perSettingsFromEnv(): PerSettings {
   }
 }
 
-/** 퇴직금 산정 기준 — 타입은 계산 모듈이 갖는다 (화면도 같은 모양을 받는다) */
-export type RetSettings = SalaryBasis
+/**
+ * 퇴직금 산정 기준 — 급여 부분의 타입은 계산 모듈이 갖는다 (화면도 같은 모양을 받는다).
+ * `withdraw_date` 는 참고 시나리오용이라 비어 있을 수 있다.
+ */
+export type RetSettings = SalaryBasis & { withdraw_date: string | null }
 
 /**
  * 퇴직금 산정 기준.
@@ -88,6 +91,7 @@ export type RetSettings = SalaryBasis
  * PENSION_RET_ANNUAL_RAISE   연봉 인상 (원/년)
  * PENSION_RET_RAISE_MONTH    인상이 반영되는 달 (1~12)
  * PENSION_RET_WAGE_BASE_YM   명세서 연월 YYYY-MM
+ * PENSION_RET_WITHDRAW_DATE  중도인출 참고 시나리오 기준일 YYYY-MM-DD (비우면 미표시)
  */
 export function retSettingsFromEnv(): RetSettings {
   const ym = str("PENSION_RET_WAGE_BASE_YM", "2026-08")
@@ -98,11 +102,17 @@ export function retSettingsFromEnv(): RetSettings {
   if (raiseMonth < 1 || raiseMonth > 12) {
     throw new Error(`PENSION_RET_RAISE_MONTH 는 1~12 여야 합니다: ${raiseMonth}`)
   }
+  // 선택값이라 date() 를 쓸 수 없다 — 비어 있으면 시나리오를 아예 표시하지 않는다
+  const withdraw = process.env.PENSION_RET_WITHDRAW_DATE?.trim()
+  if (withdraw && !/^\d{4}-\d{2}-\d{2}$/.test(withdraw)) {
+    throw new Error(`PENSION_RET_WITHDRAW_DATE 형식이 올바르지 않습니다 (YYYY-MM-DD): ${withdraw}`)
+  }
   return {
     monthly_wage: int("PENSION_RET_MONTHLY_WAGE", 7_140_000),
     annual_bonus: int("PENSION_RET_ANNUAL_BONUS", 9_000_000),
     annual_raise: int("PENSION_RET_ANNUAL_RAISE", 2_400_000),
     raise_month: raiseMonth,
     wage_base_ym: ym,
+    withdraw_date: withdraw ? withdraw : null,
   }
 }

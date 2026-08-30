@@ -10,6 +10,7 @@ import {
   type PensionOverview, type PensionKind, type PayoutStage,
   type PensionHistory, type HistoryKind,
 } from "./actions"
+import type { WithdrawScenario } from "@/lib/pension-ret-calc"
 
 const TONE: Record<HistoryKind, {
   text: string; dot: string; bar: string; ring: string
@@ -259,6 +260,201 @@ function StageBar({ stage, max }: { stage: PayoutStage; max: number }) {
 }
 
 // ─────────────────────────────────────────────
+/**
+ * 참고 — 중도인출 후 계속 재직하는 시나리오.
+ *
+ * 기존 계산을 대체하지 않는다. "만약" 을 붙여 별도 카드로 둔다.
+ * 퇴직금을 두 번 받는 구조가 요점이라 두 몫을 나란히 보여준다.
+ */
+function WithdrawCard({ w, ov }: { w: WithdrawScenario; ov: PensionOverview }) {
+  const t = TONE.ret
+  const diff = w.totalMonthlyMan * 10_000 - w.baseMonthlyMan * 10_000
+  const diffPct = w.baseMonthlyMan > 0
+    ? (w.totalMonthlyMan / w.baseMonthlyMan - 1) * 100 : 0
+  const netDiff = (w.totalNetMan - w.baseNetMan) * 10_000
+
+  // 3연금 합계 — 퇴직연금만 시나리오 값으로 바꿔 더한다
+  const others = ov.pensions.reduce((s, p) => s + (p.kind === "ret" ? 0 : p.monthly), 0)
+  const baseTotal = others + w.baseMonthlyMan * 10_000
+  const scenarioTotal = others + w.totalMonthlyMan * 10_000
+
+  const legs = [w.early, w.final]
+
+  return (
+    <div className={`${CARD} overflow-hidden`}>
+      <div className="px-6 py-5">
+        <div className="flex items-center gap-2 flex-wrap mb-1">
+          <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-full">
+            참고
+          </span>
+          <h2 className="text-gray-900 font-semibold text-base">
+            {w.withdrawYm} 에 퇴직금을 중도인출하고 정년까지 계속 다닌다면?
+          </h2>
+          <WithdrawHelp w={w} ov={ov} />
+        </div>
+        <p className="text-xs text-gray-400">
+          기존 계산을 대체하지 않는 가정입니다 — 제도상 불가능할 수 있습니다
+        </p>
+
+        {/* 결론 두 줄 */}
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {[
+            { label: `만 ${ov.pensions.find(p => p.kind === "ret")?.startAge}세 월 수령액 (퇴직연금)`,
+              base: w.baseMonthlyMan * 10_000, now: w.totalMonthlyMan * 10_000, strong: true },
+            { label: "3연금 합계", base: baseTotal, now: scenarioTotal, strong: false },
+          ].map(row => (
+            <div key={row.label} className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+              <p className="text-xs text-gray-500 mb-1">{row.label}</p>
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span className="text-gray-400 tabular-nums line-through text-sm">{fmtKRW(row.base)}</span>
+                <span className="text-gray-300">→</span>
+                <span className={`font-bold tabular-nums ${row.strong ? `text-2xl ${t.text}` : "text-xl text-gray-900"}`}>
+                  {fmtKRW(row.now)}
+                </span>
+                <span className={`text-xs font-semibold ${cc(row.now - row.base)}`}>
+                  +{fmtKRW(row.now - row.base)}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* 두 몫 */}
+        <p className="text-sm font-semibold text-gray-800 mt-5 mb-2">
+          퇴직금을 두 번 받습니다
+          <span className={`ml-2 text-xs font-semibold ${cc(diff)}`}>
+            합계 월 {fmtKRW(w.totalMonthlyMan * 10_000)} ({diffPct > 0 ? "+" : ""}{fmt(diffPct, 0)}%)
+          </span>
+        </p>
+        <div className="rounded-lg border border-gray-200 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-3 py-1.5 text-left font-semibold text-gray-600 whitespace-nowrap">구분</th>
+                <th className="px-3 py-1.5 text-left font-semibold text-gray-600 whitespace-nowrap">근속 기간</th>
+                <th className="px-3 py-1.5 text-right font-semibold text-gray-600 whitespace-nowrap">평균임금</th>
+                <th className="px-3 py-1.5 text-right font-semibold text-gray-600 whitespace-nowrap">세전</th>
+                <th className="px-3 py-1.5 text-right font-semibold text-gray-600 whitespace-nowrap">퇴직소득세</th>
+                <th className="px-3 py-1.5 text-right font-semibold text-gray-600 whitespace-nowrap">실수령</th>
+                <th className="px-3 py-1.5 text-left font-semibold text-gray-600 whitespace-nowrap">매입 · 거치</th>
+                <th className="px-3 py-1.5 text-right font-semibold text-gray-600 whitespace-nowrap">월 분배금</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {legs.map(l => (
+                <tr key={l.label} className="hover:bg-gray-50">
+                  <td className="px-3 py-1.5 font-medium text-gray-900 whitespace-nowrap">{l.label}</td>
+                  <td className="px-3 py-1.5 text-gray-500 whitespace-nowrap">
+                    {l.fromYm} ~ {l.toYm}
+                    <span className="text-gray-400 ml-1">({fmt(l.tenureFloat, 2)}년)</span>
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-700">{fmtKRW(l.monthlyWageMan * 10_000)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-700">{fmtKRW(l.grossMan * 10_000)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-red-400">
+                    {fmtKRW(l.taxMan * 10_000)}
+                    <span className="text-gray-300 ml-1">{l.tenureYears}년</span>
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums font-semibold text-gray-900">{fmtKRW(l.netMan * 10_000)}</td>
+                  <td className="px-3 py-1.5 text-gray-500 whitespace-nowrap">{l.buyYm} · {l.holdMonths}개월</td>
+                  <td className={`px-3 py-1.5 text-right tabular-nums font-bold ${t.text}`}>
+                    {fmtKRW(l.monthlyMan * 10_000)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <p className="text-xs text-gray-500 mt-2.5 leading-relaxed">
+          <b className="text-gray-700">퇴직금 총액 자체는 {fmtKRW(Math.abs(netDiff))} 적습니다</b> —
+          인출분이 그 시점의 낮은 평균임금({fmtKRW(w.early.monthlyWageMan * 10_000)})으로 정산되기 때문입니다.
+          그런데도 수령액이 느는 건 거치 기간이 {w.final.holdMonths}개월 → {w.early.holdMonths}개월로 늘어서입니다.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function WithdrawHelp({ w, ov }: { w: WithdrawScenario; ov: PensionOverview }) {
+  const payoutAge = ov.pensions.find(p => p.kind === "ret")?.startAge ?? 63
+  const mult = (m: number) => Math.pow(1 + ov.ccAnnualRate / 12, m).toFixed(2)
+
+  return (
+    <HelpModal
+      title="중도인출 시나리오 안내"
+      lead="기존 계산을 대체하지 않는 참고 가정입니다"
+      tabs={[
+        { key: "how", label: "어떻게 계산했나", body: (
+          <>
+            <Box>
+              <H>퇴직금을 두 번 받는 구조입니다</H>
+              <ColTable rows={[
+                ["중도인출분", <>입사 ~ {w.early.toYm} 근속 {fmt(w.early.tenureFloat, 2)}년.
+                  인출 즉시 커버드콜로 매입해 {payoutAge}세까지 {w.early.holdMonths}개월 굴립니다</>],
+                ["정년 추가분", <>{w.final.fromYm} ~ {w.final.toYm} 근속 {fmt(w.final.tenureFloat, 2)}년.
+                  <b> 계속 다녀서 새로 쌓이는</b> 퇴직금이지, 남은 잔액이 아닙니다</>],
+              ]} />
+            </Box>
+            <Box>
+              <H>정년 추가분이 인출 시점부터 다시 세어지는 이유</H>
+              <p className="text-xs text-gray-700 leading-relaxed">
+                중간정산을 하면 <b>퇴직금 기산일이 정산 시점으로 리셋</b>됩니다.
+                그래서 정년에 받는 몫은 {w.final.fromYm} 이후 근속만 반영합니다.
+                퇴직소득세도 두 몫에 각각 매겨져, 근속연수가 {w.early.tenureYears}년 · {w.final.tenureYears}년으로
+                따로 잡힙니다.
+              </p>
+            </Box>
+          </>
+        ) },
+        { key: "why", label: "왜 더 늘어나나", body: (
+          <>
+            <Box tone="emerald">
+              <H>거치 기간이 전부입니다</H>
+              <ColTable rows={[
+                ["중도인출분", <>{w.early.buyYm} 매입 → <b>{w.early.holdMonths}개월</b> 재투자 → 원금의 <b>{mult(w.early.holdMonths)}배</b></>],
+                ["정년 추가분", <>{w.final.buyYm} 매입 → {w.final.holdMonths}개월 재투자 → 원금의 {mult(w.final.holdMonths)}배</>],
+              ]} />
+              <p className="text-xs text-gray-700 leading-relaxed mt-2">
+                연 {(ov.ccAnnualRate * 100).toFixed(1)}%로 재투자하면 5년 차이가 배수를 두 배 넘게 벌립니다.
+              </p>
+            </Box>
+            <Box tone="amber">
+              <H>대신 퇴직금 총액은 줄어듭니다</H>
+              <p className="text-xs text-gray-700 leading-relaxed">
+                인출분을 {w.early.toYm} 시점의 평균임금 <b>{fmtKRW(w.early.monthlyWageMan * 10_000)}</b>으로 정산하기 때문입니다.
+                정년까지 한 번에 가면 전체 근속에 <b>{fmtKRW(w.final.monthlyWageMan * 10_000)}</b>이 적용됩니다.
+                실수령 합계가 {fmtKRW(w.baseNetMan * 10_000)} → {fmtKRW(w.totalNetMan * 10_000)} 로 줄지만,
+                복리가 그 차이를 덮습니다.
+              </p>
+              <p className="text-xs text-gray-500 mt-2">
+                세금은 두 번으로 쪼개지며 누진이 완화돼 오히려 줄어듭니다 —
+                한 번에 {fmtKRW(w.baseTaxMan * 10_000)} vs 나눠서 {fmtKRW(w.totalTaxMan * 10_000)}.
+              </p>
+            </Box>
+          </>
+        ) },
+        { key: "limit", label: "⚠️ 성립하지 않을 수 있다", body: (
+          <Box tone="amber">
+            <H>⚠️ 제도상 불가능할 수 있습니다</H>
+            <ul className="text-xs text-gray-700 space-y-2 list-disc pl-4 leading-relaxed">
+              <li><b>DB형 퇴직연금은 중도인출 규정 자체가 없습니다.</b> 근로자퇴직급여보장법의
+                중도인출은 DC형·IRP 대상입니다.</li>
+              <li><b>법정 퇴직금의 중간정산도 사유가 정해져 있습니다.</b> 무주택자 주택구입,
+                전세보증금, 6개월 이상 요양, 파산·개인회생, 천재지변 등이며 회사 규정도 따라야 합니다.</li>
+              <li><b>분배율 가정에 {Math.round(w.early.holdMonths / 12)}년을 더 기댑니다.</b>
+                연 {(ov.ccAnnualRate * 100).toFixed(1)}%가 흔들리면 기준 시나리오보다 훨씬 크게 흔들립니다.</li>
+              <li><b>주가 하락이 반영돼 있지 않습니다.</b> 인출한 원금이 {w.early.holdMonths}개월간
+                시장에 노출됩니다.</li>
+              <li>인출액을 <b>전액 재투자</b>한다고 봤습니다. 생활비로 쓰면 그만큼 줄어듭니다.</li>
+            </ul>
+          </Box>
+        ) },
+      ]}
+    />
+  )
+}
+
+// ─────────────────────────────────────────────
 export default function DashboardPage() {
   const [ov, setOv] = useState<PensionOverview | null>(null)
   const [loading, setLoading] = useState(true)
@@ -487,6 +683,9 @@ export default function DashboardPage() {
                 )
               })}
             </div>
+
+            {/* ── 참고 — 중도인출 시나리오 (PENSION_RET_WITHDRAW_DATE 가 있을 때만) ── */}
+            {ov.withdraw && <WithdrawCard w={ov.withdraw} ov={ov} />}
           </>
         )}
       </div>
