@@ -326,6 +326,7 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `PENSION_RET_MONTHLY_WAGE` | 급여명세서 지급액 계 (원/월) | 기본 `7140000` · 기본급+연장근로+식대+자가운전+통신비+간식비 |
 | `PENSION_RET_ANNUAL_BONUS` | 연 상여금 (원) | 기본 `9000000` · 평균임금에 `÷12` 로 산입 |
 | `PENSION_RET_ANNUAL_RAISE` | 연봉 인상 (원/년) | 기본 `2400000` |
+| `PENSION_RET_RAISE_MONTH` | 인상이 반영되는 달 `1`~`12` | 기본 `5` · 범위를 벗어나면 에러 |
 | `PENSION_RET_WAGE_BASE_YM` | 명세서 연월 `YYYY-MM` | 기본 `2026-08` · 인상분 기산점 |
 
 ### 개인 설정을 DB 가 아니라 환경 변수로 두는 이유
@@ -414,7 +415,7 @@ Vercel 프로젝트 Settings > Environment Variables 에 아래 변수 등록:
 | `CARD_ENC_KEY` | 카드 민감정보 암호화 키 — 로컬 `config/.env`와 **동일한 값**을 등록해야 기존 데이터 복호화 가능 |
 | `PROFILE_*` | 생년월일·입사일·정년. 누락 시 `lib/settings.ts` 기본값으로 동작하므로 **틀린 값이 조용히 표시된다** |
 | `PENSION_PER_*` | 개인연금 수령 나이·월 적립액·재원 계좌/종목. 위와 같음 |
-| `PENSION_RET_*` | 퇴직금 산정 기준(급여명세서 지급액·연 상여금·인상액·명세서 연월). 위와 같음 |
+| `PENSION_RET_*` | 퇴직금 산정 기준(급여명세서 지급액·연 상여금·인상액·인상월·명세서 연월). 위와 같음 |
 
 ---
 

@@ -17,6 +17,8 @@ export type SalaryBasis = {
   annual_bonus: number
   /** 연봉 인상 (원/년) */
   annual_raise: number
+  /** 인상이 반영되는 달 (1~12) */
+  raise_month: number
   /** 그 명세서의 연월 'YYYY-MM' — 인상분 기산점 */
   wage_base_ym: string
 }
@@ -31,10 +33,21 @@ export function avgMonthlyWage(b: Pick<SalaryBasis, "monthly_wage" | "annual_bon
   return b.monthly_wage + b.annual_bonus / 12
 }
 
-/** 그 해 퇴직한다고 볼 때의 월 평균임금 — 기준 연도 이후 인상분을 얹는다 */
-export function avgMonthlyWageAt(b: SalaryBasis, year: number): number {
-  const baseYear = Number(b.wage_base_ym.slice(0, 4))
-  return avgMonthlyWage(b) + (year - baseYear) * (b.annual_raise / 12)
+/**
+ * 기준 명세서 이후 인상을 몇 번 지났는지.
+ *
+ * 인상은 매년 `raise_month` 에 한 번 있다. 연도 차이로만 세면 기준 명세서가
+ * 인상월 이전 것일 때 한 번씩 어긋나므로, 인상월 통과 여부를 같이 센다.
+ */
+function raiseCount(b: SalaryBasis, on: Date): number {
+  const [baseYear, baseMonth] = b.wage_base_ym.split("-").map(Number)
+  const passed = (y: number, m: number) => y + (m >= b.raise_month ? 1 : 0)
+  return passed(on.getFullYear(), on.getMonth() + 1) - passed(baseYear, baseMonth)
+}
+
+/** 그 시점에 퇴직한다고 볼 때의 월 평균임금 — 지나온 인상분을 얹는다 */
+export function avgMonthlyWageAt(b: SalaryBasis, on: Date): number {
+  return avgMonthlyWage(b) + raiseCount(b, on) * (b.annual_raise / 12)
 }
 
 /** 회사가 사전 계산해 준 값 (2030~2034) */
@@ -141,7 +154,7 @@ export function buildRetirementRows(
     } else {
       const leaveOn = new Date(year, retireDate.getMonth(), retireDate.getDate())
       const { totalDays } = calcTenure(joinDate, leaveOn)
-      const monthlyWage = avgMonthlyWageAt(basis, year)
+      const monthlyWage = avgMonthlyWageAt(basis, leaveOn)
       const { grossMan, taxMan, netMan } = calcCurrentSeverance(monthlyWage, totalDays)
       rows.push({
         year,

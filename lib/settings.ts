@@ -86,6 +86,7 @@ export type RetSettings = SalaryBasis
  * PENSION_RET_MONTHLY_WAGE   급여명세서 지급액 계 (원/월)
  * PENSION_RET_ANNUAL_BONUS   연 상여금 (원)
  * PENSION_RET_ANNUAL_RAISE   연봉 인상 (원/년)
+ * PENSION_RET_RAISE_MONTH    인상이 반영되는 달 (1~12)
  * PENSION_RET_WAGE_BASE_YM   명세서 연월 YYYY-MM
  */
 export function retSettingsFromEnv(): RetSettings {
@@ -93,10 +94,15 @@ export function retSettingsFromEnv(): RetSettings {
   if (!/^\d{4}-\d{2}$/.test(ym)) {
     throw new Error(`PENSION_RET_WAGE_BASE_YM 형식이 올바르지 않습니다 (YYYY-MM): ${ym}`)
   }
+  const raiseMonth = int("PENSION_RET_RAISE_MONTH", 5)
+  if (raiseMonth < 1 || raiseMonth > 12) {
+    throw new Error(`PENSION_RET_RAISE_MONTH 는 1~12 여야 합니다: ${raiseMonth}`)
+  }
   return {
     monthly_wage: int("PENSION_RET_MONTHLY_WAGE", 7_140_000),
     annual_bonus: int("PENSION_RET_ANNUAL_BONUS", 9_000_000),
     annual_raise: int("PENSION_RET_ANNUAL_RAISE", 2_400_000),
+    raise_month: raiseMonth,
     wage_base_ym: ym,
   }
 }

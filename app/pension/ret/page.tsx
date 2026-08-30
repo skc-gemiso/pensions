@@ -19,7 +19,7 @@ const FALLBACK_JOIN = "2015-02-23"
 const FALLBACK_RETIRE = "2034-06-30"
 const FALLBACK_SALARY: SalaryBasis = {
   monthly_wage: 7_140_000, annual_bonus: 9_000_000,
-  annual_raise: 2_400_000, wage_base_ym: "2026-08",
+  annual_raise: 2_400_000, raise_month: 5, wage_base_ym: "2026-08",
 }
 
 function fmtMan(man: number): string {
@@ -197,7 +197,8 @@ export default function RetirementPensionPage() {
                           {salary.wage_base_ym.replace("-", ".")} 급여명세서 지급액 계 {fmtMan(Math.round(salary.monthly_wage / 10_000))}
                           {" + "}연 상여금 {fmtMan(Math.round(salary.annual_bonus / 10_000))} ÷ 12
                           (<code>PENSION_RET_*</code>)</>],
-                        ["연봉 인상", <>매년 <b>{fmtMan(Math.round(salary.annual_raise / 10_000))}</b> 오른다고 가정</>],
+                        ["연봉 인상", <>매년 <b>{salary.raise_month}월</b>에 <b>{fmtMan(Math.round(salary.annual_raise / 10_000))}</b> 오른다고 가정.
+                          정년월이 {retireMonth}월이라 그 해 인상이 반영된 뒤 퇴직합니다</>],
                         ["2030~2034", <>사전 계산해 둔 값</>],
                         ["2026~2029", <>평균임금 × 재직일수 ÷ 365 로 추정</>],
                         ["분배율", <>커버드콜 실제 지급 이력 최근 12회 평균</>],
@@ -462,7 +463,7 @@ export default function RetirementPensionPage() {
               />
             </div>
             <p className="text-xs text-gray-400 mt-0.5">
-              매년 {fmtMan(Math.round(salary.annual_raise / 10_000))} 연봉 인상 가정 · 2026~2029년은 급여명세서 평균임금 추정 · 2030~2034년은 사전 계산값
+              매년 {salary.raise_month}월 {fmtMan(Math.round(salary.annual_raise / 10_000))} 인상 가정 · 2026~2029년은 급여명세서 평균임금 추정 · 2030~2034년은 사전 계산값
             </p>
           </div>
           <div className="overflow-x-auto">

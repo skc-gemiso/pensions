@@ -71,14 +71,36 @@ const progress = monthDiff(JOIN_DATE, today) / monthDiff(JOIN_DATE, retireDate) 
 > 인정된다는 판례를 따라 **포함**한다. 빼려면 `PENSION_RET_MONTHLY_WAGE` 를 `6940000` 으로
 > 낮추면 된다 — 오늘 기준 실수령이 8,815만 → 8,600만으로 바뀐다.
 
-연도별 평균임금은 인상분을 얹어 구한다 (`avgMonthlyWageAt()`).
+### 인상은 연도 차가 아니라 **인상월 통과 횟수**로 센다
+
+연봉 인상은 매년 `PENSION_RET_RAISE_MONTH`(5월)에 한 번 반영된다.
+`avgMonthlyWageAt(basis, 퇴직일)` 이 기준 명세서 이후 지나온 인상 횟수를 세어 얹는다.
 
 ```
-평균임금(연도) = 평균임금 + (연도 − PENSION_RET_WAGE_BASE_YM 의 연도) × 연 인상액 ÷ 12
+지나온 인상 횟수 = passed(퇴직 연·월) − passed(기준 연·월)
+   passed(y, m) = y + (m >= 인상월 ? 1 : 0)
+
+평균임금(퇴직일) = 평균임금 + 인상 횟수 × 연 인상액 ÷ 12
 ```
 
-기준 연월을 상수로 박지 않고 환경 변수에 둔 이유는, 명세서만 갱신하고 기준 연도를 안 바꾸면
-인상분이 조용히 어긋나기 때문이다.
+**연도 차이(`연도 − 기준연도`)로 세면 안 된다.** 지금 설정에서는 기준 명세서가 8월(5월 인상 후),
+정년월이 6월(5월 이후)이라 우연히 같은 값이 나오지만, 둘 중 하나만 5월 이전이면 한 번씩 어긋난다.
+
+| 상황 | 인상월 통과 기준 | 연도 차만 셀 때 |
+|------|-----------------|----------------|
+| 기준 2026-03(인상 전) → 2026.06 퇴직 | 1회 | 0회 — **누락** |
+| 기준 2026-08 → 2027.03(인상 전) 퇴직 | 0회 | 1회 — **과다** |
+
+기준 연월과 인상월을 상수로 박지 않고 환경 변수에 둔 이유가 이것이다.
+
+현재 설정에서의 실제 값:
+
+| 퇴직 시점 | 인상 | 평균임금 |
+|-----------|------|----------|
+| 2026.06 | 0회 | 7,890,000 |
+| 2027.06 | 1회 | 8,090,000 |
+| 2028.06 | 2회 | 8,290,000 |
+| 2029.06 | 3회 | 8,490,000 |
 
 ---
 
@@ -248,10 +270,11 @@ export type SalaryBasis = {
   monthly_wage: number   // 급여명세서 지급액 계 (원/월)
   annual_bonus: number   // 연 상여금 (원)
   annual_raise: number   // 연봉 인상 (원/년)
+  raise_month: number    // 인상이 반영되는 달 (1~12)
   wage_base_ym: string   // 명세서 연월 'YYYY-MM'
 }
-export function avgMonthlyWage(b): number          // 지급액 + 상여 ÷ 12
-export function avgMonthlyWageAt(b, year): number  // + 인상분
+export function avgMonthlyWage(b): number            // 지급액 + 상여 ÷ 12
+export function avgMonthlyWageAt(b, on: Date): number // + 그날까지 지나온 인상분
 ```
 
 타입은 `lib/pension-ret-calc.ts` 가 갖고, `lib/settings.ts` 는 `RetSettings = SalaryBasis` 로
