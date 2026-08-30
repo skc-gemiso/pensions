@@ -62,7 +62,10 @@ pensions/
 │   ├── invest/
 │   │   ├── page.tsx                      /invest/etf 리다이렉트
 │   │   ├── etf/                          글로벌 ETF — page/holdings/recommend/analysis + actions.ts
-│   │   └── usa/                          미국 경제 지표 — page/indicator/treasury/fx + actions.ts
+│   │   ├── usa/                          미국 경제 지표 — page/indicator/treasury/fx + actions.ts
+│   │   └── jangam2/
+│   │       ├── page.tsx                  장암2구역 투자 현황 (읽기 전용)
+│   │       └── actions.ts               MD 데이터 + 주식 계좌 평가액 조회
 │   ├── life/
 │   │   ├── page.tsx                      /life/cost 리다이렉트
 │   │   ├── cost/
@@ -85,7 +88,7 @@ pensions/
 │   ├── RichEditor.tsx                    쇼핑 본문 리치 에디터 (TipTap)
 │   └── Providers.tsx                    세션 Provider
 ├── lib/
-│   ├── auth-db.ts                        인증 DB + 스키마 마이그레이션 (v001~v030, v027·v028 철회)
+│   ├── auth-db.ts                        인증 DB + 스키마 마이그레이션 (v001~v031, v027·v028 철회)
 │   ├── pension-db.ts                    Supabase DB Pool 싱글턴 (전 화면 공용)
 │   ├── guard.ts                          접근 통제 — requireUser / requireAdmin / guardApi
 │   ├── settings.ts                       환경 변수로 관리하는 개인 설정 (PROFILE_* / PENSION_PER_* / PENSION_RET_*)
@@ -98,6 +101,7 @@ pensions/
 │   ├── supabase-storage.ts               Supabase Storage 업로드·Signed URL·삭제
 │   ├── card-crypto.ts                    카드 민감정보 AES-256-GCM 암/복호화
 │   ├── power-calc.ts                     전기요금 계산 (계절 안분 일할계산·누진·복지할인)
+│   ├── jangam2.ts                        data/jangam2.md 파서 (서버 전용, 의존성 없음)
 │   └── fmt.ts                            공유 숫자 유틸 — fmt / cc / fmtKRW / fmtShares
 ├── auth.ts                               NextAuth v5 설정
 ├── middleware.ts                         라우트 보호 미들웨어
@@ -107,12 +111,33 @@ pensions/
 │   ├── sync-stock-prices.mjs             독립 실행 주가 수집 스크립트 (Node.js)
 │   ├── run-sql.mjs                       SQL 파일 실행
 │   └── check-tables.mjs                  테이블 점검
+├── data/
+│   └── jangam2.md                        장암2구역 투자 현황 데이터 (git 커밋 — 화면이 요청마다 읽음)
 ├── vercel.json                           Vercel Cron 스케줄 + 보안 헤더(CSP)
 └── config/.env                           환경 변수 (git 제외 — next.config.ts 가 로드)
 ```
 
 > 환경 변수 파일은 `config/.env` 다. [next.config.ts](../next.config.ts) 가 `dotenv` 로 읽어
 > `process.env` 에 주입하며 **서버 기동 시 한 번만** 로드한다 — 값을 바꾸면 dev 서버를 재시작해야 한다.
+
+### `data/` — 화면이 읽는 데이터 파일
+
+`config/.env` 와 달리 **git 에 커밋한다**. 테이블을 만들 만큼 자주 바뀌지 않고 이력도 필요 없지만,
+표·목록 형태라 환경 변수로 담기 어려운 데이터를 여기에 마크다운으로 둔다.
+
+- 현재: `data/jangam2.md` (장암2구역 투자 현황) — 파서는 [lib/jangam2.ts](../lib/jangam2.ts)
+- 요청마다 `fs.readFileSync` 로 읽는다 → **MD 수정 후 새로고침이면 반영**된다 (서버 재시작 불필요)
+- ⚠️ `data/` 는 `app/` 밖이라 Next.js 파일 트레이싱이 자동으로 잡지 못한다.
+  새 데이터 파일을 쓰는 라우트를 추가하면 [next.config.ts](../next.config.ts) 의
+  `outputFileTracingIncludes` 에 그 라우트를 반드시 등록한다.
+  빠뜨리면 **로컬은 정상인데 Vercel 배포본에서만** `ENOENT` 로 빈 화면이 된다.
+
+```ts
+// next.config.ts
+outputFileTracingIncludes: {
+  "/invest/jangam2": ["./data/**/*.md"],
+}
+```
 
 ---
 

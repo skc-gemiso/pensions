@@ -785,6 +785,26 @@ async function _applyMigrations(): Promise<void> {
   // → lib/settings.ts. 두 테이블은 수동으로 DROP 했고 마이그레이션도 제거했다.
   // app_migrations 에 남은 v027/v028 기록은 재실행을 막을 뿐이라 그대로 둔다.
 
+  // v031: 투자 > 장암2구역 투자 현황 메뉴 추가 (admin 전용)
+  const { rows: v031 } = await pool.query<{ name: string }>(
+    "SELECT name FROM app_migrations WHERE name = 'v031_add_jangam2_menu'"
+  )
+  if (v031.length === 0) {
+    // 투자 하위: 주식 투자(30) 다음 형제로 둔다.
+    // stock 을 부모로 삼으면 buildNavTree 규칙상 '주식 투자' 가 클릭 불가한 그룹 헤더가 된다.
+    await pool.query(`
+      INSERT INTO app_menus (id, label, href, parent_id, sort_order)
+      VALUES ('jangam2', '장암2구역 투자 현황', '/invest/jangam2', 'invest', 40)
+      ON CONFLICT (id) DO NOTHING
+    `)
+    await pool.query(`
+      INSERT INTO app_role_menus (role, menu_id)
+      VALUES ('admin', 'jangam2')
+      ON CONFLICT DO NOTHING
+    `)
+    await pool.query("INSERT INTO app_migrations (name) VALUES ('v031_add_jangam2_menu')")
+  }
+
   // v030: 주식 투자를 자산 → 투자 로 이동하고, 자산 메뉴를 숨긴다
   const { rows: v030 } = await pool.query<{ name: string }>(
     "SELECT name FROM app_migrations WHERE name = 'v030_move_stock_to_invest'"

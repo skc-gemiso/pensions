@@ -30,7 +30,8 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 │   ├── /invest/usa/indicator            지표별 시계열
 │   ├── /invest/usa/treasury             미국 국채 보유
 │   └── /invest/usa/fx                   원/달러 환율 조회
-└── /assets/stock                        주식 투자 (my_stock / t_stock_amt)
+├── /assets/stock                        주식 투자 (my_stock / t_stock_amt)
+└── /invest/jangam2                      장암2구역 투자 현황 (data/jangam2.md 기반, 읽기 전용)
 /life                            생활 (→ /life/cost 리다이렉트)
 ├── /life/cost                   생활비 관리 (가계부)
 └── /shopping                    쇼핑 (구매 목록 + 참고 자료)
@@ -165,6 +166,31 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 - Vercel 설정: [vercel.json](../vercel.json)
 - DB 마이그레이션: `v015_add_stock_menu`, `v030_move_stock_to_invest` (lib/auth-db.ts)
 - 상세 문서: [assets/stock/stock_project.md](assets/stock/stock_project.md), [assets/stock/stock_task.md](assets/stock/stock_task.md)
+
+---
+
+### 장암2구역 투자 현황 (`/invest/jangam2`) — `투자` 메뉴 하위, admin 전용
+
+재개발 조합원 분담금을 감당할 자금이 준비돼 있는지 확인하는 **읽기 전용** 화면.
+데이터는 DB 테이블이 아니라 git 에 커밋한 [data/jangam2.md](../data/jangam2.md) 한 파일로 관리한다.
+
+| 기능 | 설명 |
+|------|------|
+| 일반 현황 | 주소·정비구역 면적·조합원 수·건축 계획 |
+| 추진 경과 | 정비구역 지정 ~ 시공사 선정 일자별 경과 (최근순, 5개 표시 + 스크롤) |
+| 특화 품목 / 조합원 제공품 | 단지 특화 항목, 가전·옵션 목록 |
+| 종전자산 평가 | 일자별 평가금액·비례율·권리가액 이력 |
+| 조합원 분양 예정가 | 일자별 23·26·35·39·43평 예정가 이력 |
+| 추정 분담금 | 최신 기준 평형별 `분양 예정가 − 권리가액` (파생값) |
+| 이자 비용 | 계약/중도금 이자 · 이주비 대여금 이자 · 기타 이자 — 평형별 금액 (MD 관리) |
+| 자금 준비 현황 | 평형별 `추정 분담금 + 이자 비용(평형) − 주식 계좌 평가액 − 기타 준비 자금` = 필요 자금 |
+
+- 주식 계좌 평가액만 DB 실시간 조회 — `getHoldings(계좌번호)` 재사용 (계좌번호도 MD 로 관리)
+- 등록·수정 UI 없음. 값 변경은 MD 직접 편집 → 새로고침이면 반영 (서버 재시작 불필요)
+- 참고 파일: [app/invest/jangam2/page.tsx](../app/invest/jangam2/page.tsx), [app/invest/jangam2/actions.ts](../app/invest/jangam2/actions.ts), [lib/jangam2.ts](../lib/jangam2.ts)
+- 배포 주의: `data/*.md` 는 `next.config.ts` 의 `outputFileTracingIncludes` 로 lambda 에 포함시킨다
+- DB 마이그레이션: `v031_add_jangam2_menu` (lib/auth-db.ts)
+- 상세 문서: [invest/jangam2/jangam2_project.md](invest/jangam2/jangam2_project.md), [invest/jangam2/jangam2_task.md](invest/jangam2/jangam2_task.md)
 
 ---
 
