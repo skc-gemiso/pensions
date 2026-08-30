@@ -142,10 +142,10 @@ export function buildRetirementRows(
     const leaveOn = new Date(year, retireDate.getMonth(), retireDate.getDate())
     const { totalDays } = calcTenure(joinDate, leaveOn)
     const monthlyWage = avgMonthlyWageAt(basis, leaveOn)
-    const { grossMan, taxMan, netMan } = calcCurrentSeverance(monthlyWage, totalDays)
+    // 근속연수 규칙(올림)이 두 곳에 적히지 않도록 계산 결과를 그대로 받는다
+    const { grossMan, taxMan, netMan, tenureYears } = calcCurrentSeverance(monthlyWage, totalDays)
     rows.push({
-      year,
-      tenureYears: Math.max(1, Math.round(totalDays / 365)),
+      year, tenureYears,
       monthlyWageMan: Math.round(monthlyWage / 10_000),
       grossMan, netMan, taxMan,
       isLegal: year === retireYear,
@@ -154,12 +154,22 @@ export function buildRetirementRows(
   return rows
 }
 
+/**
+ * 퇴직소득세 계산용 근속연수.
+ *
+ * 소득세법 제48조 ① — **1년 미만의 기간은 1년으로 본다**(올림).
+ * 반올림하면 근속연수공제가 작아지고 환산급여 나눗셈도 커져 세금이 이중으로 과다 계상된다.
+ */
+export function taxTenureYears(tenureDays: number): number {
+  return Math.max(1, Math.ceil(tenureDays / 365))
+}
+
 /** 그 시점까지의 근속만 반영한 추정 퇴직금 */
 export function calcCurrentSeverance(monthlyWon: number, tenureDays: number) {
   const grossMan = Math.round((monthlyWon * (tenureDays / 365)) / 10_000)
-  const tenureYears = Math.max(1, Math.round(tenureDays / 365))
+  const tenureYears = taxTenureYears(tenureDays)
   const taxMan = calcRetirementTax(grossMan, tenureYears)
-  return { grossMan, taxMan, netMan: grossMan - taxMan }
+  return { grossMan, taxMan, netMan: grossMan - taxMan, tenureYears }
 }
 
 /**
