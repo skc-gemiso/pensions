@@ -15,7 +15,8 @@ export default function LoginPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (params.get("error")) setUrlError("로그인 중 오류가 발생했습니다.")
+    if (params.get("expired")) setUrlError("30분 동안 사용이 없어 자동 로그아웃되었습니다. 다시 로그인해 주세요.")
+    else if (params.get("error")) setUrlError("로그인 중 오류가 발생했습니다.")
   }, [])
 
   return (

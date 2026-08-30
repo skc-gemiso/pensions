@@ -191,6 +191,22 @@ API 라우트는 미들웨어 matcher(`/((?!api|...))`)에서 아예 제외**돼
 - JWT 에는 `name` / `role` / `loginAt` 만 남아 쿠키가 가벼워졌다
 - 메뉴 로딩 중에는 네비게이션 자리에 스켈레톤을 보여준다 (`navLoading`)
 
+#### ⚠️ `status !== "authenticated"` 로 메뉴를 비우면 안 된다
+
+`useSession().update()` 는 내부적으로 `setLoading(true) → fetch → setLoading(false)` 라
+**호출하는 동안 `status` 가 잠깐 `"loading"` 이 된다.** 활동 감지가 60초마다 `update()` 를
+부르므로, 그 조건으로 메뉴를 비우면 **상단 메뉴가 1분마다 깜빡이며 사라진다.**
+
+```typescript
+if (status === "unauthenticated") { setRawMenus([]); ... }   // 여기서만 비운다
+if (status !== "authenticated") return                        // loading — 그대로 둔다
+if (menusFetchedRef.current) return                           // 한 번만 조회
+```
+
+같은 이유로 `navLoading` 도 `status` 를 보지 않고 `!menusLoaded` 만 본다.
+`getMyMenus()` 가 빈 배열을 주면(세션을 잠깐 못 읽은 경우) **있던 메뉴를 지우지 않고**
+`menusFetchedRef` 를 되돌려 다음 기회에 다시 받는다.
+
 ### 무활동 30분 만료는 서버가 검사한다
 
 화면의 30분 카운트다운은 클라이언트 `setTimeout` 이라 탭을 닫거나 모바일에서
@@ -213,6 +229,13 @@ export function applyIdleExpiry(token, trigger) {
 - 활동이 있으면 `AppLayout` 이 60초 스로틀로 `update()` 를 호출해 `loginAt` 을 갱신한다.
   **이 호출을 빼면 화면을 쓰고 있어도 로그인 30분 뒤에 끊긴다**
 - 쿠키 자체의 `maxAge` 는 30일 그대로다 — 만료 판정은 `loginAt` 이 한다
+
+**만료되면 로그인 화면으로 보낸다.** 모바일에서 30분 넘게 백그라운드에 뒀다가 돌아오면
+`refetchOnWindowFocus` 가 세션을 다시 읽고 서버가 이를 끊는다. 그냥 두면 메뉴만 사라진 채
+비로그인 화면(10분 방문자 카운트다운)에 남아 무슨 일이 일어났는지 알 수 없다.
+`AppLayout` 이 **로그인 상태였다가 끊긴 경우에만** `/login?expired=1` 로 보내고,
+로그인 화면이 "30분 동안 사용이 없어 자동 로그아웃되었습니다" 를 띄운다.
+처음부터 비로그인인 방문자는 그대로 방문자 화면을 본다.
 
 액션별 가드:
 

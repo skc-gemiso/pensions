@@ -95,25 +95,42 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     loginAt?: string
   } | undefined
 
-  // 메뉴는 세션(JWT)이 아니라 DB 에서 매번 읽는다 — 구조를 바꾸면 즉시 반영된다
+  // 메뉴는 세션(JWT)이 아니라 DB 에서 읽는다 — 구조를 바꾸면 즉시 반영된다
+  //
+  // ⚠️ status 가 "authenticated" 가 아니라고 메뉴를 비우면 안 된다.
+  // 아래 handleUserActivity 가 60초마다 부르는 update() 가 내부적으로
+  // setLoading(true) → fetch → setLoading(false) 를 하므로 status 가 잠깐
+  // "loading" 이 된다. 그때 메뉴를 지우면 상단 메뉴가 주기적으로 사라진다.
+  // 정말 로그아웃된 경우("unauthenticated")에만 비운다.
   const [rawMenus, setRawMenus] = useState<MenuRow[]>([])
   const [menusLoaded, setMenusLoaded] = useState(false)
+  const menusFetchedRef = useRef(false)
   useEffect(() => {
-    if (status !== "authenticated") {
+    if (status === "unauthenticated") {
+      menusFetchedRef.current = false
       setRawMenus([])
-      setMenusLoaded(status === "unauthenticated")
+      setMenusLoaded(true)
       return
     }
+    if (status !== "authenticated") return   // loading — 이미 받아 둔 메뉴를 그대로 둔다
+    if (menusFetchedRef.current) return      // 한 번 받았으면 다시 부르지 않는다
+    menusFetchedRef.current = true
+
     let alive = true
     getMyMenus()
-      .then(m => { if (alive) setRawMenus(m) })
-      .catch(() => {})
+      .then(m => {
+        // 빈 배열은 세션을 잠깐 못 읽은 경우일 수 있다 — 있던 메뉴를 지우지 않는다
+        if (alive && m.length > 0) setRawMenus(m)
+        else if (alive) menusFetchedRef.current = false
+      })
+      .catch(() => { if (alive) menusFetchedRef.current = false })
       .finally(() => { if (alive) setMenusLoaded(true) })
     return () => { alive = false }
   }, [status])
 
   const NAV = buildNavTree(rawMenus)
-  const navLoading = status === "loading" || (status === "authenticated" && !menusLoaded)
+  // 첫 로드 때만 스켈레톤을 보여준다 — update() 의 "loading" 깜빡임에는 반응하지 않는다
+  const navLoading = !menusLoaded
 
 const isActive = (href: string) =>
     href === "/" ? path === "/" : path === href || path.startsWith(href + "/")
@@ -130,6 +147,18 @@ const isActive = (href: string) =>
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
   }, [])
+
+  // 서버가 세션을 끊으면(무활동 30분) status 가 "unauthenticated" 로 바뀐다.
+  // 그냥 두면 메뉴만 사라진 채 비로그인 화면에 남아 "로그아웃된 건가?" 싶은 상태가 된다.
+  // 로그인 상태였다가 끊긴 경우에만 로그인 화면으로 보낸다 (일반 방문자는 그대로 둔다).
+  const wasAuthedRef = useRef(false)
+  const expiredRef = useRef(false)
+  useEffect(() => {
+    if (status === "authenticated") { wasAuthedRef.current = true; return }
+    if (status !== "unauthenticated" || !wasAuthedRef.current || expiredRef.current) return
+    expiredRef.current = true
+    window.location.href = "/login?expired=1"
+  }, [status])
 
   const ownerAge = (status === "authenticated" && user?.name === OWNER_NAME)
     ? calcAge(OWNER_BIRTH, new Date())
