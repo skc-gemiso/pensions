@@ -11,6 +11,7 @@ import {
   type PensionHistory, type HistoryKind,
 } from "./actions"
 import type { WithdrawScenario } from "@/lib/pension-ret-calc"
+import type { EarlyPensionScenario } from "@/lib/pension-nat-calc"
 
 const TONE: Record<HistoryKind, {
   text: string; dot: string; bar: string; ring: string
@@ -455,6 +456,204 @@ function WithdrawHelp({ w, ov }: { w: WithdrawScenario; ov: PensionOverview }) {
 }
 
 // ─────────────────────────────────────────────
+/**
+ * 참고 — 국민연금을 앞당겨 받아 커버드콜에 적립하는 시나리오.
+ *
+ * 감액은 평생이지만, 앞당겨 받은 돈이 굴러가면서 감액분을 만회하는지 본다.
+ */
+function EarlyPensionCard({ e, ov }: { e: EarlyPensionScenario; ov: PensionOverview }) {
+  const t = TONE.nat
+  const gain = e.totalMonthly - e.baseMonthly
+
+  // 3연금 합계 — 국민연금만 시나리오 값으로 바꿔 더한다
+  const others = ov.pensions.reduce((s, p) => s + (p.kind === "nat" ? 0 : p.monthly), 0)
+  const baseTotal = others + e.baseMonthly
+  const scenarioTotal = others + e.totalMonthly
+
+  const perAge = ov.pensions.find(p => p.kind === "per")?.startAge ?? 63
+
+  return (
+    <div className={`${CARD} overflow-hidden`}>
+      <div className="px-6 py-5">
+        <div className="flex items-center gap-2 flex-wrap mb-1">
+          <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-full">
+            참고
+          </span>
+          <h2 className="text-gray-900 font-semibold text-base">
+            국민연금을 {e.earlyYears}년 앞당겨 받아 커버드콜에 적립한다면?
+          </h2>
+          <EarlyPensionHelp e={e} ov={ov} />
+        </div>
+        <p className="text-xs text-gray-400">
+          기존 계산을 대체하지 않는 가정입니다 — 감액은 평생 이어집니다
+        </p>
+
+        {/* 결론 두 줄 */}
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {[
+            { label: `만 ${e.investUntilAge}세 이후 월 수령액 (국민연금)`,
+              base: e.baseMonthly, now: e.totalMonthly, strong: true },
+            { label: "3연금 합계", base: baseTotal, now: scenarioTotal, strong: false },
+          ].map(row => (
+            <div key={row.label} className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+              <p className="text-xs text-gray-500 mb-1">{row.label}</p>
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span className="text-gray-400 tabular-nums line-through text-sm">{fmtKRW(row.base)}</span>
+                <span className="text-gray-300">→</span>
+                <span className={`font-bold tabular-nums ${row.strong ? `text-2xl ${t.text}` : "text-xl text-gray-900"}`}>
+                  {fmtKRW(row.now)}
+                </span>
+                <span className={`text-xs font-semibold ${cc(row.now - row.base)}`}>
+                  +{fmtKRW(row.now - row.base)}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* 흐름 */}
+        <p className="text-sm font-semibold text-gray-800 mt-5 mb-2">
+          {e.earlyYears}년 앞당겨 받고 그만큼을 굴립니다
+          <span className={`ml-2 text-xs font-semibold ${cc(gain)}`}>
+            월 {fmtKRW(e.totalMonthly)} (+{Math.round(gain / e.baseMonthly * 100)}%)
+          </span>
+        </p>
+        <div className="rounded-lg border border-gray-200 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-3 py-1.5 text-left font-semibold text-gray-600 whitespace-nowrap">시점</th>
+                <th className="px-3 py-1.5 text-left font-semibold text-gray-600 whitespace-nowrap">무슨 일이</th>
+                <th className="px-3 py-1.5 text-right font-semibold text-gray-600 whitespace-nowrap">국민연금</th>
+                <th className="px-3 py-1.5 text-right font-semibold text-gray-600 whitespace-nowrap">ETF 분배금</th>
+                <th className="px-3 py-1.5 text-right font-semibold text-gray-600 whitespace-nowrap">월 합계</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              <tr className="hover:bg-gray-50">
+                <td className="px-3 py-1.5 font-medium text-gray-900 whitespace-nowrap">
+                  만 {e.startAge}세 ~ {e.investUntilAge}세
+                </td>
+                <td className="px-3 py-1.5 text-gray-500">
+                  {e.startYm.replace("-", ".")} 조기수령 시작 · {e.investMonths}개월 전액 적립
+                </td>
+                <td className="px-3 py-1.5 text-right tabular-nums text-gray-400">
+                  {fmtKRW(e.earlyMonthly)} <span className="text-gray-300">적립</span>
+                </td>
+                <td className="px-3 py-1.5 text-right tabular-nums text-gray-300">-</td>
+                <td className="px-3 py-1.5 text-right tabular-nums text-gray-400">0원</td>
+              </tr>
+              <tr className="hover:bg-gray-50">
+                <td className="px-3 py-1.5 font-medium text-gray-900 whitespace-nowrap">
+                  만 {e.investUntilAge}세 ~
+                </td>
+                <td className="px-3 py-1.5 text-gray-500">
+                  {e.investUntilYm.replace("-", ".")} 부터 연금은 생활비로 · 적립분 {fmtKRW(e.investedValue)} 유지
+                </td>
+                <td className="px-3 py-1.5 text-right tabular-nums text-gray-700">{fmtKRW(e.earlyMonthly)}</td>
+                <td className={`px-3 py-1.5 text-right tabular-nums font-semibold ${t.text}`}>
+                  {fmtKRW(e.investMonthly)}
+                </td>
+                <td className="px-3 py-1.5 text-right tabular-nums font-bold text-gray-900">
+                  {fmtKRW(e.totalMonthly)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p className="text-xs text-gray-500 mt-2.5 leading-relaxed">
+          <b className="text-gray-700">
+            만 {e.startAge}~{perAge}세는 세 연금 모두 수입이 없습니다
+          </b> — 정년 이후 개인·퇴직연금이 시작되기 전이고, 국민연금마저 적립에 들어가기 때문입니다.
+          그 기간의 생활비가 따로 있어야 성립합니다.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function EarlyPensionHelp({ e, ov }: { e: EarlyPensionScenario; ov: PensionOverview }) {
+  const perAge = ov.pensions.find(p => p.kind === "per")?.startAge ?? 63
+
+  return (
+    <HelpModal
+      title="국민연금 조기수령 시나리오 안내"
+      lead="기존 계산을 대체하지 않는 참고 가정입니다"
+      tabs={[
+        { key: "how", label: "어떻게 계산했나", body: (
+          <>
+            <Box>
+              <H>조기노령연금은 1년당 6%씩 깎입니다</H>
+              <ColTable rows={[
+                ["감액", <>{e.earlyYears}년 × 6% = <b>{e.discountPct}%</b>.
+                  {fmtKRW(e.baseMonthly)} → <b>{fmtKRW(e.earlyMonthly)}</b></>],
+                ["기간", <>만 {e.startAge}세({e.startYm.replace("-", ".")})부터 <b>평생</b> 이 금액입니다.
+                  나중에 원래대로 돌아오지 않습니다</>],
+                ["적립", <>만 {e.investUntilAge}세까지 {e.investMonths}개월간 전액 매수 —
+                  총 {fmtKRW(e.contributed)} 납입</>],
+                ["평가액", <>분배금 재투자로 <b>{fmtKRW(e.investedValue)}</b>
+                  ({(e.investedValue / Math.max(1, e.contributed)).toFixed(2)}배)</>],
+              ]} />
+            </Box>
+            <Box>
+              <H>원금은 헐지 않습니다</H>
+              <p className="text-xs text-gray-700 leading-relaxed">
+                만 {e.investUntilAge}세부터는 국민연금을 생활비로 쓰고, ETF 는 수량을 그대로 둔 채
+                <b> 분배금만</b> 받습니다. 그래서 월 {fmtKRW(e.investMonthly)}이 줄지 않습니다.
+              </p>
+            </Box>
+          </>
+        ) },
+        { key: "why", label: "손익 계산", body: (
+          <>
+            <Box tone="emerald">
+              <H>감액분보다 분배금이 큽니다</H>
+              <ColTable rows={[
+                ["잃는 것", <>매월 <b>{fmtKRW(e.baseMonthly - e.earlyMonthly)}</b> 감액 (평생)</>],
+                ["얻는 것", <>매월 <b>{fmtKRW(e.investMonthly)}</b> 분배금 +
+                  {e.earlyYears}년 일찍 받는 {fmtKRW(e.contributed)}</>],
+                ["순증", <>월 <b>{fmtKRW(e.totalMonthly - e.baseMonthly)}</b>
+                  (+{Math.round((e.totalMonthly / e.baseMonthly - 1) * 100)}%)</>],
+              ]} />
+              <p className="text-xs text-gray-700 leading-relaxed mt-2">
+                연 {(ov.ccAnnualRate * 100).toFixed(1)}%로 {e.investMonths}개월 적립하면
+                납입액의 {(e.investedValue / Math.max(1, e.contributed)).toFixed(2)}배가 됩니다.
+                감액률 {e.discountPct}%보다 분배 수익이 커서 뒤집힙니다.
+              </p>
+            </Box>
+            <Box tone="amber">
+              <H>물가 연동을 잃는 게 진짜 비용입니다</H>
+              <p className="text-xs text-gray-700 leading-relaxed">
+                국민연금은 물가에 연동돼 매년 오르지만, <b>깎인 {e.discountPct}%는 그 인상분에도 그대로 적용</b>됩니다.
+                시간이 갈수록 감액의 절대 금액이 커집니다. 반면 ETF 분배금은 물가 연동이 없습니다.
+                이 표는 <b>물가를 반영하지 않은</b> 비교라, 오래 살수록 조기수령이 불리해집니다.
+              </p>
+            </Box>
+          </>
+        ) },
+        { key: "limit", label: "⚠️ 한계", body: (
+          <Box tone="amber">
+            <H>⚠️ 이 숫자를 그대로 믿으면 안 되는 이유</H>
+            <ul className="text-xs text-gray-700 space-y-2 list-disc pl-4 leading-relaxed">
+              <li><b>만 {e.startAge}~{perAge}세는 수입이 0입니다.</b> 정년 이후 개인·퇴직연금 개시 전이고
+                국민연금마저 적립에 들어갑니다. 그 기간 생활비가 따로 있어야 합니다.</li>
+              <li><b>조기노령연금은 소득이 있으면 못 받습니다.</b> 일정 수준 이상의 사업·근로소득이
+                있으면 수급이 정지됩니다.</li>
+              <li><b>감액은 되돌릴 수 없습니다.</b> 한 번 조기수령을 선택하면 평생 {e.discountPct}% 깎인
+                금액을 받습니다.</li>
+              <li><b>분배율 {(ov.ccAnnualRate * 100).toFixed(1)}%가 유지된다는 가정</b>입니다.
+                주가가 떨어지면 평가액도 분배금도 함께 줄어듭니다.</li>
+              <li><b>물가·건강보험료·세금</b>은 반영돼 있지 않습니다.</li>
+            </ul>
+          </Box>
+        ) },
+      ]}
+    />
+  )
+}
+
+// ─────────────────────────────────────────────
 export default function DashboardPage() {
   const [ov, setOv] = useState<PensionOverview | null>(null)
   const [loading, setLoading] = useState(true)
@@ -684,8 +883,9 @@ export default function DashboardPage() {
               })}
             </div>
 
-            {/* ── 참고 — 중도인출 시나리오 (PENSION_RET_WITHDRAW_DATE 가 있을 때만) ── */}
+            {/* ── 참고 시나리오 — 각각 환경 변수가 있을 때만 렌더링한다 ── */}
             {ov.withdraw && <WithdrawCard w={ov.withdraw} ov={ov} />}
+            {ov.early && <EarlyPensionCard e={ov.early} ov={ov} />}
           </>
         )}
       </div>

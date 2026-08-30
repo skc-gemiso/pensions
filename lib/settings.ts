@@ -116,3 +116,33 @@ export function retSettingsFromEnv(): RetSettings {
     withdraw_date: withdraw ? withdraw : null,
   }
 }
+
+export type NatSettings = {
+  /** 조기수령 연수 1~5. null 이면 시나리오를 표시하지 않는다 */
+  early_years: number | null
+  /** 조기수령분을 ETF 에 적립하다가 생활비로 돌리는 나이 */
+  invest_until_age: number
+}
+
+/**
+ * 국민연금 조기수령 참고 시나리오.
+ *
+ * PENSION_NAT_EARLY_YEARS        앞당기는 연수 1~5 (비우면 미표시)
+ * PENSION_NAT_INVEST_UNTIL_AGE   ETF 적립 종료 나이
+ */
+export function natSettingsFromEnv(): NatSettings {
+  // int() 는 0 을 무효로 보고 기본값으로 되돌리므로 여기서는 직접 읽는다
+  const raw = process.env.PENSION_NAT_EARLY_YEARS?.trim()
+  let earlyYears: number | null = null
+  if (raw) {
+    const v = Number(raw)
+    if (!Number.isInteger(v) || v < 1 || v > 5) {
+      throw new Error(`PENSION_NAT_EARLY_YEARS 는 1~5 정수여야 합니다: ${raw}`)
+    }
+    earlyYears = v
+  }
+  return {
+    early_years: earlyYears,
+    invest_until_age: int("PENSION_NAT_INVEST_UNTIL_AGE", 65),
+  }
+}

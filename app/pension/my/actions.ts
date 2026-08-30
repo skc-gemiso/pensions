@@ -3,7 +3,8 @@
 import { getPensionPool } from "@/lib/pension-db"
 import { requireAdmin } from "@/lib/guard"
 import { getProfile } from "@/app/actions/profile"
-import { perSettingsFromEnv, retSettingsFromEnv } from "@/lib/settings"
+import { perSettingsFromEnv, retSettingsFromEnv, natSettingsFromEnv } from "@/lib/settings"
+import { calcEarlyPension, type EarlyPensionScenario } from "@/lib/pension-nat-calc"
 import { ageOn, ymAtAge, retireEndYm } from "@/lib/profile"
 import { simulatePer } from "@/lib/pension-per-calc"
 import {
@@ -67,6 +68,8 @@ export type PensionOverview = {
   ccAnnualRate: number
   /** 중도인출 참고 시나리오. PENSION_RET_WITHDRAW_DATE 가 비어 있으면 null */
   withdraw: WithdrawScenario | null
+  /** 국민연금 조기수령 참고 시나리오. PENSION_NAT_EARLY_YEARS 가 비어 있으면 null */
+  early: EarlyPensionScenario | null
 }
 
 function ymOf(idx: number): string {
@@ -107,6 +110,20 @@ export async function getPensionOverview(): Promise<PensionOverview> {
   const natPremium = Number(np[0]?.total_premium ?? 0)
   const natStartYm = ymAtAge(profile.birth_date, NAT_PAYOUT_AGE)
   const natPaidMonths = Math.max(0, Math.min(NAT_TOTAL_MONTHS, idxOf(todayYm) - idxOf(NAT_START_YM)))
+
+  // 조기수령 참고 시나리오 — 앞당겨 받은 만큼을 커버드콜에 적립한다
+  const natCfg = natSettingsFromEnv()
+  const early = natCfg.early_years && natMonthly > 0 && monthlyRate > 0
+    ? calcEarlyPension({
+        baseMonthly: natMonthly,
+        normalAge: NAT_PAYOUT_AGE,
+        earlyYears: natCfg.early_years,
+        investUntilAge: natCfg.invest_until_age,
+        startYm: ymAtAge(profile.birth_date, NAT_PAYOUT_AGE - natCfg.early_years),
+        investUntilYm: ymAtAge(profile.birth_date, natCfg.invest_until_age),
+        monthlyRate,
+      })
+    : null
 
   // ── 퇴직연금 — 정년 퇴직금을 커버드콜로 굴려 수령 개시 나이부터 받는다 ──
   const ret = retSettingsFromEnv()
@@ -218,6 +235,7 @@ export async function getPensionOverview(): Promise<PensionOverview> {
     peakMonthly: stages.length > 0 ? stages[stages.length - 1].total : 0,
     ccAnnualRate,
     withdraw,
+    early,
   }
 }
 

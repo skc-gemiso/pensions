@@ -91,7 +91,8 @@ pensions/
 │   ├── settings.ts                       환경 변수로 관리하는 개인 설정 (PROFILE_* / PENSION_PER_* / PENSION_RET_*)
 │   ├── profile.ts                        정년일 계산 등 개인 정보 헬퍼 (calcRetireDate / ageOn / ymAtAge)
 │   ├── pension-per-calc.ts               개인연금 월 단위 복리 시뮬레이션 (적립·거치·수령)
-│   ├── pension-ret-calc.ts               퇴직연금 계산 (퇴직소득세·시점별 퇴직금·재투자 평가액)
+│   ├── pension-ret-calc.ts               퇴직연금 계산 (퇴직소득세·시점별 퇴직금·재투자 평가액·중도인출 시나리오)
+│   ├── pension-nat-calc.ts               국민연금 조기수령 시나리오 (감액·적립식 재투자)
 │   ├── etf-collector.ts                  ETF Python 수집기 기동·상태 관리
 │   ├── usa-collector.ts                  미국 지표·환율 수집기 기동·상태 관리
 │   ├── supabase-storage.ts               Supabase Storage 업로드·Signed URL·삭제
@@ -329,6 +330,8 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `PENSION_RET_RAISE_MONTH` | 인상이 반영되는 달 `1`~`12` | 기본 `5` · 범위를 벗어나면 에러 |
 | `PENSION_RET_WAGE_BASE_YM` | 명세서 연월 `YYYY-MM` | 기본 `2026-08` · 인상분 기산점 |
 | `PENSION_RET_WITHDRAW_DATE` | 중도인출 참고 시나리오 기준일 `YYYY-MM-DD` | **비우면 `/pension/my` 참고 카드가 사라진다** · 기본값 없음 |
+| `PENSION_NAT_EARLY_YEARS` | 국민연금 조기수령 연수 `1`~`5` | **비우면 `/pension/my` 참고 카드가 사라진다** · 1년당 6% 평생 감액 |
+| `PENSION_NAT_INVEST_UNTIL_AGE` | 조기수령분 ETF 적립 종료 나이 | 기본 `65` · 이 나이부터 연금을 생활비로 |
 
 ### 개인 설정을 DB 가 아니라 환경 변수로 두는 이유
 
@@ -417,6 +420,7 @@ Vercel 프로젝트 Settings > Environment Variables 에 아래 변수 등록:
 | `PROFILE_*` | 생년월일·입사일·정년. 누락 시 `lib/settings.ts` 기본값으로 동작하므로 **틀린 값이 조용히 표시된다** |
 | `PENSION_PER_*` | 개인연금 수령 나이·월 적립액·재원 계좌/종목. 위와 같음 |
 | `PENSION_RET_*` | 퇴직금 산정 기준(급여명세서 지급액·연 상여금·인상액·인상월·명세서 연월) + 중도인출 시나리오 기준일. 위와 같음 |
+| `PENSION_NAT_*` | 국민연금 조기수령 참고 시나리오. 누락되면 카드가 표시되지 않는다 |
 
 ---
 
