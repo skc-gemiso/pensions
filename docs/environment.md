@@ -197,11 +197,19 @@ API 라우트는 미들웨어 matcher(`/((?!api|...))`)에서 아예 제외**돼
 **호출하는 동안 `status` 가 잠깐 `"loading"` 이 된다.** 활동 감지가 60초마다 `update()` 를
 부르므로, 그 조건으로 메뉴를 비우면 **상단 메뉴가 1분마다 깜빡이며 사라진다.**
 
+**메뉴 관련 파생값은 전부 `unauthenticated` 만 기준으로 삼는다.** 조건 하나라도
+`=== "authenticated"` 로 남아 있으면 그 값이 "loading" 구간에 뒤집혀 깜빡인다.
+
 ```typescript
-if (status === "unauthenticated") { setRawMenus([]); ... }   // 여기서만 비운다
-if (status !== "authenticated") return                        // loading — 그대로 둔다
-if (menusFetchedRef.current) return                           // 한 번만 조회
+const loggedOut  = status === "unauthenticated"
+const NAV        = loggedOut ? [] : buildNavTree(rawMenus)   // loading 때도 그대로 그린다
+const navLoading = !loggedOut && rawMenus.length === 0 && menuAttempt < MENU_MAX_TRY
+const navFailed  = !loggedOut && rawMenus.length === 0 && menuAttempt >= MENU_MAX_TRY
 ```
+
+증상은 **한 번 깜빡임**으로 나타난다 — 다른 탭을 쓰다 돌아오거나, 한참 만에 페이지에
+마우스를 올릴 때다. 둘 다 60초 스로틀이 풀린 상태에서 활동 감지가 `update()` 를 부르는
+같은 경로다. `rawMenus` state 자체는 로그아웃해도 지우지 않으므로 재로그인하면 바로 뜬다.
 
 #### 빈 메뉴는 재시도하고, 그래도 비면 화면에 드러낸다
 

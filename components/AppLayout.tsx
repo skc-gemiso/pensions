@@ -131,13 +131,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return () => { alive = false; clearTimeout(t) }
   }, [status, rawMenus.length, menuAttempt])
 
-  // 로그아웃 상태면 받아 둔 메뉴를 쓰지 않는다 — state 를 지우지 않으므로 재로그인 시 바로 뜬다
-  const NAV = status === "authenticated" ? buildNavTree(rawMenus) : []
-  // 로그인했는데 메뉴가 비어 있고 아직 재시도가 남았으면 스켈레톤 — 빈 메뉴바를 보여주지 않는다.
-  // update() 로 status 가 잠깐 "loading" 이 되는 것에는 반응하지 않는다 (메뉴가 이미 있으므로)
-  const navLoading = status === "authenticated" && rawMenus.length === 0 && menuAttempt < MENU_MAX_TRY
-  /** 로그인했는데 재시도를 다 쓰고도 메뉴가 비었다 — 원인을 화면에 드러낸다 */
-  const navFailed = status === "authenticated" && rawMenus.length === 0 && menuAttempt >= MENU_MAX_TRY
+  // 아래 세 파생값 모두 **"unauthenticated" 만** 기준으로 삼는다.
+  // `=== "authenticated"` 로 쓰면 update() 가 status 를 잠깐 "loading" 으로 만드는 동안
+  // 메뉴가 통째로 사라져 한 번 깜빡인다 (탭 전환 후 복귀·오랜만에 마우스 올릴 때).
+  // rawMenus state 는 지우지 않으므로 재로그인하면 바로 다시 뜬다.
+  const loggedOut = status === "unauthenticated"
+  const NAV = loggedOut ? [] : buildNavTree(rawMenus)
+  /** 메뉴가 아직 없고 재시도가 남았으면 스켈레톤 — 빈 메뉴바를 내보내지 않는다 */
+  const navLoading = !loggedOut && rawMenus.length === 0 && menuAttempt < MENU_MAX_TRY
+  /** 재시도를 다 쓰고도 메뉴가 비었다 — 원인을 화면에 드러낸다 */
+  const navFailed = !loggedOut && rawMenus.length === 0 && menuAttempt >= MENU_MAX_TRY
 
 const isActive = (href: string) =>
     href === "/" ? path === "/" : path === href || path.startsWith(href + "/")
