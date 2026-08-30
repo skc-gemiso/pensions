@@ -10,7 +10,7 @@ import { getPerConfig } from "@/app/pension/per/actions"
 import { getRetConfig } from "./actions"
 import {
   buildRetirementRows, calcCurrentSeverance, calcTenure, grownValue, toDate,
-  avgMonthlyWage, avgMonthlyWageAt, CC_STOCK_CODE, CC_FALLBACK_ANNUAL_RATE, DB_ACCESS_AGE,
+  avgMonthlyWage, CC_STOCK_CODE, CC_FALLBACK_ANNUAL_RATE, DB_ACCESS_AGE,
   type SalaryBasis,
 } from "@/lib/pension-ret-calc"
 
@@ -156,8 +156,9 @@ export default function RetirementPensionPage() {
     const r = tableRows.find(x => x.tenureYears === tenureYears)
     return r && r.grossMan > 0 ? (r.taxMan / r.grossMan) * 100 : null
   }
+  const retireTenure = tableRows.find(r => r.isLegal)?.tenureYears ?? 0
   const rate15 = taxRateAt(15)
-  const rateRetire = taxRateAt(LEGAL_RETIRE_YEAR - 2015)
+  const rateRetire = taxRateAt(retireTenure)
 
   return (
     <AppLayout>
@@ -199,8 +200,7 @@ export default function RetirementPensionPage() {
                           (<code>PENSION_RET_*</code>)</>],
                         ["연봉 인상", <>매년 <b>{salary.raise_month}월</b>에 <b>{fmtMan(Math.round(salary.annual_raise / 10_000))}</b> 오른다고 가정.
                           정년월이 {retireMonth}월이라 그 해 인상이 반영된 뒤 퇴직합니다</>],
-                        ["2030~2034", <>사전 계산해 둔 값</>],
-                        ["2026~2029", <>평균임금 × 재직일수 ÷ 365 로 추정</>],
+                        ["퇴직금", <>평균임금 × 재직일수 ÷ 365 — <b>{LEGAL_RETIRE_YEAR}년까지 전 구간 같은 산식</b>입니다</>],
                         ["분배율", <>커버드콜 실제 지급 이력 최근 12회 평균</>],
                       ]} />
                     </Box>
@@ -210,7 +210,7 @@ export default function RetirementPensionPage() {
                       <p className="text-xs text-gray-700 leading-relaxed">
                         <b>퇴직소득세 실효세율이 이미 낮기 때문입니다.</b> 근속연수공제·환산급여공제가 커서
                         {rate15 != null && <> 근속 15년 <b>{rate15.toFixed(1)}%</b>,</>}
-                        {rateRetire != null && <> 정년({LEGAL_RETIRE_YEAR - 2015}년) <b>{rateRetire.toFixed(1)}%</b></>}
+                        {rateRetire != null && <> 정년({retireTenure}년) <b>{rateRetire.toFixed(1)}%</b></>}
                         {" "}수준입니다. IRP 로 이전하면 이 세금이 이연·감면되지만,
                         운용 제약과 인출 절차가 따라붙습니다. 아끼는 세금보다 번거로움이 커서
                         <b> 일시금으로 받아 바로 운용하는 기준</b>으로 잡았습니다. ISA 도 같은 이유로 다루지 않습니다.
@@ -236,7 +236,7 @@ export default function RetirementPensionPage() {
                         근속이 길면 퇴직금도 함께 커져 환산급여가 높은 세율 구간으로 올라갑니다.
                         그래서 이 표에서는 실효세율이
                         {rate15 != null && rateRetire != null && (
-                          <> 근속 15년 <b>{rate15.toFixed(1)}%</b> → 정년({LEGAL_RETIRE_YEAR - 2015}년) <b>{rateRetire.toFixed(1)}%</b> 로</>
+                          <> 근속 15년 <b>{rate15.toFixed(1)}%</b> → 정년({retireTenure}년) <b>{rateRetire.toFixed(1)}%</b> 로</>
                         )} <b>오히려 오릅니다.</b>
                       </p>
                       <p className="text-xs text-gray-500 mt-2">
@@ -252,8 +252,8 @@ export default function RetirementPensionPage() {
                       <li><b>평균임금·연봉 인상률이 가정입니다.</b> 실제 산정은 퇴직 직전 3개월 임금총액 기준이라
                         그때의 연장근로·상여 구성에 따라 달라집니다. 자가운전보조금을 실비변상으로 보아
                         제외하면 평균임금이 월 20만원 낮아집니다.</li>
-                      <li><b>2029~2030년 사이가 크게 뜁니다.</b> 추정 구간과 사전 계산값 구간의
-                        계산 방식이 달라서 생기는 현상이라, 그 증가폭은 의미로 읽지 마세요.</li>
+                      <li><b>전부 이 화면이 계산한 값입니다.</b> 회사가 통보한 퇴직금 자료는 없습니다.
+                        DB형이라 실제 금액은 퇴직 시점 회사 규정과 임금에 따라 정해집니다.</li>
                       <li><b>분배율이 유지된다고 봤고 주가 변동은 없습니다.</b> 주가가 떨어지면
                         평가액도 분배금도 함께 줄어듭니다.</li>
                       <li><b>물가·중도인출·회사 정책 변경</b>은 반영돼 있지 않습니다.</li>
@@ -337,7 +337,7 @@ export default function RetirementPensionPage() {
             />
           </div>
           <div className="flex justify-between text-[10px] text-gray-300 mt-1">
-            <span>2015</span>
+            <span>{JOIN_DATE.getFullYear()}</span>
             <span className="text-blue-400 font-medium">{today.getFullYear()}</span>
             <span>{LEGAL_RETIRE_YEAR}</span>
           </div>
@@ -435,31 +435,16 @@ export default function RetirementPensionPage() {
                   ) },
                   { key: "read", label: "읽는 법", body: (
                     <>
-                      <Box tone="amber">
-                        <H>⚠️ 2029 → 2030년 사이가 크게 뜁니다</H>
-                        <p className="text-xs text-gray-700 leading-relaxed">
-                          두 구간의 계산 방식이 다르기 때문입니다.
-                        </p>
-                        <ColTable rows={[
-                          ["2026~2029", <>급여명세서 평균임금 × 재직일수 ÷ 365 로 <b>추정</b>한 값 — 위 &ldquo;현재 기준&rdquo; 카드와 같은 산식입니다</>],
-                          ["2030~2034", <>사전에 계산해 둔 값. 법정 퇴직금보다 높을 수 있습니다</>],
-                        ]} />
-                        <p className="text-xs text-gray-500 mt-2">
-                          계산 방식이 바뀌는 경계라 그 구간의 증가폭은 의미로 읽지 마세요.
-                        </p>
-                      </Box>
-
                       <Box>
-                        <H>2030년부터 월 평균임금이 비어 있는 이유</H>
+                        <H>전 구간이 하나의 산식입니다</H>
                         <p className="text-xs text-gray-700 leading-relaxed">
-                          회사가 준 것은 <b>퇴직금 결과뿐</b>입니다. 함께 받은 연봉 값을 그대로 쓰면
-                          2029년(연 {fmtMan(Math.round(avgMonthlyWageAt(salary, new Date(2029, retireMonth - 1, 1)) * 12 / 10_000))})보다
-                          2030년(연 9,992만원)이 <b>더 작아지는</b> 모순이 생깁니다 — 연봉의 정의가 다르기 때문입니다.
+                          {LEGAL_RETIRE_YEAR}년까지 모든 행이 <b>평균임금 × 재직일수 ÷ 365</b> 입니다.
+                          위 &ldquo;현재 기준&rdquo; 카드와도 같은 산식이라, 카드 값이 올해 행과 내년 행 사이에 놓입니다.
+                          그래서 행 사이 증가폭을 그대로 비교해도 됩니다.
                         </p>
                         <p className="text-xs text-gray-700 leading-relaxed mt-2">
-                          회사 값에서 평균임금을 역산해도 <b>964만 → 909만원으로 오히려 줄어듭니다.</b>
-                          퇴직금이 매년 정확히 700만원씩 느는 걸 보면, 평균임금 × 근속연수가 아니라
-                          회사 내부 규칙으로 계산된 값입니다. 맞출 수 없는 값을 억지로 채우는 대신 비워 두었습니다.
+                          한때 2030~2034년만 별도로 넣어 둔 값을 썼는데, 계산 방식이 달라
+                          그 경계에서 금액이 크게 뛰었습니다. 출처를 확인할 수 없어 걷어냈습니다.
                         </p>
                       </Box>
 
@@ -476,7 +461,7 @@ export default function RetirementPensionPage() {
               />
             </div>
             <p className="text-xs text-gray-400 mt-0.5">
-              매년 {salary.raise_month}월 {fmtMan(Math.round(salary.annual_raise / 10_000))} 인상 가정 · 2026~2029년은 급여명세서 평균임금 추정 · 2030~2034년은 사전 계산값
+              {salary.wage_base_ym.replace("-", ".")} 급여명세서 평균임금 기준 · 매년 {salary.raise_month}월 {fmtMan(Math.round(salary.annual_raise / 10_000))} 인상 가정
             </p>
           </div>
           <div className="overflow-x-auto">
@@ -516,17 +501,13 @@ export default function RetirementPensionPage() {
                             현재
                           </span>
                         )}
-                        {!row.isConfirmed && row.year !== today.getFullYear() && (
+                        {row.year !== today.getFullYear() && (
                           <span className="text-[10px] text-gray-300">추정</span>
                         )}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right text-gray-500">{row.tenureYears}년</td>
-                    <td className="px-4 py-3 text-right text-gray-700">
-                      {row.monthlyWageMan == null
-                        ? <span className="text-gray-300">-</span>
-                        : fmtMan(row.monthlyWageMan)}
-                    </td>
+                    <td className="px-4 py-3 text-right text-gray-700">{fmtMan(row.monthlyWageMan)}</td>
                     <td className="px-4 py-3 text-right font-medium text-gray-900">{fmtMan(row.grossMan)}</td>
                     <td className="px-4 py-3 text-right text-red-400 text-xs">{fmtMan(row.taxMan)}</td>
                     <td className="px-4 py-3 text-right font-bold text-emerald-700">{fmtMan(row.netMan)}</td>

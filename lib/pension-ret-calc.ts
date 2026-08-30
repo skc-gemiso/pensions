@@ -50,21 +50,17 @@ export function avgMonthlyWageAt(b: SalaryBasis, on: Date): number {
   return avgMonthlyWage(b) + raiseCount(b, on) * (b.annual_raise / 12)
 }
 
-/**
- * 회사가 사전 계산해 준 값 (2030~2034).
+/*
+ * 2030~2034년 `USER_PROJECTIONS` 하드코딩을 삭제했다.
  *
- * `salaryMan`(연봉)은 화면에 쓰지 않는다. 우리 추정 연봉(명세서 지급액 × 12 + 상여)보다
- * 낮게 나와 2029→2030 경계에서 연봉이 거꾸로 줄어 보였다. 정의를 알 수 없어 맞출 수도 없다.
- * `grossMan` 도 평균임금 × 근속연수 형태가 아니다 — 연 700만원씩 일정하게 증가하는데,
- * 역산한 평균임금이 964만 → 909만으로 **줄어든다.** 회사 내부 규칙이 따로 있다는 뜻이다.
+ * 원래 주석은 "사용자 제공 예상 데이터"였는데 이후 "회사 사전 계산값"·`isConfirmed`로
+ * 격상돼 있었다. 회사에서 받은 자료는 없다는 것이 확인됐고, 값 자체도 앞뒤가 맞지 않았다 —
+ * 세전이 매년 정확히 700만원씩 늘어 역산한 평균임금이 964만 → 909만으로 **줄어들었다.**
+ * 임금이 오르는데 평균임금이 줄 수는 없으므로 `평균임금 × 근속연수` 형태가 아니었다.
+ *
+ * 이제 전 구간을 급여명세서 평균임금 하나로 계산한다. 2029→2030 점프도, 실효세율이
+ * 구간마다 다른 방식으로 나오던 문제도 함께 사라졌다.
  */
-export const USER_PROJECTIONS: Record<number, { salaryMan: number; grossMan: number; netMan: number }> = {
-  2030: { salaryMan: 9_992,  grossMan: 14_800, netMan: 14_200 },
-  2031: { salaryMan: 10_232, grossMan: 15_500, netMan: 14_800 },
-  2032: { salaryMan: 10_472, grossMan: 16_200, netMan: 15_400 },
-  2033: { salaryMan: 10_712, grossMan: 16_900, netMan: 16_000 },
-  2034: { salaryMan: 10_952, grossMan: 17_600, netMan: 16_700 },
-}
 
 /** KODEX 200 타겟위클리커버드콜 */
 export const CC_STOCK_CODE = "498400"
@@ -76,18 +72,12 @@ export const DB_ACCESS_AGE = 55
 export type RetirementRow = {
   year: number
   tenureYears: number
-  /**
-   * 월 평균임금 (만원) — 그 행의 퇴직금을 만든 값.
-   *
-   * 회사 사전 계산값 행은 **null** 이다. 회사가 준 것은 결과(퇴직금)뿐이고,
-   * 함께 준 연봉은 정의가 달라(우리 추정보다 낮게 나온다) 같은 열에 세울 수 없다.
-   */
-  monthlyWageMan: number | null
+  /** 월 평균임금 (만원) — 그 행의 퇴직금을 만든 값 */
+  monthlyWageMan: number
   grossMan: number
   netMan: number
   taxMan: number
-  /** 회사 사전 계산값이면 true, 법정 공식 추정이면 false */
-  isConfirmed: boolean
+  /** 정년 행이면 true */
   isLegal: boolean
 }
 
@@ -132,10 +122,8 @@ export function calcRetirementTax(grossMan: number, tenureYears: number): number
 /**
  * 퇴직 시점별 예상 퇴직금.
  *
- * 2030~2034년은 회사 사전 계산값을 그대로 쓰고 (`taxMan = grossMan − netMan`),
- * 그 이전은 급여명세서 기반 평균임금으로 추정한다 — `calcCurrentSeverance` 와 같은
- * 산식(평균임금 × 재직일수 ÷ 365)이라 "현재 기준" 카드와 표가 이어진다.
- * 두 구간의 계산 방식이 달라 경계에서 금액이 뛴다.
+ * 전 구간이 하나의 산식이다 — `calcCurrentSeverance` 와 같은
+ * `평균임금 × 재직일수 ÷ 365`. "현재 기준" 카드와 표가 그대로 이어진다.
  *
  * @param basis      급여명세서 기준 (PENSION_RET_*)
  * @param joinDate   입사일 — 재직일수 계산
@@ -151,32 +139,17 @@ export function buildRetirementRows(
   const rows: RetirementRow[] = []
 
   for (let year = Math.max(startYear, 2026); year <= retireYear; year++) {
-    const isLegal = year === retireYear
-    const d = USER_PROJECTIONS[year]
-
-    if (d) {
-      rows.push({
-        year,
-        tenureYears: year - joinDate.getFullYear(),
-        monthlyWageMan: null,
-        grossMan: d.grossMan,
-        netMan: d.netMan,
-        taxMan: d.grossMan - d.netMan,
-        isConfirmed: true, isLegal,
-      })
-    } else {
-      const leaveOn = new Date(year, retireDate.getMonth(), retireDate.getDate())
-      const { totalDays } = calcTenure(joinDate, leaveOn)
-      const monthlyWage = avgMonthlyWageAt(basis, leaveOn)
-      const { grossMan, taxMan, netMan } = calcCurrentSeverance(monthlyWage, totalDays)
-      rows.push({
-        year,
-        tenureYears: Math.max(1, Math.round(totalDays / 365)),
-        monthlyWageMan: Math.round(monthlyWage / 10_000),
-        grossMan, netMan, taxMan,
-        isConfirmed: false, isLegal,
-      })
-    }
+    const leaveOn = new Date(year, retireDate.getMonth(), retireDate.getDate())
+    const { totalDays } = calcTenure(joinDate, leaveOn)
+    const monthlyWage = avgMonthlyWageAt(basis, leaveOn)
+    const { grossMan, taxMan, netMan } = calcCurrentSeverance(monthlyWage, totalDays)
+    rows.push({
+      year,
+      tenureYears: Math.max(1, Math.round(totalDays / 365)),
+      monthlyWageMan: Math.round(monthlyWage / 10_000),
+      grossMan, netMan, taxMan,
+      isLegal: year === retireYear,
+    })
   }
   return rows
 }

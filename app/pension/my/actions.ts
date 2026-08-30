@@ -346,7 +346,7 @@ export async function getPensionHistory(): Promise<PensionHistory[]> {
   )
 
   // ── 퇴직연금 — 요약 카드와 완전히 같은 기준 (정년 퇴직금 × 거치) ──────────
-  // 원금(회사 사전 계산값)도 거치 개월도 고정이라, 달마다 변하는 값은 분배율뿐이다.
+  // 정년 퇴직금도 거치 개월도 그 달과 무관하므로, 달마다 변하는 값은 분배율뿐이다.
   // 그래서 이 표의 증감은 곧 "분배율이 움직인 만큼"이다.
   const retireDate = toDate(profile.retire_date)
   const retireNetMan = buildRetirementRows(
