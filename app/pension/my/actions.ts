@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/guard"
 import { getProfile } from "@/app/actions/profile"
 import { perSettingsFromEnv, retSettingsFromEnv, natSettingsFromEnv } from "@/lib/settings"
 import { calcEarlyPension, type EarlyPensionScenario } from "@/lib/pension-nat-calc"
-import { ageOn, ymAtAge, retireEndYm } from "@/lib/profile"
+import { ageOn, ageInYm, toIsoDate, ymAtAge, retireEndYm } from "@/lib/profile"
 import { simulatePer } from "@/lib/pension-per-calc"
 import {
   buildRetirementRows, calcCurrentSeverance, calcTenure, grownValue, toDate,
@@ -89,7 +89,8 @@ export async function getPensionOverview(): Promise<PensionOverview> {
 
   const now = new Date()
   const todayYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
-  const currentAge = ageOn(profile.birth_date, `${todayYm}-01`)
+  // 달의 1일이 아니라 오늘 날짜로 재야 생일이 든 달에 한 살 어긋나지 않는다
+  const currentAge = ageOn(profile.birth_date, toIsoDate(now))
   const birthIdx = idxOf(profile.birth_date.slice(0, 7))
 
   // ── 공통 전제: 커버드콜 분배율 (최근 12회 평균) ──────────────────────────
@@ -218,7 +219,8 @@ export async function getPensionOverview(): Promise<PensionOverview> {
     const sum = (k: PensionKind) => active.find(p => p.kind === k)?.monthly ?? 0
     return {
       fromYm: ym,
-      fromAge: ageOn(profile.birth_date, `${ym}-01`),
+      // 개시월은 생일이 든 달이다 — 1일 기준으로 재면 한 살 적게 나온다
+      fromAge: ageInYm(profile.birth_date, ym),
       nat: sum("nat"), ret: sum("ret"), per: sum("per"),
       total: active.reduce((s, p) => s + p.monthly, 0),
       starting: pensions.filter(p => p.startYm === ym).map(p => p.kind),

@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/guard"
 import { simulatePer, type PerResult } from "@/lib/pension-per-calc"
 import { getProfile } from "@/app/actions/profile"
 import { perSettingsFromEnv, type PerSettings } from "@/lib/settings"
-import { retireEndYm, ymAtAge, ageOn } from "@/lib/profile"
+import { retireEndYm, ymAtAge, ageOn, toIsoDate } from "@/lib/profile"
 
 /**
  * 적립 계획 — 출처는 `config/.env` 다 (DB 테이블 없음).
@@ -200,7 +200,7 @@ export async function getPerProjection(): Promise<PerProjection> {
   const base = simulatePer({ ...common, retireYm }, birthYm)
 
   // 조기 퇴직 시나리오 — 정년보다 이른 나이에 그만두는 경우
-  const currentAge = ageOn(profile.birth_date, `${startYm}-01`)
+  const currentAge = ageOn(profile.birth_date, toIsoDate(now))
   const scenarios: PerScenario[] = []
   for (let age = Math.max(currentAge + 1, profile.retire_age - 6); age <= profile.retire_age; age++) {
     // 정년과 같은 나이면 규정(말일 등)을 반영한 실제 경계를 쓴다

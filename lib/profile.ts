@@ -77,3 +77,19 @@ export function ymAtAge(birthDate: string, age: number): string {
   const [y, m] = birthDate.split("-").map(Number)
   return `${y + age}-${pad(m)}`
 }
+
+/**
+ * 그 달에 도달하는 만 나이 — `ymAtAge()` 의 역함수.
+ *
+ * 수령 개시월은 생일이 든 달이라 **1일 기준으로 재면 생일 전이어서 한 살 적게 나온다.**
+ * (생일 6/4 인데 2039-06-01 로 재면 만 64세, 실제로는 그 달에 65세가 된다.)
+ * 그 달의 생일을 기준으로 잰다.
+ */
+export function ageInYm(birthDate: string, ym: string): number {
+  return ageOn(birthDate, `${ym}-${birthDate.slice(8, 10)}`)
+}
+
+/** Date → 'YYYY-MM-DD' (로컬 기준) */
+export function toIsoDate(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}

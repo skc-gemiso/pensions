@@ -19,7 +19,7 @@ app/pension/my/
 |------|-------------|
 | 퇴직연금 | `lib/pension-ret-calc.ts` — `buildRetirementRows`·`grownValue`. 급여 기준은 `retSettingsFromEnv()` (`PENSION_RET_*`) |
 | 개인연금 | `lib/pension-per-calc.ts` `simulatePer()` |
-| 프로필 | `lib/profile.ts` `ageOn` / `ymAtAge` / `retireEndYm` |
+| 프로필 | `lib/profile.ts` `ageOn` / `ageInYm` / `ymAtAge` / `retireEndYm` |
 | 적립 계획 | `lib/settings.ts` `perSettingsFromEnv()` |
 
 액션은 두 개다.
@@ -90,6 +90,13 @@ stages = marks.map(ym => {
 |------|------|----------|----------|----------|------|
 | 2037.06~ | 63세 | 580만원 | 421만원 | — | **1,001만원** |
 | 2039.06~ | 65세 | 580만원 | 421만원 | 132만원 | **1,133만원** |
+
+**나이는 `ageInYm()` 으로 잰다.** 개시월은 생일이 든 달이라, 그 달 1일 기준으로 재면
+생일 전이어서 한 살 적게 나온다 — 생일이 6/4 인데 `2039-06-01` 로 재면 만 64세다.
+`ymAtAge(생년월일, 65) = 2039-06` 이므로 그 달에 도달하는 나이인 **65세**가 맞다.
+
+같은 이유로 `currentAge` 도 그 달 1일이 아니라 **오늘 날짜**로 잰다(`toIsoDate(now)`).
+생일이 든 달에만 어긋나서 눈에 잘 띄지 않는다.
 
 ---
 

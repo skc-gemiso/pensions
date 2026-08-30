@@ -89,7 +89,7 @@ pensions/
 │   ├── pension-db.ts                    Supabase DB Pool 싱글턴 (전 화면 공용)
 │   ├── guard.ts                          접근 통제 — requireUser / requireAdmin / guardApi
 │   ├── settings.ts                       환경 변수로 관리하는 개인 설정 (PROFILE_* / PENSION_PER_* / PENSION_RET_*)
-│   ├── profile.ts                        정년일 계산 등 개인 정보 헬퍼 (calcRetireDate / ageOn / ymAtAge)
+│   ├── profile.ts                        정년일 계산 등 개인 정보 헬퍼 (calcRetireDate / ageOn / ageInYm / ymAtAge / toIsoDate)
 │   ├── pension-per-calc.ts               개인연금 월 단위 복리 시뮬레이션 (적립·거치·수령)
 │   ├── pension-ret-calc.ts               퇴직연금 계산 (퇴직소득세·시점별 퇴직금·재투자 평가액·중도인출 시나리오)
 │   ├── pension-nat-calc.ts               국민연금 조기수령 시나리오 (감액·적립식 재투자)
