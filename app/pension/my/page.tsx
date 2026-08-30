@@ -681,6 +681,22 @@ export default function DashboardPage() {
   const last = ov?.stages[ov.stages.length - 1]
   const maxTotal = ov ? Math.max(...ov.stages.map(s => s.total), 1) : 1
 
+  // 아래 참고 카드들을 모두 적용했을 때의 월 수령액 — 상단 큰 숫자 옆에 같이 둔다.
+  // 켜져 있는 시나리오만 갈아끼우고 나머지 연금은 기준값 그대로 더한다.
+  const scenario = ov && (ov.withdraw || ov.early)
+    ? {
+        total: ov.pensions.reduce((s, p) => {
+          if (p.kind === "ret" && ov.withdraw) return s + ov.withdraw.totalMonthlyMan * 10_000
+          if (p.kind === "nat" && ov.early) return s + ov.early.totalMonthly
+          return s + p.monthly
+        }, 0),
+        labels: [
+          ov.withdraw && "퇴직금 중도인출",
+          ov.early && "국민연금 조기수령",
+        ].filter(Boolean) as string[],
+      }
+    : null
+
   return (
     <AppLayout>
       {/* main 의 하단 여백을 상쇄해 화면 아래 공백을 줄인다 */}
@@ -727,6 +743,28 @@ export default function DashboardPage() {
                     </p>
                     <p className="text-gray-500 text-base mt-1">연 {fmtKRW(last.total * 12)}</p>
                   </div>
+
+                  {/* 참고 시나리오 적용 시 — 아래 참고 카드들의 결과를 여기서 합쳐 보여준다 */}
+                  {scenario && (
+                    <div className="rounded-xl border border-dashed border-gray-300 px-5 py-3 self-center">
+                      <p className="text-gray-500 text-xs flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded-full">
+                          참고
+                        </span>
+                        {scenario.labels.join(" + ")} 적용 시
+                      </p>
+                      <p className="text-gray-900 text-[28px] font-bold tabular-nums leading-tight mt-1">
+                        {fmt(scenario.total)}
+                        <span className="text-sm font-medium text-gray-500 ml-1">원 / 월</span>
+                      </p>
+                      <p className={`text-xs font-semibold mt-1 ${cc(scenario.total - last.total)}`}>
+                        {scenario.total > last.total ? "+" : ""}{fmtKRW(scenario.total - last.total)}
+                        <span className="text-gray-400 font-normal ml-1.5">
+                          같은 만 {last.fromAge}세 기준 · 아래 참고 카드 참조
+                        </span>
+                      </p>
+                    </div>
+                  )}
 
                   <div className="rounded-xl border border-gray-200 bg-gray-50 px-5 py-3">
                     <p className="text-gray-500 text-xs">

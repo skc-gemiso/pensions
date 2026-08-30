@@ -33,6 +33,27 @@ app/pension/my/
 `getPensionOverview()` 의 `withdraw`(퇴직금 중도인출) · `early`(국민연금 조기수령)
 필드로 같이 내려보낸다. 환경 변수가 비어 있으면 각각 `null` 이고 카드가 렌더링되지 않는다.
 
+### 두 시나리오를 합친 값은 상단 1행에만 둔다
+
+각 참고 카드는 자기 연금만 기준과 비교한다. **둘을 동시에 적용한 합계**는 화면에서
+`scenario` 로 한 번만 계산해 상단 큰 숫자 옆(점선 박스)에 보여준다.
+
+```typescript
+ov.pensions.reduce((s, p) => {
+  if (p.kind === "ret" && ov.withdraw) return s + ov.withdraw.totalMonthlyMan * 10_000
+  if (p.kind === "nat" && ov.early)    return s + ov.early.totalMonthly
+  return s + p.monthly          // 켜지지 않은 연금은 기준값 그대로
+}, 0)
+```
+
+| | 개인연금 | 퇴직연금 | 국민연금 | 합계 |
+|---|---|---|---|---|
+| 기준 | 5,803,386 | 4,210,000 | 1,320,920 | 11,334,306 |
+| 두 시나리오 적용 | 5,803,386 | **7,640,000** | **2,164,302** | **15,607,688** (+38%) |
+
+**같은 만 65세 기준이라 그대로 비교된다.** 조기수령 국민연금은 60세부터 나오지만 65세까지는
+적립이라 수령액이 0이고, 65세에 두 시나리오가 모두 자리를 잡는다.
+
 ---
 
 ## `getPensionOverview()` (`app/pension/my/actions.ts`)
