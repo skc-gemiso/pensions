@@ -50,7 +50,14 @@ export function avgMonthlyWageAt(b: SalaryBasis, on: Date): number {
   return avgMonthlyWage(b) + raiseCount(b, on) * (b.annual_raise / 12)
 }
 
-/** 회사가 사전 계산해 준 값 (2030~2034) */
+/**
+ * 회사가 사전 계산해 준 값 (2030~2034).
+ *
+ * `salaryMan`(연봉)은 화면에 쓰지 않는다. 우리 추정 연봉(명세서 지급액 × 12 + 상여)보다
+ * 낮게 나와 2029→2030 경계에서 연봉이 거꾸로 줄어 보였다. 정의를 알 수 없어 맞출 수도 없다.
+ * `grossMan` 도 평균임금 × 근속연수 형태가 아니다 — 연 700만원씩 일정하게 증가하는데,
+ * 역산한 평균임금이 964만 → 909만으로 **줄어든다.** 회사 내부 규칙이 따로 있다는 뜻이다.
+ */
 export const USER_PROJECTIONS: Record<number, { salaryMan: number; grossMan: number; netMan: number }> = {
   2030: { salaryMan: 9_992,  grossMan: 14_800, netMan: 14_200 },
   2031: { salaryMan: 10_232, grossMan: 15_500, netMan: 14_800 },
@@ -69,7 +76,13 @@ export const DB_ACCESS_AGE = 55
 export type RetirementRow = {
   year: number
   tenureYears: number
-  salaryMan: number
+  /**
+   * 월 평균임금 (만원) — 그 행의 퇴직금을 만든 값.
+   *
+   * 회사 사전 계산값 행은 **null** 이다. 회사가 준 것은 결과(퇴직금)뿐이고,
+   * 함께 준 연봉은 정의가 달라(우리 추정보다 낮게 나온다) 같은 열에 세울 수 없다.
+   */
+  monthlyWageMan: number | null
   grossMan: number
   netMan: number
   taxMan: number
@@ -145,7 +158,7 @@ export function buildRetirementRows(
       rows.push({
         year,
         tenureYears: year - joinDate.getFullYear(),
-        salaryMan: d.salaryMan,
+        monthlyWageMan: null,
         grossMan: d.grossMan,
         netMan: d.netMan,
         taxMan: d.grossMan - d.netMan,
@@ -159,7 +172,7 @@ export function buildRetirementRows(
       rows.push({
         year,
         tenureYears: Math.max(1, Math.round(totalDays / 365)),
-        salaryMan: Math.round(monthlyWage * 12 / 10_000),
+        monthlyWageMan: Math.round(monthlyWage / 10_000),
         grossMan, netMan, taxMan,
         isConfirmed: false, isLegal,
       })

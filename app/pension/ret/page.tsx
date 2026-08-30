@@ -10,7 +10,7 @@ import { getPerConfig } from "@/app/pension/per/actions"
 import { getRetConfig } from "./actions"
 import {
   buildRetirementRows, calcCurrentSeverance, calcTenure, grownValue, toDate,
-  avgMonthlyWage, CC_STOCK_CODE, CC_FALLBACK_ANNUAL_RATE, DB_ACCESS_AGE,
+  avgMonthlyWage, avgMonthlyWageAt, CC_STOCK_CODE, CC_FALLBACK_ANNUAL_RATE, DB_ACCESS_AGE,
   type SalaryBasis,
 } from "@/lib/pension-ret-calc"
 
@@ -425,8 +425,8 @@ export default function RetirementPensionPage() {
                       <ColTable rows={[
                         ["퇴직 시점", <>그 해에 퇴직한다고 가정한 연도. <b>정년</b> 배지가 붙은 행이 {LEGAL_RETIRE_YEAR}년입니다</>],
                         ["근속연수", <>입사({joinStr})부터의 햇수. 퇴직소득세 공제액을 정하는 값입니다</>],
-                        ["예상 연봉", <>2026~2029년은 급여명세서 기준(지급액 계 × 12 + 상여)이고 매년 {fmtMan(Math.round(salary.annual_raise / 10_000))}씩 오른다고 봅니다.
-                          2030년부터는 회사가 준 값이라 <b>정의가 달라</b> 경계에서 낮아 보일 수 있습니다</>],
+                        ["월 평균임금", <>그 행의 퇴직금을 만든 값. 매년 {salary.raise_month}월에 {fmtMan(Math.round(salary.annual_raise / 10_000))} ÷ 12 만큼 오릅니다.
+                          2030~2034년이 <b>&ldquo;-&rdquo;</b> 인 이유는 회사가 결과(퇴직금)만 줬기 때문입니다 — 아래 &ldquo;읽는 법&rdquo; 참고</>],
                         ["세전 퇴직금", <>퇴직소득세를 떼기 전 금액</>],
                         ["퇴직소득세", <>2023년 개정 기준 근사치 (지방소득세 10% 포함)</>],
                         ["실수령액", <>세전 − 세금. 아래 커버드콜 시뮬레이션의 투자 원금이 됩니다</>],
@@ -446,7 +446,20 @@ export default function RetirementPensionPage() {
                         ]} />
                         <p className="text-xs text-gray-500 mt-2">
                           계산 방식이 바뀌는 경계라 그 구간의 증가폭은 의미로 읽지 마세요.
-                          연봉 정의도 달라서 <b>예상 연봉 열은 2030년에 오히려 낮아집니다.</b>
+                        </p>
+                      </Box>
+
+                      <Box>
+                        <H>2030년부터 월 평균임금이 비어 있는 이유</H>
+                        <p className="text-xs text-gray-700 leading-relaxed">
+                          회사가 준 것은 <b>퇴직금 결과뿐</b>입니다. 함께 받은 연봉 값을 그대로 쓰면
+                          2029년(연 {fmtMan(Math.round(avgMonthlyWageAt(salary, new Date(2029, retireMonth - 1, 1)) * 12 / 10_000))})보다
+                          2030년(연 9,992만원)이 <b>더 작아지는</b> 모순이 생깁니다 — 연봉의 정의가 다르기 때문입니다.
+                        </p>
+                        <p className="text-xs text-gray-700 leading-relaxed mt-2">
+                          회사 값에서 평균임금을 역산해도 <b>964만 → 909만원으로 오히려 줄어듭니다.</b>
+                          퇴직금이 매년 정확히 700만원씩 느는 걸 보면, 평균임금 × 근속연수가 아니라
+                          회사 내부 규칙으로 계산된 값입니다. 맞출 수 없는 값을 억지로 채우는 대신 비워 두었습니다.
                         </p>
                       </Box>
 
@@ -472,7 +485,7 @@ export default function RetirementPensionPage() {
                 <tr className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500">
                   <th className="px-4 py-3 text-left font-medium">퇴직 시점</th>
                   <th className="px-4 py-3 text-right font-medium">근속</th>
-                  <th className="px-4 py-3 text-right font-medium">예상 연봉</th>
+                  <th className="px-4 py-3 text-right font-medium">월 평균임금</th>
                   <th className="px-4 py-3 text-right font-medium">퇴직금 (세전)</th>
                   <th className="px-4 py-3 text-right font-medium">퇴직소득세</th>
                   <th className="px-4 py-3 text-right font-medium">실수령액</th>
@@ -509,7 +522,11 @@ export default function RetirementPensionPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right text-gray-500">{row.tenureYears}년</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{fmtMan(row.salaryMan)}</td>
+                    <td className="px-4 py-3 text-right text-gray-700">
+                      {row.monthlyWageMan == null
+                        ? <span className="text-gray-300">-</span>
+                        : fmtMan(row.monthlyWageMan)}
+                    </td>
                     <td className="px-4 py-3 text-right font-medium text-gray-900">{fmtMan(row.grossMan)}</td>
                     <td className="px-4 py-3 text-right text-red-400 text-xs">{fmtMan(row.taxMan)}</td>
                     <td className="px-4 py-3 text-right font-bold text-emerald-700">{fmtMan(row.netMan)}</td>

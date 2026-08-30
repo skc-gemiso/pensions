@@ -292,21 +292,38 @@ export const USER_PROJECTIONS: Record<number, { salaryMan; grossMan; netMan }> =
 **2030~2034년만** 있다. 회사가 준 값이라 산식으로 재현하지 않고 그대로 쓴다
 (`taxMan = grossMan − netMan`). 2026~2029년은 위 평균임금으로 추정한다.
 
-`salaryMan`(연봉)의 정의가 우리 추정과 달라 **2029→2030 경계에서 연봉 열이 오히려 낮아진다.**
-퇴직금은 반대로 크게 뛴다. 도움말 `읽는 법` 탭에 그대로 밝혀 두었다.
+#### `salaryMan` 은 화면에 쓰지 않는다
+
+한때 이 값을 `예상 연봉` 열에 그대로 실었는데, 2029년(우리 추정 10,188만) → 2030년(회사값 9,992만)
+으로 **연봉이 거꾸로 줄어 보였다.** 연봉의 정의가 다르기 때문이다.
+
+맞춰 보려고 회사 `grossMan` 에서 평균임금을 역산했더니 더 이상했다.
+
+| 연도 | 세전 | 재직연수 | 역산 월 평균임금 |
+|------|------|----------|-----------------|
+| 2030 | 14,800만 | 15.36년 | 964만 |
+| 2032 | 16,200만 | 17.36년 | 933만 |
+| 2034 | 17,600만 | 19.36년 | **909만** |
+
+임금이 오르는데 역산값은 줄어든다. 회사 `grossMan` 은 **매년 정확히 700만원씩** 느는데,
+`평균임금 × 근속연수` 형태라면 근속과 임금이 같이 늘어 증가폭도 커져야 한다.
+회사 내부 규칙이 따로 있다는 뜻이고, 우리가 재현할 수 없다.
+
+그래서 열을 **`월 평균임금`** 으로 바꾸고 (퇴직금을 만든 값 자체), 회사 사전 계산값 행은
+`monthlyWageMan: null` 로 두어 `-` 를 표시한다. 맞출 수 없는 값을 억지로 채우지 않는다.
 
 ### `RetirementRow`
 
 ```typescript
 export type RetirementRow = {
   year: number
-  tenureYears: number       // 퇴직소득세 공제용 근속연수
-  salaryMan: number         // 예상 연봉 (만원)
-  grossMan: number          // 세전 퇴직금
-  netMan: number            // 세후 퇴직금
-  taxMan: number            // 퇴직소득세
-  isConfirmed: boolean      // 회사 사전 계산값이면 true
-  isLegal: boolean          // 정년 행이면 true
+  tenureYears: number             // 퇴직소득세 공제용 근속연수
+  monthlyWageMan: number | null   // 월 평균임금 (만원). 회사값 행은 null
+  grossMan: number                // 세전 퇴직금
+  netMan: number                  // 세후 퇴직금
+  taxMan: number                  // 퇴직소득세
+  isConfirmed: boolean            // 회사 사전 계산값이면 true
+  isLegal: boolean                // 정년 행이면 true
 }
 ```
 
@@ -357,7 +374,8 @@ export type RetirementRow = {
 
 ### 연도별 퇴직금 테이블
 
-- 2026~2034 행별: 연도 / 근속연수 / 세전 / 퇴직소득세 / 세후
+- 2026~2034 행별: 연도 / 근속연수 / **월 평균임금** / 세전 / 퇴직소득세 / 세후
+- 월 평균임금은 2030~2034년(회사 사전 계산값) 행에서 `-` 다 — 위 `salaryMan` 절 참고
 
 ### 커버드콜 분배금 시뮬 테이블
 
