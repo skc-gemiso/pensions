@@ -70,6 +70,8 @@ function fmtCountdown(s: number): string {
   return `${m}:${String(sec).padStart(2, "0")}`
 }
 
+/** 메뉴 조회가 비어서 돌아왔을 때 다시 시도할 횟수 */
+const MENU_MAX_TRY = 5
 const VISITOR_LIMIT_SEC  = 30 * 60 // 30분 고정
 const SESSION_LIMIT_SEC  = 30 * 60 // 30분
 const SESSION_WARN_SEC   =  5 * 60 //  5분 전 경고
@@ -103,34 +105,32 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // "loading" 이 된다. 그때 메뉴를 지우면 상단 메뉴가 주기적으로 사라진다.
   // 정말 로그아웃된 경우("unauthenticated")에만 비운다.
   const [rawMenus, setRawMenus] = useState<MenuRow[]>([])
-  const [menusLoaded, setMenusLoaded] = useState(false)
-  const menusFetchedRef = useRef(false)
+  const [menuAttempt, setMenuAttempt] = useState(0)
   useEffect(() => {
-    if (status === "unauthenticated") {
-      menusFetchedRef.current = false
-      setRawMenus([])
-      setMenusLoaded(true)
-      return
-    }
-    if (status !== "authenticated") return   // loading — 이미 받아 둔 메뉴를 그대로 둔다
-    if (menusFetchedRef.current) return      // 한 번 받았으면 다시 부르지 않는다
-    menusFetchedRef.current = true
+    if (status !== "authenticated") return      // loading — 이미 받아 둔 메뉴를 그대로 둔다
+    if (rawMenus.length > 0) return             // 이미 있으면 다시 부르지 않는다
+    if (menuAttempt >= MENU_MAX_TRY) return
 
+    // 빈 배열로 돌아오면(세션을 잠깐 못 읽음·DB 지연) 있던 메뉴를 지우지 않고 다시 시도한다.
+    // 예전에는 한 번 비면 status 가 안 바뀌어 effect 가 다시 돌지 않아 영영 비어 있었다.
     let alive = true
-    getMyMenus()
-      .then(m => {
-        // 빈 배열은 세션을 잠깐 못 읽은 경우일 수 있다 — 있던 메뉴를 지우지 않는다
-        if (alive && m.length > 0) setRawMenus(m)
-        else if (alive) menusFetchedRef.current = false
-      })
-      .catch(() => { if (alive) menusFetchedRef.current = false })
-      .finally(() => { if (alive) setMenusLoaded(true) })
-    return () => { alive = false }
-  }, [status])
+    const t = setTimeout(() => {
+      getMyMenus()
+        .then(m => {
+          if (!alive) return
+          if (m.length > 0) setRawMenus(m)
+          else setMenuAttempt(n => n + 1)
+        })
+        .catch(() => { if (alive) setMenuAttempt(n => n + 1) })
+    }, menuAttempt === 0 ? 0 : 800 * menuAttempt)
+    return () => { alive = false; clearTimeout(t) }
+  }, [status, rawMenus.length, menuAttempt])
 
-  const NAV = buildNavTree(rawMenus)
-  // 첫 로드 때만 스켈레톤을 보여준다 — update() 의 "loading" 깜빡임에는 반응하지 않는다
-  const navLoading = !menusLoaded
+  // 로그아웃 상태면 받아 둔 메뉴를 쓰지 않는다 — state 를 지우지 않으므로 재로그인 시 바로 뜬다
+  const NAV = status === "authenticated" ? buildNavTree(rawMenus) : []
+  // 로그인했는데 메뉴가 비어 있고 아직 재시도가 남았으면 스켈레톤 — 빈 메뉴바를 보여주지 않는다.
+  // update() 로 status 가 잠깐 "loading" 이 되는 것에는 반응하지 않는다 (메뉴가 이미 있으므로)
+  const navLoading = status === "authenticated" && rawMenus.length === 0 && menuAttempt < MENU_MAX_TRY
 
 const isActive = (href: string) =>
     href === "/" ? path === "/" : path === href || path.startsWith(href + "/")
