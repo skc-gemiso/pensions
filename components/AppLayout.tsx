@@ -106,6 +106,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // 정말 로그아웃된 경우("unauthenticated")에만 비운다.
   const [rawMenus, setRawMenus] = useState<MenuRow[]>([])
   const [menuAttempt, setMenuAttempt] = useState(0)
+  const [menuError, setMenuError] = useState("")
   useEffect(() => {
     if (status !== "authenticated") return      // loading — 이미 받아 둔 메뉴를 그대로 둔다
     if (rawMenus.length > 0) return             // 이미 있으면 다시 부르지 않는다
@@ -121,7 +122,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           if (m.length > 0) setRawMenus(m)
           else setMenuAttempt(n => n + 1)
         })
-        .catch(() => { if (alive) setMenuAttempt(n => n + 1) })
+        .catch((e: unknown) => {
+          if (!alive) return
+          setMenuError(e instanceof Error ? e.message : String(e))
+          setMenuAttempt(n => n + 1)
+        })
     }, menuAttempt === 0 ? 0 : 800 * menuAttempt)
     return () => { alive = false; clearTimeout(t) }
   }, [status, rawMenus.length, menuAttempt])
@@ -131,6 +136,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // 로그인했는데 메뉴가 비어 있고 아직 재시도가 남았으면 스켈레톤 — 빈 메뉴바를 보여주지 않는다.
   // update() 로 status 가 잠깐 "loading" 이 되는 것에는 반응하지 않는다 (메뉴가 이미 있으므로)
   const navLoading = status === "authenticated" && rawMenus.length === 0 && menuAttempt < MENU_MAX_TRY
+  /** 로그인했는데 재시도를 다 쓰고도 메뉴가 비었다 — 원인을 화면에 드러낸다 */
+  const navFailed = status === "authenticated" && rawMenus.length === 0 && menuAttempt >= MENU_MAX_TRY
 
 const isActive = (href: string) =>
     href === "/" ? path === "/" : path === href || path.startsWith(href + "/")
@@ -269,6 +276,24 @@ const isActive = (href: string) =>
             {navLoading ? (
               <div className="flex items-center px-4">
                 <div className="h-3 w-48 bg-white/20 rounded animate-pulse" />
+              </div>
+            ) : navFailed ? (
+              // 조용히 빈 메뉴바를 내보내면 원인을 알 수 없다 — 무엇이 없는지 보여준다
+              <div className="flex items-center gap-2 px-4 text-xs text-white/75">
+                <span>
+                  메뉴를 불러오지 못했습니다
+                  <span className="text-white/50 ml-1.5">
+                    (역할: {user?.role ?? "없음"} · 계정: {user?.name ?? "없음"}
+                    {menuError && ` · ${menuError}`})
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setMenuAttempt(0)}
+                  className="px-2 py-0.5 rounded-md bg-white/15 hover:bg-white/25 font-medium"
+                >
+                  다시 시도
+                </button>
               </div>
             ) : (
               <ul className="flex items-center gap-0.5 px-4">
@@ -461,6 +486,13 @@ const isActive = (href: string) =>
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-white/20 bg-blue-800/98">
             <nav className="px-3 py-2 space-y-0.5">
+              {navFailed && (
+                <p className="px-3 py-2 text-xs text-white/70">
+                  메뉴를 불러오지 못했습니다 (역할: {user?.role ?? "없음"})
+                  <button type="button" onClick={() => setMenuAttempt(0)}
+                    className="ml-2 px-2 py-0.5 rounded-md bg-white/15 font-medium">다시 시도</button>
+                </p>
+              )}
               {NAV.map((item) => (
                 <div key={item.href}>
                   <Link

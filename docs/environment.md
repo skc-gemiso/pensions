@@ -203,9 +203,24 @@ if (status !== "authenticated") return                        // loading — 그
 if (menusFetchedRef.current) return                           // 한 번만 조회
 ```
 
-같은 이유로 `navLoading` 도 `status` 를 보지 않고 `!menusLoaded` 만 본다.
-`getMyMenus()` 가 빈 배열을 주면(세션을 잠깐 못 읽은 경우) **있던 메뉴를 지우지 않고**
-`menusFetchedRef` 를 되돌려 다음 기회에 다시 받는다.
+#### 빈 메뉴는 재시도하고, 그래도 비면 화면에 드러낸다
+
+`getMyMenus()` 는 세션에 `role` 이 없으면 `[]` 를 돌려준다. 예전에는 그걸 그대로 받아
+빈 메뉴바를 내보냈고, effect 의존성이 `[status]` 뿐이라 **한 번 비면 새로고침 전까지
+복구되지 않았다.**
+
+| 상태 | 화면 |
+|------|------|
+| 조회 전 · 재시도 중 (`menuAttempt < 5`) | 스켈레톤 |
+| 5회 재시도 후에도 빈 배열 (`navFailed`) | `메뉴를 불러오지 못했습니다 (역할: … · 계정: …)` + `다시 시도` 버튼 |
+| 정상 | 메뉴 |
+
+**조용히 빈 메뉴바를 내보내지 않는다.** 역할·계정·에러 메시지를 같이 띄워야
+"로그아웃된 건가?" 대신 무엇이 없는지 바로 보인다. `다시 시도` 는 `menuAttempt` 를 0으로
+되돌려 즉시 다시 조회한다.
+
+로그아웃 상태에서는 `rawMenus` 를 지우지 않고 `NAV` 를 파생값으로 계산한다
+(`status === "authenticated" ? buildNavTree(rawMenus) : []`) — 재로그인하면 바로 뜬다.
 
 ### 무활동 30분 만료는 서버가 검사한다
 
