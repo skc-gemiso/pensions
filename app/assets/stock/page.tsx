@@ -995,6 +995,7 @@ export default function StockPage() {
             account_no: h.account_no,
             account_nm: h.account_nm,
             qty: h.net_qty,
+            price: h.latest_price ?? 0,
             div: Math.round(h.net_qty * (h.latest_price ?? 0) * avgRate / 100),
             tax: Math.round(h.net_qty * perShareTax),
           }))
@@ -1042,35 +1043,38 @@ export default function StockPage() {
                     {totalQty > 0 && (
                       <div className="bg-white rounded-xl border border-orange-300 overflow-hidden">
                         <div className="flex items-center justify-between px-3 py-2 border-b border-orange-100">
-                          <p className="text-xs font-semibold text-orange-700">내 잔고 기준 이번 달 분배금</p>
+                          <p className="text-xs font-semibold text-orange-700">내 잔고 기준 이번 달 예상 분배금</p>
                           <span className="text-xs text-gray-500">현재 잔고 × 당일 종가 × 월평균 분배율</span>
                         </div>
                         {/* 컬럼 헤더 */}
-                        <div className="grid grid-cols-4 gap-2 px-3 py-1.5 bg-orange-50 border-b border-orange-100 text-xs font-semibold text-gray-500">
+                        <div className="grid grid-cols-5 gap-2 px-3 py-1.5 bg-orange-50 border-b border-orange-100 text-xs font-semibold text-gray-500">
                           <div>계좌</div>
                           <div className="text-right">보유 잔고</div>
+                          <div className="text-right">{curPriceDate ? `${curPriceDate.replace(/-/g, ".")} 종가 기준` : "종가 기준"}</div>
                           <div className="text-right">예상 분배금</div>
                           <div className="text-right">과세표준액</div>
                         </div>
                         {/* 합계 행 */}
-                        <div className="grid grid-cols-4 gap-2 px-3 py-2.5 bg-orange-50/50 border-b border-orange-200">
+                        <div className="grid grid-cols-5 gap-2 px-3 py-2.5 bg-orange-50/50 border-b border-orange-200">
                           <div className="text-xs font-bold text-orange-700">합계</div>
                           <div className="text-right text-sm font-bold text-gray-800">{fmt(totalQty)}주</div>
+                          <div className="text-right text-sm font-bold text-gray-700">{fmt(curPrice)}원</div>
                           <div className="text-right text-sm font-bold text-orange-600">{fmt(totalDiv)}원</div>
                           <div className="text-right text-sm font-bold text-gray-700">{fmt(totalTax)}원</div>
                         </div>
                         {/* 계좌별 행 */}
                         {curRows.map(r => (
-                          <div key={r.account_no} className="grid grid-cols-4 gap-2 px-3 py-2 border-b border-gray-100 last:border-0 text-xs">
+                          <div key={r.account_no} className="grid grid-cols-5 gap-2 px-3 py-2 border-b border-gray-100 last:border-0 text-xs">
                             <div className="text-gray-600 truncate">{r.account_nm ?? r.account_no}</div>
                             <div className="text-right text-gray-800">{fmt(r.qty)}주</div>
+                            <div className="text-right text-gray-600">{fmt(r.price)}원</div>
                             <div className="text-right text-orange-500">{fmt(r.div)}원</div>
                             <div className="text-right text-gray-600">{fmt(r.tax)}원</div>
                           </div>
                         ))}
                         {/* 계산 기준 */}
                         <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
-                          당일 종가 {fmt(curPrice)}원{curPriceDate && ` (${curPriceDate})`} · 월평균 분배율 {avgRate.toFixed(2)}% · 주당 과세표준 {fmt(perShareTax)}원
+                          월평균 분배율 {avgRate.toFixed(2)}% · 주당 과세표준 {fmt(perShareTax)}원
                         </div>
                       </div>
                     )}
