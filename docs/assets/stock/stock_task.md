@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `getAccounts()` | 계좌 목록 (`my_account`) — 계좌번호·계좌명 | 세션 필요 |
 | `getAccountInfo()` | 계좌 입출금 내역 (`my_account_info` + `my_account` JOIN) | 세션 필요 |
 | `addAccountInfo(data)` | 계좌 입출금 내역 INSERT (`account_no`, `trade_date`, `in_out`, `amt`, `memo`) | 세션 필요 |
-| `getMonthlyDividendByAccount(stockCode)` | 분배금 지급기준일별 계좌 보유수량·분배금·세금. 각 기준일의 **해당 월 13일까지 누적 순수량** 기준 | 세션 필요 |
+| `getMonthlyDividendByAccount(stockCode)` | 분배금 지급기준일별 계좌 보유수량·분배금·세금. 각 기준일의 **해당 월 13일까지 누적 순수량** 기준. 배당 팝업의 **지급 이력 테이블 전용** — 요약 카드는 현재 잔고를 쓴다 | 세션 필요 |
 | `addEtfDividend(data)` | `t_etf_dividend` 1건 INSERT. 같은 `(stock_code, ref_date)` 가 이미 있으면 덮어쓰지 않고 예외 — 배당 팝업의 `[+ 분배금 추가]` 에서 호출 | 세션 필요 |
 
 ### 타입 정의
@@ -288,6 +288,30 @@ const priceChangeRate = priceChange / h.prev_price * 100   // 전일대비율(%)
 ```
 
 - `portfolioRows`: 평가금액 큰 순으로 정렬
+
+### 배당 팝업 계산
+
+요약 카드(추정치)와 지급 이력 테이블(실적치)은 **수량 기준이 다르다**. 섞으면 안 된다.
+
+```typescript
+// 월평균 분배율 — 최근 12개월 (분배가 월 1회라 divHistory 최근 12건 = 12개월)
+const avgWindow = divHistory.slice(0, 12)
+const avgRate   = avgWindow.reduce((s, r) => s + r.dist_rate, 0) / avgWindow.length
+
+// 요약 카드 "내 잔고 기준 이번 달 분배금" — 지금 시점의 잔고 기준 추정치
+const curHoldings = holdings.filter(h => h.stock_code === DIV_STOCK_CODE && h.net_qty > 0)
+const div = Math.round(h.net_qty * (h.latest_price ?? 0) * avgRate / 100)
+const tax = Math.round(h.net_qty * (latest?.tax_base_amt ?? 0))
+
+// 지급 이력 테이블 우측 2개 열 — 13일 기산 실적치
+const rowQty   = Σ acctDivIdx.get(`${ref_date}|${account_no}`)?.qty_13th     // 보유 잔고
+const rowTotal = Σ acctDivIdx.get(`${ref_date}|${account_no}`)?.dist_total   // 합계
+```
+
+| | 수량 출처 | 성격 |
+|---|---|---|
+| 요약 카드 | `getHoldings()` 의 `net_qty` (현재) | 추정 |
+| 지급 이력 테이블 | `getMonthlyDividendByAccount()` 의 `qty_13th` (13일 기산) | 실적 |
 
 ### 종목 검색 (모달)
 

@@ -975,21 +975,32 @@ export default function StockPage() {
 
         {/* ── 배당 수익율 팝업 ── */}
         {showDivModal && (() => {
-          const avgRate    = divHistory.length > 0 ? divHistory.reduce((s,r)=>s+r.dist_rate,0)/divHistory.length : 0
+          // 월평균 분배율 — 최근 12개월 (분배는 월 1회라 최근 12건이 12개월)
+          const avgWindow  = divHistory.slice(0, 12)
+          const avgRate    = avgWindow.length > 0 ? avgWindow.reduce((s,r)=>s+r.dist_rate,0)/avgWindow.length : 0
           const annualRate = avgRate * 12
           const latest     = divHistory[0]
-          const maxAmt     = Math.max(...divHistory.map(r=>r.dist_amt), 1)
-          // 계좌별 월별 분배금 — 13일 기산
+          // 계좌별 월별 분배금 — 13일 기산 (지급 이력 테이블 전용)
           const acctList = Array.from(new Set(monthlyAcctDiv.map(r => r.account_no))).map(no => ({
             no,
             nm: monthlyAcctDiv.find(r => r.account_no === no)?.account_nm ?? no,
           }))
           const acctDivIdx = new Map(monthlyAcctDiv.map(r => [`${r.ref_date}|${r.account_no}`, r]))
-          // 카드용: 최신 지급기준일 기준 계좌별 13일 기산 잔고 (테이블과 동일 기준)
-          const latestAcctDiv = latest ? monthlyAcctDiv.filter(r => r.ref_date === latest.ref_date) : []
-          const totalQty   = latestAcctDiv.reduce((s, r) => s + r.qty_13th, 0)
-          const totalDiv   = latestAcctDiv.reduce((s, r) => s + r.dist_total, 0) || null
-          const totalTax   = latestAcctDiv.reduce((s, r) => s + r.tax_total, 0) || null
+          // 카드용: 지금 시점의 보유 잔고 × 당일 종가 × 월평균 분배율
+          const curHoldings  = holdings.filter(h => h.stock_code === DIV_STOCK_CODE && h.net_qty > 0)
+          const curPrice     = curHoldings.find(h => h.latest_price != null)?.latest_price ?? null
+          const curPriceDate = curHoldings.find(h => h.latest_date  != null)?.latest_date  ?? null
+          const perShareTax  = latest?.tax_base_amt ?? 0
+          const curRows = curHoldings.map(h => ({
+            account_no: h.account_no,
+            account_nm: h.account_nm,
+            qty: h.net_qty,
+            div: Math.round(h.net_qty * (h.latest_price ?? 0) * avgRate / 100),
+            tax: Math.round(h.net_qty * perShareTax),
+          }))
+          const totalQty = curRows.reduce((s, r) => s + r.qty, 0)
+          const totalDiv = curRows.reduce((s, r) => s + r.div, 0)
+          const totalTax = curRows.reduce((s, r) => s + r.tax, 0)
           return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[1224px] max-h-[90vh] flex flex-col overflow-hidden">
@@ -1019,7 +1030,7 @@ export default function StockPage() {
                       <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
                         <p className="text-xs text-gray-500 mb-0.5">월평균 분배율</p>
                         <p className="text-xl font-bold text-orange-600">{avgRate.toFixed(2)}%</p>
-                        <p className="text-xs text-gray-500">최근 {divHistory.length}회 평균</p>
+                        <p className="text-xs text-gray-500">최근 {avgWindow.length}개월 평균</p>
                       </div>
                       <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
                         <p className="text-xs text-gray-500 mb-0.5">연환산 수익률</p>
@@ -1028,11 +1039,11 @@ export default function StockPage() {
                       </div>
                     </div>
                     {/* 잔고 기반 분배금 카드 */}
-                    {totalQty > 0 && totalDiv != null && (
+                    {totalQty > 0 && (
                       <div className="bg-white rounded-xl border border-orange-300 overflow-hidden">
                         <div className="flex items-center justify-between px-3 py-2 border-b border-orange-100">
                           <p className="text-xs font-semibold text-orange-700">내 잔고 기준 이번 달 분배금</p>
-                          <span className="text-xs text-gray-500">{latest?.ref_date} 분배금 기준</span>
+                          <span className="text-xs text-gray-500">현재 잔고 × 당일 종가 × 월평균 분배율</span>
                         </div>
                         {/* 컬럼 헤더 */}
                         <div className="grid grid-cols-4 gap-2 px-3 py-1.5 bg-orange-50 border-b border-orange-100 text-xs font-semibold text-gray-500">
@@ -1046,20 +1057,20 @@ export default function StockPage() {
                           <div className="text-xs font-bold text-orange-700">합계</div>
                           <div className="text-right text-sm font-bold text-gray-800">{fmt(totalQty)}주</div>
                           <div className="text-right text-sm font-bold text-orange-600">{fmt(totalDiv)}원</div>
-                          <div className="text-right text-sm font-bold text-gray-700">{fmt(totalTax ?? 0)}원</div>
+                          <div className="text-right text-sm font-bold text-gray-700">{fmt(totalTax)}원</div>
                         </div>
                         {/* 계좌별 행 */}
-                        {latestAcctDiv.map(r => (
+                        {curRows.map(r => (
                           <div key={r.account_no} className="grid grid-cols-4 gap-2 px-3 py-2 border-b border-gray-100 last:border-0 text-xs">
                             <div className="text-gray-600 truncate">{r.account_nm ?? r.account_no}</div>
-                            <div className="text-right text-gray-800">{fmt(r.qty_13th)}주</div>
-                            <div className="text-right text-orange-500">{fmt(r.dist_total)}원</div>
-                            <div className="text-right text-gray-600">{fmt(r.tax_total)}원</div>
+                            <div className="text-right text-gray-800">{fmt(r.qty)}주</div>
+                            <div className="text-right text-orange-500">{fmt(r.div)}원</div>
+                            <div className="text-right text-gray-600">{fmt(r.tax)}원</div>
                           </div>
                         ))}
-                        {/* 주당 기준 */}
+                        {/* 계산 기준 */}
                         <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
-                          주당 분배금 {fmt(latest?.dist_amt ?? 0)}원 · 과세표준 {fmt(latest?.tax_base_amt ?? 0)}원
+                          당일 종가 {fmt(curPrice)}원{curPriceDate && ` (${curPriceDate})`} · 월평균 분배율 {avgRate.toFixed(2)}% · 주당 과세표준 {fmt(perShareTax)}원
                         </div>
                       </div>
                     )}
@@ -1173,19 +1184,21 @@ export default function StockPage() {
                             </th>
                           ))}
                           {acctList.length > 0 && (
-                            <th className="px-3 py-2.5 text-xs font-semibold text-orange-900 text-right whitespace-nowrap border-l border-orange-300 bg-orange-50/50">
-                              합계
-                            </th>
+                            <>
+                              <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 text-right whitespace-nowrap border-l border-orange-300 bg-orange-50/50">
+                                보유 잔고
+                              </th>
+                              <th className="px-3 py-2.5 text-xs font-semibold text-orange-900 text-right whitespace-nowrap bg-orange-50/50">
+                                합계
+                              </th>
+                            </>
                           )}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {divHistory.map((r, i) => (
                           <tr key={r.ref_date} className={`hover:bg-amber-50 transition-colors ${i === 0 ? "bg-amber-50/50" : ""}`}>
-                            <td className="px-4 py-2 text-gray-800 font-medium whitespace-nowrap">
-                              {i === 0 && <span className="inline-block bg-amber-400 text-white text-[10px] font-bold px-1.5 py-0.5 rounded mr-1.5 align-middle">최신</span>}
-                              {r.ref_date}
-                            </td>
+                            <td className="px-4 py-2 text-gray-800 font-medium whitespace-nowrap">{r.ref_date}</td>
                             <td className="px-4 py-2 text-gray-500 whitespace-nowrap">{r.pay_date}</td>
                             <td className="px-4 py-2 text-right text-gray-700 whitespace-nowrap">
                               {r.close_price == null ? (
@@ -1199,22 +1212,8 @@ export default function StockPage() {
                                 </>
                               )}
                             </td>
-                            <td className="px-4 py-2 text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <div className="w-16 bg-gray-100 rounded-full h-1.5 block max-sm:hidden">
-                                  <div className="bg-amber-400 h-1.5 rounded-full" style={{ width: `${Math.min(r.dist_rate/2.5*100,100)}%` }} />
-                                </div>
-                                <span className="font-bold text-amber-700">{r.dist_rate.toFixed(2)}%</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-2 text-right font-semibold text-gray-900 whitespace-nowrap">
-                              <div className="flex items-center justify-end gap-1.5">
-                                <div className="w-12 bg-gray-100 rounded-full h-1.5 block max-sm:hidden">
-                                  <div className="bg-orange-300 h-1.5 rounded-full" style={{ width: `${Math.round(r.dist_amt/maxAmt*100)}%` }} />
-                                </div>
-                                {r.dist_amt.toLocaleString()}원
-                              </div>
-                            </td>
+                            <td className="px-4 py-2 text-right font-bold text-amber-700 whitespace-nowrap">{r.dist_rate.toFixed(2)}%</td>
+                            <td className="px-4 py-2 text-right font-semibold text-gray-900 whitespace-nowrap">{r.dist_amt.toLocaleString()}원</td>
                             <td className="px-4 py-2 text-right text-gray-700 text-xs whitespace-nowrap">{r.tax_base_amt.toLocaleString()}원</td>
                             {acctList.map(a => {
                               const d = acctDivIdx.get(`${r.ref_date}|${a.no}`)
@@ -1230,14 +1229,23 @@ export default function StockPage() {
                               )
                             })}
                             {acctList.length > 0 && (() => {
+                              const rowQty = acctList.reduce((sum, a) => {
+                                const d = acctDivIdx.get(`${r.ref_date}|${a.no}`)
+                                return sum + (d?.qty_13th ?? 0)
+                              }, 0)
                               const rowTotal = acctList.reduce((sum, a) => {
                                 const d = acctDivIdx.get(`${r.ref_date}|${a.no}`)
                                 return sum + (d?.dist_total ?? 0)
                               }, 0)
                               return (
-                                <td className="px-3 py-2 text-right text-xs whitespace-nowrap border-l border-orange-300 bg-orange-50/30 font-bold text-orange-700">
-                                  {rowTotal > 0 ? `${fmt(rowTotal)}원` : <span className="text-gray-300">-</span>}
-                                </td>
+                                <>
+                                  <td className="px-3 py-2 text-right text-xs whitespace-nowrap border-l border-orange-300 bg-orange-50/30 font-semibold text-gray-700">
+                                    {rowQty > 0 ? `${fmt(rowQty)}주` : <span className="text-gray-300">-</span>}
+                                  </td>
+                                  <td className="px-3 py-2 text-right text-xs whitespace-nowrap bg-orange-50/30 font-bold text-orange-700">
+                                    {rowTotal > 0 ? `${fmt(rowTotal)}원` : <span className="text-gray-300">-</span>}
+                                  </td>
+                                </>
                               )
                             })()}
                           </tr>
