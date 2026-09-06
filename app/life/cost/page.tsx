@@ -219,6 +219,14 @@ function amountToInput(n: number): string {
   return n ? fmt(n) : ""
 }
 
+/**
+ * 카드로 결제해 당월 지출에서 빠지는 행인지. (cost_task.md 집계 로직)
+ * 다음 달 카드 청구액(item_type1='4')으로 다시 들어오므로 두 번 세지 않는다.
+ * 신용카드 항목(4) 자신은 카드 대금이 계좌에서 빠지는 것이라 제외 대상이 아니다.
+ */
+const isCardUsage = (r: { item_type1: string; cost_type: string | null }) =>
+  r.item_type1 !== "4" && r.item_type1 !== "5" && r.cost_type === "2"
+
 function CostRow({ row, yearMonth, hidePayMethod, onSaved, onDelete }: RowProps) {
   const [editing, setEditing] = useState(false)
   const [focusTarget, setFocusTarget] = useState<"amount" | "memo">("amount")
@@ -318,8 +326,17 @@ function CostRow({ row, yearMonth, hidePayMethod, onSaved, onDelete }: RowProps)
             onKeyDown={onEditKeyDown}
           />
         ) : (
-          <span className="inline-block text-sm font-medium text-gray-800 px-1 py-0.5 rounded hover:bg-blue-50 hover:ring-1 hover:ring-blue-300">
+          <span
+            className={`inline-block text-sm font-medium px-1 py-0.5 rounded hover:bg-blue-50 hover:ring-1 hover:ring-blue-300 ${
+              isCardUsage(row) ? "text-gray-400" : "text-gray-800"
+            }`}
+            title={isCardUsage(row) ? "카드 결제 — 다음 달 카드 청구액에 포함되므로 당월 지출에서 제외" : undefined}
+          >
             {row.amount === 0 ? <span className="text-gray-400">-</span> : fmt(row.amount)}
+            {/* 지출에서 빠지는 행임을 행 단위로 드러낸다 — 섹션을 눈으로 더할 때 중복 집계를 막는다 */}
+            {isCardUsage(row) && row.amount !== 0 && (
+              <span className="ml-1 text-[10px] text-gray-400 align-middle">↩︎다음달</span>
+            )}
           </span>
         )}
       </td>
@@ -1557,22 +1574,42 @@ function AddToMonthModal({ yyyymm, category, onClose, onAdded }: {
 }
 
 // ─────────────────────────────────────────────
-function SectionHeader({ title, onAdd, cardTotal, cashTotal }: {
+/**
+ * 섹션 헤더의 카드/현금 소계.
+ * `cardExcluded` 는 이 섹션의 카드 소계가 당월 지출에 안 잡힌다는 표시다 —
+ * 없으면 섹션 합계를 눈으로 더할 때 카드 청구액과 이중으로 세게 된다.
+ */
+function SectionTotals({ cardTotal, cashTotal, cardExcluded }: {
+  cardTotal?: number
+  cashTotal?: number
+  cardExcluded?: boolean
+}) {
+  if (cardTotal === undefined && cashTotal === undefined) return null
+  return (
+    <div className="flex items-center gap-3 text-xs">
+      {!!cardTotal && (
+        <span className="text-blue-500">
+          카드 <span className="font-semibold text-blue-600">{fmt(cardTotal)}</span>
+          {cardExcluded && <span className="ml-1 text-gray-400">· 지출 제외</span>}
+        </span>
+      )}
+      {!!cashTotal && <span className="text-emerald-600">현금 <span className="font-semibold text-emerald-600">{fmt(cashTotal)}</span></span>}
+    </div>
+  )
+}
+
+function SectionHeader({ title, onAdd, cardTotal, cashTotal, cardExcluded }: {
   title: string
   onAdd: () => void
   cardTotal?: number
   cashTotal?: number
+  cardExcluded?: boolean
 }) {
   return (
     <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-200">
       <div className="flex items-center gap-3">
         <span className="text-sm font-semibold text-gray-700">{title}</span>
-        {(cardTotal !== undefined || cashTotal !== undefined) && (
-          <div className="flex items-center gap-3 text-xs">
-            {!!cardTotal && <span className="text-blue-500">카드 <span className="font-semibold text-blue-600">{fmt(cardTotal)}</span></span>}
-            {!!cashTotal && <span className="text-emerald-600">현금 <span className="font-semibold text-emerald-600">{fmt(cashTotal)}</span></span>}
-          </div>
-        )}
+        <SectionTotals cardTotal={cardTotal} cashTotal={cashTotal} cardExcluded={cardExcluded} />
       </div>
       <button onClick={onAdd} className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ 항목추가</button>
     </div>
@@ -1582,12 +1619,13 @@ function SectionHeader({ title, onAdd, cardTotal, cashTotal }: {
 // ─────────────────────────────────────────────
 // 접기/펼치기 섹션 카드
 // ─────────────────────────────────────────────
-function SectionCard({ title, defaultCollapsed, onAdd, cardTotal, cashTotal, children }: {
+function SectionCard({ title, defaultCollapsed, onAdd, cardTotal, cashTotal, cardExcluded, children }: {
   title: string
   defaultCollapsed?: boolean
   onAdd: () => void
   cardTotal?: number
   cashTotal?: number
+  cardExcluded?: boolean
   children: React.ReactNode
 }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed ?? false)
@@ -1596,12 +1634,7 @@ function SectionCard({ title, defaultCollapsed, onAdd, cardTotal, cashTotal, chi
       <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-200">
         <div className="flex items-center gap-3">
           <span className="text-sm font-semibold text-gray-700">{title}</span>
-          {(cardTotal !== undefined || cashTotal !== undefined) && (
-            <div className="flex items-center gap-3 text-xs">
-              {!!cardTotal && <span className="text-blue-500">카드 <span className="font-semibold text-blue-600">{fmt(cardTotal)}</span></span>}
-              {!!cashTotal && <span className="text-emerald-600">현금 <span className="font-semibold text-emerald-600">{fmt(cashTotal)}</span></span>}
-            </div>
-          )}
+          <SectionTotals cardTotal={cardTotal} cashTotal={cashTotal} cardExcluded={cardExcluded} />
         </div>
         <div className="flex items-center gap-2">
           <button onClick={onAdd} className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ 항목추가</button>
@@ -1707,12 +1740,7 @@ export default function CostPage() {
     load()
   }
 
-  // 집계 (cost_task.md 집계 로직)
-  // 카드로 결제한 항목은 다음 달 카드 청구액에 포함되어 신용카드 섹션으로 들어오므로 당월 지출에서 뺀다.
-  // 신용카드 항목(4)은 카드 대금이 계좌에서 빠지는 것이라 제외 대상이 아니다.
-  const isCardUsage = (r: MonthDataRow) =>
-    r.item_type1 !== "4" && r.item_type1 !== "5" && r.cost_type === "2"
-
+  // 집계 (cost_task.md 집계 로직) — isCardUsage 는 모듈 상단 공용 정의를 쓴다 (행 표시와 같은 기준)
   const income = rows.filter(r => r.item_type1 === "5").reduce((s, r) => s + r.amount, 0)
   const cardUsage = rows.filter(isCardUsage).reduce((s, r) => s + r.amount, 0)
   const expense = rows
@@ -1816,7 +1844,7 @@ export default function CostPage() {
                   </div>
                   {cardUsage > 0 && (
                     <div className="border-t border-gray-100 pt-1.5 flex justify-between items-center">
-                      <span className="text-xs text-gray-400">카드 사용액 <span className="text-gray-300">· 다음 달 청구</span></span>
+                      <span className="text-xs text-gray-400">카드 사용액 <span className="text-gray-300">· 지출 제외 · 다음 달 청구</span></span>
                       <span className="text-xs text-gray-400">₩{fmt(cardUsage)}</span>
                     </div>
                   )}
@@ -1886,7 +1914,7 @@ export default function CostPage() {
             {/* ── 오른쪽 패널 ── */}
             <div className="flex-1 min-w-0 space-y-3">
               {/* 고정지출 */}
-              <SectionCard title="고정지출" defaultCollapsed onAdd={() => setAddMonthCategory("1")} cardTotal={fixedTotals.card} cashTotal={fixedTotals.cash}>
+              <SectionCard title="고정지출" defaultCollapsed onAdd={() => setAddMonthCategory("1")} cardTotal={fixedTotals.card} cashTotal={fixedTotals.cash} cardExcluded>
                 {fixedRows.length === 0 ? (
                   <p className="text-xs text-gray-400 px-3 py-3">항목 없음</p>
                 ) : (
@@ -1895,7 +1923,7 @@ export default function CostPage() {
               </SectionCard>
 
               {/* 고정이체 & 금융 */}
-              <SectionCard title="고정이체 & 금융" defaultCollapsed onAdd={() => setAddMonthCategory("2")} cardTotal={transferTotals.card} cashTotal={transferTotals.cash}>
+              <SectionCard title="고정이체 & 금융" defaultCollapsed onAdd={() => setAddMonthCategory("2")} cardTotal={transferTotals.card} cashTotal={transferTotals.cash} cardExcluded>
                 {transferRows.length === 0 ? (
                   <p className="text-xs text-gray-400 px-3 py-3">항목 없음</p>
                 ) : (
@@ -1904,7 +1932,7 @@ export default function CostPage() {
               </SectionCard>
 
               {/* 생활비 & 공과금 */}
-              <SectionCard title="생활비 & 공과금" onAdd={() => setAddMonthCategory("3")} cardTotal={livingTotals.card} cashTotal={livingTotals.cash}>
+              <SectionCard title="생활비 & 공과금" onAdd={() => setAddMonthCategory("3")} cardTotal={livingTotals.card} cashTotal={livingTotals.cash} cardExcluded>
                 {livingRows.length === 0 ? (
                   <p className="text-xs text-gray-400 px-3 py-3">항목 없음</p>
                 ) : (

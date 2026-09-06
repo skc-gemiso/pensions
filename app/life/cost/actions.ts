@@ -144,6 +144,7 @@ export async function getRecentMonths(yyyymm: string, n: number): Promise<Recent
     FROM my_cost_info c
     JOIN my_cost_item i ON i.id = c.item_id::int
     WHERE c.yyyymm = ANY($1::text[])
+      AND i.use_yn = 'Y'
     GROUP BY c.yyyymm
     ORDER BY c.yyyymm DESC
   `, [months])
