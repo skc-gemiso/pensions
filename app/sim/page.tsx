@@ -1990,7 +1990,7 @@ export default function SavingsFundPage() {
                     }}
                     className="shrink-0 text-xs px-2 py-0.5 bg-amber-200 hover:bg-amber-300 text-amber-900 font-medium rounded transition-colors whitespace-nowrap"
                   >
-                    배당 수익율 조회
+                    분배금 수익율 조회
                   </button>
                 )}
               </li>
@@ -1998,7 +1998,7 @@ export default function SavingsFundPage() {
           </ul>
         </div>
 
-        {/* 배당 수익율 팝업 */}
+        {/* 분배금 수익율 팝업 */}
         {showDivModal && (() => {
           const avgRate   = divHistory.length > 0 ? divHistory.reduce((s,r)=>s+r.dist_rate,0)/divHistory.length : 0
           const annualRate = avgRate * 12

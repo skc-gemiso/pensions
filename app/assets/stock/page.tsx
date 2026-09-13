@@ -12,7 +12,7 @@ const won = (n: number | null | undefined) => n == null ? "-" : `${fmt(n)}원`
 import {
   getAccounts, getHoldings, getTransactions, addTransaction, deleteTransaction,
   getDailyPrices, fetchAndSaveNaverPrices, searchStockList, getMarketIndices, getDefaultStockList,
-  getAccountInfo, addAccountInfo, getMonthlyDividendByAccount, addEtfDividend,
+  getAccountInfo, addAccountInfo, getMonthlyDividendByAccount, addEtfDividend, updateEtfDividend,
   type Account, type StockHolding, type StockTransaction, type DailyPrice, type StockListItem, type MarketIndex, type AccountInfo, type MonthlyAccountDiv,
 } from "./actions"
 import { getEtfDividendHistory, type EtfDividendRow } from "@/app/sim/actions"
@@ -139,6 +139,7 @@ export default function StockPage() {
   const [divSaving, setDivSaving]         = useState(false)
   const [divError, setDivError]           = useState<string | null>(null)
   const [divPasteInfo, setDivPasteInfo]   = useState<string | null>(null)
+  const [divEditRef, setDivEditRef]       = useState<string | null>(null)  // 수정 중인 지급기준일 (null 이면 추가 모드)
   const [transactions, setTransactions]   = useState<StockTransaction[]>([])
   const [txLoading, setTxLoading]         = useState(false)
   const [tooltip, setTooltip]             = useState<{ code: string; account_no: string; x: number; y: number } | null>(null)
@@ -240,25 +241,48 @@ export default function StockPage() {
     }
   }
 
-  async function handleAddDividend() {
+  function closeDividendForm() {
+    setShowDivForm(false)
+    setDivForm(EMPTY_DIV_FORM)
+    setDivEditRef(null)
+    setDivError(null)
+    setDivPasteInfo(null)
+  }
+
+  // 지급 이력 행의 값을 폼에 채워 수정 모드로 연다
+  function startEditDividend(r: EtfDividendRow) {
+    setDivForm({
+      ref_date:     r.ref_date,
+      pay_date:     r.pay_date ?? "",
+      dist_rate:    String(r.dist_rate),
+      dist_amt:     r.dist_amt.toLocaleString("ko-KR"),
+      tax_base_amt: r.tax_base_amt.toLocaleString("ko-KR"),
+    })
+    setDivEditRef(r.ref_date)
+    setDivError(null)
+    setDivPasteInfo(null)
+    setShowDivForm(true)
+  }
+
+  async function handleSaveDividend() {
     if (!divForm.ref_date) { setDivError("지급기준일을 입력하세요."); return }
     setDivSaving(true)
     setDivError(null)
+    const values = {
+      stock_code:   DIV_STOCK_CODE,
+      ref_date:     divForm.ref_date,
+      pay_date:     divForm.pay_date || null,
+      dist_rate:    divForm.dist_rate    === "" ? null : Number(divForm.dist_rate),
+      dist_amt:     divForm.dist_amt     === "" ? null : Number(divForm.dist_amt.replace(/,/g, "")),
+      tax_base_amt: divForm.tax_base_amt === "" ? null : Number(divForm.tax_base_amt.replace(/,/g, "")),
+    }
     try {
-      await addEtfDividend({
-        stock_code:   DIV_STOCK_CODE,
-        ref_date:     divForm.ref_date,
-        pay_date:     divForm.pay_date || null,
-        dist_rate:    divForm.dist_rate    === "" ? null : Number(divForm.dist_rate),
-        dist_amt:     divForm.dist_amt     === "" ? null : Number(divForm.dist_amt.replace(/,/g, "")),
-        tax_base_amt: divForm.tax_base_amt === "" ? null : Number(divForm.tax_base_amt.replace(/,/g, "")),
-      })
+      if (divEditRef) await updateEtfDividend({ ...values, orig_ref_date: divEditRef })
+      else            await addEtfDividend(values)
       await reloadDividend()
-      setDivForm(EMPTY_DIV_FORM)
-      setDivPasteInfo(null)
-      setShowDivForm(false)
+      closeDividendForm()
     } catch (e) {
-      setDivError(e instanceof Error ? e.message : "분배금을 추가하지 못했습니다.")
+      setDivError(e instanceof Error ? e.message : divEditRef ? "분배금을 수정하지 못했습니다." : "분배금을 추가하지 못했습니다.")
     }
     setDivSaving(false)
   }
@@ -528,7 +552,7 @@ export default function StockPage() {
                       }}
                       className="text-xs px-3 py-1.5 border border-amber-400 text-amber-700 bg-amber-50 rounded-lg hover:bg-amber-100 whitespace-nowrap font-medium"
                     >
-                      배당 수익율 조회
+                      분배금 수익율 조회
                     </button>
                   )}
                   <button
@@ -973,7 +997,7 @@ export default function StockPage() {
           )
         })()}
 
-        {/* ── 배당 수익율 팝업 ── */}
+        {/* ── 분배금 수익율 팝업 ── */}
         {showDivModal && (() => {
           // 월평균 분배율 — 최근 12개월 (분배는 월 1회라 최근 12건이 12개월)
           const avgWindow  = divHistory.slice(0, 12)
@@ -1085,15 +1109,23 @@ export default function StockPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-gray-600">분배금 지급 이력</span>
                     <button
-                      onClick={() => { setShowDivForm(v => !v); setDivError(null); setDivPasteInfo(null) }}
+                      onClick={() => {
+                        // 추가 폼이 열려 있으면 닫고, 닫혀 있거나 수정 중이면 빈 추가 폼으로 연다
+                        if (showDivForm && !divEditRef) { closeDividendForm(); return }
+                        closeDividendForm()
+                        setShowDivForm(true)
+                      }}
                       className="text-xs px-3 py-1 border border-amber-400 text-amber-700 bg-amber-50 rounded-lg hover:bg-amber-100 font-medium"
                     >
-                      {showDivForm ? "닫기" : "+ 분배금 추가"}
+                      {showDivForm && !divEditRef ? "닫기" : "+ 분배금 추가"}
                     </button>
                   </div>
 
                   {showDivForm && (
                     <div className="mt-2 p-3 bg-amber-50/60 border border-amber-200 rounded-lg" onPaste={handleDividendPaste}>
+                      <p className="text-xs font-semibold text-amber-800 mb-1">
+                        {divEditRef ? `분배금 수정 — ${divEditRef}` : "분배금 추가"}
+                      </p>
                       <p className="text-xs text-gray-500 mb-2">
                         엑셀에서 복사한 행을 이 영역 아무 곳에나 붙여넣으면 자동으로 나뉩니다 —
                         <span className="ml-1 font-mono text-gray-600">26.08.14 ⇥ 26.08.19 ⇥ 1.36% ⇥ 270 ⇥ 3</span>
@@ -1157,11 +1189,11 @@ export default function StockPage() {
 
                       <div className="flex justify-end gap-2 mt-3">
                         <button
-                          onClick={() => { setShowDivForm(false); setDivForm(EMPTY_DIV_FORM); setDivError(null); setDivPasteInfo(null) }}
+                          onClick={closeDividendForm}
                           className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
                         >취소</button>
                         <button
-                          onClick={handleAddDividend}
+                          onClick={handleSaveDividend}
                           disabled={divSaving}
                           className="px-3 py-1.5 text-xs font-medium text-white bg-amber-500 rounded-lg hover:bg-amber-600 disabled:opacity-50"
                         >{divSaving ? "저장 중..." : "저장"}</button>
@@ -1176,6 +1208,7 @@ export default function StockPage() {
                     <table className="w-full min-w-max text-sm">
                       <thead className="bg-gray-50 sticky top-0 border-b border-gray-200">
                         <tr>
+                          <th className="pl-4 pr-1 py-2.5 text-xs font-semibold text-gray-600 text-left whitespace-nowrap">수정</th>
                           <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-left whitespace-nowrap">지급기준일</th>
                           <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-left whitespace-nowrap">실지급일</th>
                           <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-right whitespace-nowrap">기준일 종가</th>
@@ -1201,7 +1234,13 @@ export default function StockPage() {
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {divHistory.map((r, i) => (
-                          <tr key={r.ref_date} className={`hover:bg-amber-50 transition-colors ${i === 0 ? "bg-amber-50/50" : ""}`}>
+                          <tr key={r.ref_date} className={`hover:bg-amber-50 transition-colors ${r.ref_date === divEditRef ? "bg-amber-100" : i === 0 ? "bg-amber-50/50" : ""}`}>
+                            <td className="pl-4 pr-1 py-2 whitespace-nowrap">
+                              <button
+                                onClick={() => startEditDividend(r)}
+                                className="text-xs px-2 py-0.5 border border-gray-300 text-gray-600 bg-white rounded hover:bg-gray-50"
+                              >수정</button>
+                            </td>
                             <td className="px-4 py-2 text-gray-800 font-medium whitespace-nowrap">{r.ref_date}</td>
                             <td className="px-4 py-2 text-gray-500 whitespace-nowrap">{r.pay_date}</td>
                             <td className="px-4 py-2 text-right text-gray-700 whitespace-nowrap">

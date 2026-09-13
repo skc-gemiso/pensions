@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `addAccountInfo(data)` | 계좌 입출금 내역 INSERT (`account_no`, `trade_date`, `in_out`, `amt`, `memo`) | 세션 필요 |
 | `getMonthlyDividendByAccount(stockCode)` | 분배금 지급기준일별 계좌 보유수량·분배금·세금. 각 기준일의 **해당 월 13일까지 누적 순수량** 기준. 배당 팝업의 **지급 이력 테이블 전용** — 요약 카드는 현재 잔고를 쓴다 | 세션 필요 |
 | `addEtfDividend(data)` | `t_etf_dividend` 1건 INSERT. 같은 `(stock_code, ref_date)` 가 이미 있으면 덮어쓰지 않고 예외 — 배당 팝업의 `[+ 분배금 추가]` 에서 호출 | 세션 필요 |
+| `updateEtfDividend(data)` | `t_etf_dividend` 1건 UPDATE. `orig_ref_date` 로 행을 찾고 `ref_date`(PK 포함) 5개 값과 `updated_at` 을 갱신. 바꾼 `ref_date` 가 다른 행과 겹치면 예외, 대상 행이 없어도 예외 — 지급 이력 행의 `[수정]` 에서 호출 | 세션 필요 |
 
 ### 타입 정의
 
