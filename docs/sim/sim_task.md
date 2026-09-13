@@ -178,6 +178,16 @@ CREATE TABLE pension_sim_savings_fund (
 | `getCoveredCallSeries(months?)` | `CoveredCallRow[]` | 커버드콜 ETF 시계열 (일반형 대비 비교용) |
 | `getEtfDividendHistory(...)` | `EtfDividendRow[]` | ETF 분배금 지급 이력 + **지급기준일 종가** |
 
+분배금 팝업의 추가·수정은 이 파일이 아니라 주식 투자 쪽 서버 액션과 공용 폼을 쓴다.
+
+| 구분 | 위치 | 설명 |
+|------|------|------|
+| 폼 컴포넌트 | `app/assets/stock/DividendForm.tsx` | `DividendForm({ stockCode, editRow, onSaved, onCancel })` — `editRow` 가 `null` 이면 추가, 행이면 수정. 초기값을 마운트 시 한 번만 읽으므로 부모가 `key={editRow?.ref_date ?? "new"}` 로 다시 마운트 |
+| 추가 | `addEtfDividend(data)` (`app/assets/stock/actions.ts`) | admin 전용. 같은 지급기준일이면 예외 |
+| 수정 | `updateEtfDividend(data)` (`app/assets/stock/actions.ts`) | admin 전용. `orig_ref_date` 로 행을 찾아 갱신 |
+
+화면은 `role === "admin"` 일 때만 추가 버튼·수정 열을 그린다 (`isAdmin`). 저장 후 `getEtfDividendHistory("498400")` 로 이력을 다시 읽는다.
+
 ---
 
 ## 헬프 모달 (`PageHelpModal`) 탭 구성

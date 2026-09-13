@@ -121,6 +121,7 @@ ETF 기반 장기 투자 시뮬레이션을 통해 퇴직 후 자산·배당 계
 | 탭별 파라미터 | 수익율 확인 / IRP 수익율 확인 |
 | 시뮬레이션 저장·조회·삭제 | DB 기반 이력 관리 |
 | 헬프 모달 | 초보 가이드, 계좌 유형, 투자 기준, 화면 안내 |
+| 분배금 수익율 조회 | `498400` 분배금 지급 이력 팝업. admin 은 분배금 추가·수정 가능 (주식 투자와 같은 `DividendForm`) |
 
 - 참고 파일: [app/sim/page.tsx](../app/sim/page.tsx), [app/sim/actions.ts](../app/sim/actions.ts)
 - 상세 문서: [sim/sim_project.md](sim/sim_project.md), [sim/sim_task.md](sim/sim_task.md)

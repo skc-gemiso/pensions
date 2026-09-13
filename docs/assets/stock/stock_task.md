@@ -95,6 +95,23 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `addEtfDividend(data)` | `t_etf_dividend` 1건 INSERT. 같은 `(stock_code, ref_date)` 가 이미 있으면 덮어쓰지 않고 예외 — 배당 팝업의 `[+ 분배금 추가]` 에서 호출 | 세션 필요 |
 | `updateEtfDividend(data)` | `t_etf_dividend` 1건 UPDATE. `orig_ref_date` 로 행을 찾고 `ref_date`(PK 포함) 5개 값과 `updated_at` 을 갱신. 바꾼 `ref_date` 가 다른 행과 겹치면 예외, 대상 행이 없어도 예외 — 지급 이력 행의 `[수정]` 에서 호출 | 세션 필요 |
 
+### 분배금 입력 폼 (`app/assets/stock/DividendForm.tsx`)
+
+추가·수정 인라인 폼과 엑셀 붙여넣기 파서(`parseDividendPaste`)는 이 컴포넌트에 있다.
+주식 투자 팝업과 연금투자 시뮬레이션(`/sim`) 분배금 팝업이 함께 쓴다.
+
+```typescript
+DividendForm({
+  stockCode: string,
+  editRow: EtfDividendRow | null,   // null → 추가, 행 → 수정 (orig_ref_date = editRow.ref_date)
+  onSaved: () => Promise<void> | void,  // 부모가 이력 재조회 후 폼을 닫는다
+  onCancel: () => void,
+})
+```
+
+- 초기값은 마운트 시 한 번만 읽는다 → 수정할 행을 바꿀 때 부모가 `key={editRow?.ref_date ?? "new"}` 로 다시 마운트
+- 입력 상태·저장 중·오류·붙여넣기 안내는 컴포넌트 내부 state. 부모는 `showDivForm`·`divEditRow` 만 가진다
+
 ### 타입 정의
 
 ```typescript

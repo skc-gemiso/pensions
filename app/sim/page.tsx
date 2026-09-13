@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 import { useSession } from "next-auth/react"
 import AppLayout from "@/components/AppLayout"
 import { Kodex200Panel } from "./Kodex200Panel"
+import { DividendForm } from "@/app/assets/stock/DividendForm"
 import {
   saveSimulation,
   loadSimulations,
@@ -1636,6 +1637,8 @@ export default function SavingsFundPage() {
     : null
 
   const isLoggedIn = status === "authenticated"
+  // 분배금 추가·수정 버튼 노출 — 저장 서버 액션도 admin 만 허용한다
+  const isAdmin = role === "admin"
 
   const visibleTabs = TABS.filter((t) => !t.isIRP)
 
@@ -1663,7 +1666,19 @@ export default function SavingsFundPage() {
   const [ipBlocked, setIpBlocked]     = useState(false)
   const [showDivModal, setShowDivModal] = useState(false)
   const [divHistory, setDivHistory]     = useState<EtfDividendRow[]>([])
+  const [showDivForm, setShowDivForm]   = useState(false)
+  const [divEditRow, setDivEditRow]     = useState<EtfDividendRow | null>(null)  // 수정 중인 행 (null 이면 추가 모드)
   const [prefilled, setPrefilled]       = useState(false)
+
+  function closeDividendForm() {
+    setShowDivForm(false)
+    setDivEditRow(null)
+  }
+
+  async function handleDividendSaved() {
+    setDivHistory(await getEtfDividendHistory("498400"))
+    closeDividendForm()
+  }
 
   // 개인연금(/pension/per)에서 "지금 기준 그대로" 넘어온 경우 입력값을 채운다.
   // useSearchParams 대신 location 을 읽어 Suspense 경계 없이 클라이언트에서만 처리한다.
@@ -2000,7 +2015,9 @@ export default function SavingsFundPage() {
 
         {/* 분배금 수익율 팝업 */}
         {showDivModal && (() => {
-          const avgRate   = divHistory.length > 0 ? divHistory.reduce((s,r)=>s+r.dist_rate,0)/divHistory.length : 0
+          // 월평균 분배율 — 최근 12개월 (분배는 월 1회라 최근 12건이 12개월). 주식 투자 팝업과 같은 기준
+          const avgWindow  = divHistory.slice(0, 12)
+          const avgRate    = avgWindow.length > 0 ? avgWindow.reduce((s,r)=>s+r.dist_rate,0)/avgWindow.length : 0
           const annualRate = avgRate * 12
           const latest    = divHistory[0]
           return (
@@ -2034,7 +2051,7 @@ export default function SavingsFundPage() {
                       <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
                         <p className="text-xs text-gray-500 mb-0.5">월평균 분배율</p>
                         <p className="text-xl font-bold text-orange-600">{avgRate.toFixed(2)}%</p>
-                        <p className="text-xs text-gray-500">최근 {divHistory.length}회 평균</p>
+                        <p className="text-xs text-gray-500">최근 {avgWindow.length}개월 평균</p>
                       </div>
                       <div className="bg-white rounded-xl p-3 border border-amber-200 text-center">
                         <p className="text-xs text-gray-500 mb-0.5">연환산 수익률</p>
@@ -2068,11 +2085,41 @@ export default function SavingsFundPage() {
                   </div>
                 )}
 
+                {/* 분배금 추가·수정 (admin) */}
+                {isAdmin && (
+                  <div className="px-5 py-2 border-b border-gray-200 bg-white">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-gray-600">분배금 지급 이력</span>
+                      <button
+                        onClick={() => {
+                          // 추가 폼이 열려 있으면 닫고, 닫혀 있거나 수정 중이면 빈 추가 폼으로 연다
+                          if (showDivForm && !divEditRow) { closeDividendForm(); return }
+                          closeDividendForm()
+                          setShowDivForm(true)
+                        }}
+                        className="text-xs px-3 py-1 border border-amber-400 text-amber-700 bg-amber-50 rounded-lg hover:bg-amber-100 font-medium"
+                      >
+                        {showDivForm && !divEditRow ? "닫기" : "+ 분배금 추가"}
+                      </button>
+                    </div>
+                    {showDivForm && (
+                      <DividendForm
+                        key={divEditRow?.ref_date ?? "new"}
+                        stockCode="498400"
+                        editRow={divEditRow}
+                        onSaved={handleDividendSaved}
+                        onCancel={closeDividendForm}
+                      />
+                    )}
+                  </div>
+                )}
+
                 {/* 테이블 */}
                 <div className="overflow-y-auto flex-1">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 sticky top-0 border-b border-gray-200">
                       <tr>
+                        {isAdmin && <th className="pl-4 pr-1 py-2.5 text-xs font-semibold text-gray-600 text-left whitespace-nowrap">수정</th>}
                         <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-left">지급기준일</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-left">실지급일</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-gray-600 text-right">기준일 종가</th>
@@ -2083,9 +2130,17 @@ export default function SavingsFundPage() {
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {divHistory.map((r, i) => (
-                        <tr key={r.ref_date} className={`hover:bg-amber-50 transition-colors ${i === 0 ? "bg-amber-50/50" : ""}`}>
+                        <tr key={r.ref_date} className={`hover:bg-amber-50 transition-colors ${r.ref_date === divEditRow?.ref_date ? "bg-amber-100" : i === 0 ? "bg-amber-50/50" : ""}`}>
+                          {isAdmin && (
+                            <td className="pl-4 pr-1 py-2 whitespace-nowrap">
+                              <button
+                                onClick={() => { setDivEditRow(r); setShowDivForm(true) }}
+                                className="text-xs px-2 py-0.5 border border-gray-300 text-gray-600 bg-white rounded hover:bg-gray-50"
+                              >수정</button>
+                            </td>
+                          )}
                           <td className="px-4 py-2 text-gray-800 font-medium whitespace-nowrap">
-                            {i === 0 && <span className="inline-block bg-amber-400 text-white text-[10px] font-bold px-1.5 py-0.5 rounded mr-1.5 align-middle">최신</span>}
+                            {i === 0 &&<span className="inline-block bg-amber-400 text-white text-[10px] font-bold px-1.5 py-0.5 rounded mr-1.5 align-middle">최신</span>}
                             {r.ref_date}
                           </td>
                           <td className="px-4 py-2 text-gray-500 whitespace-nowrap text-sm">{r.pay_date}</td>
