@@ -197,47 +197,42 @@ const isActive = (href: string) =>
   }, [visitorSeconds])
 
   // 로그인 세션 30분 자동 로그아웃 (5분 전 경고)
-  const [sessionSeconds, setSessionSeconds]       = useState<number | null>(null)
-  const [showSessionWarning, setShowSessionWarning] = useState(false)
+  // 남은 시간은 세션의 loginAt(서버가 기록한 마지막 활동 시각)으로 계산한다.
+  // 탭마다 따로 세면 안 쓰는 탭의 타이머가 0이 되어 쓰고 있는 탭까지 로그아웃시킨다.
+  // update() 로 loginAt 이 바뀌면 next-auth 가 다른 탭에도 알려 모든 탭이 같은 값을 본다.
+  const [nowMs, setNowMs] = useState(0)
   useEffect(() => {
-    if (status === "authenticated") {
-      setSessionSeconds(SESSION_LIMIT_SEC)
-      setShowSessionWarning(false)
-    } else {
-      setSessionSeconds(null)
-      setShowSessionWarning(false)
-    }
-  }, [status])
+    if (loggedOut) return
+    const id = setInterval(() => setNowMs(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [loggedOut])
+  const loginAtMs = user?.loginAt ? Date.parse(user.loginAt) : NaN
+  // update() 중 status 가 잠깐 "loading" 이 돼도 session 은 남아 있으므로 loggedOut 만 본다
+  const sessionSeconds = !loggedOut && nowMs > 0 && !Number.isNaN(loginAtMs)
+    ? Math.max(0, Math.ceil((loginAtMs + SESSION_LIMIT_SEC * 1000 - nowMs) / 1000))
+    : null
+  const showSessionWarning = sessionSeconds !== null && sessionSeconds <= SESSION_WARN_SEC
+
+  const autoLogoutRef = useRef(false)
   useEffect(() => {
-    if (sessionSeconds === null) return
-    if (sessionSeconds <= 0) {
-      logout()
-      return
-    }
-    if (sessionSeconds === SESSION_WARN_SEC) {
-      setShowSessionWarning(true)
-    }
-    const t = setTimeout(() => setSessionSeconds((s) => (s !== null ? s - 1 : null)), 1000)
-    return () => clearTimeout(t)
+    if (sessionSeconds !== 0 || autoLogoutRef.current) return
+    autoLogoutRef.current = true
+    logout()
   }, [sessionSeconds])
 
+  // update() 에 값을 넘겨야 POST 로 가서 jwt 콜백이 trigger "update" 를 받아 loginAt 을 갱신한다.
+  // 인자 없이 부르면 GET(세션 조회)일 뿐이라 화면을 쓰고 있어도 로그인 30분 뒤에 끊긴다.
   async function extendSession() {
-    await update()
-    setSessionSeconds(SESSION_LIMIT_SEC)
-    setShowSessionWarning(false)
+    await update({})
   }
 
-  // 로그인 사용자 활동 감지 → 세션 타이머 리셋 (60초 스로틀)
-  // 서버도 토큰의 loginAt 으로 30분 만료를 검사하므로 update() 로 함께 갱신한다.
-  // 이걸 빼면 화면을 쓰고 있어도 로그인 30분 뒤에 끊긴다.
+  // 로그인 사용자 활동 감지 → 서버의 loginAt 갱신 (60초 스로틀)
   const lastActivityResetRef = useRef<number>(0)
   function handleUserActivity() {
     const now = Date.now()
     if (now - lastActivityResetRef.current < 60_000) return
     lastActivityResetRef.current = now
-    setSessionSeconds(SESSION_LIMIT_SEC)
-    setShowSessionWarning(false)
-    void update()
+    void update({})
   }
   useEffect(() => {
     if (status !== "authenticated") return

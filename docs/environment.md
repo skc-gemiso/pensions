@@ -274,9 +274,29 @@ export function applyIdleExpiry(token, trigger) {
 - **`auth.ts` 와 `auth.config.ts` 양쪽에 적용해야 한다.** `auth.ts` 가
   `...authConfig.callbacks` 를 펼친 뒤 `jwt` 를 다시 정의해 덮어쓰기 때문이다
   (미들웨어는 `auth.config.ts`, 서버 액션·페이지는 `auth.ts` 경로를 탄다)
-- 활동이 있으면 `AppLayout` 이 60초 스로틀로 `update()` 를 호출해 `loginAt` 을 갱신한다.
+- 활동이 있으면 `AppLayout` 이 60초 스로틀로 **`update({})`** 를 호출해 `loginAt` 을 갱신한다.
   **이 호출을 빼면 화면을 쓰고 있어도 로그인 30분 뒤에 끊긴다**
 - 쿠키 자체의 `maxAge` 는 30일 그대로다 — 만료 판정은 `loginAt` 이 한다
+
+> ⚠️ **`update()` 를 인자 없이 부르면 갱신되지 않는다.**
+> `next-auth/react` 의 `update(data)` 는 `data` 가 `undefined` 면 body 없이 **GET** 을 보낸다.
+> 서버는 POST 일 때만 `jwt` 콜백에 `trigger: "update"` 를 넘기므로(`@auth/core/lib/index.js`),
+> GET 은 세션 조회일 뿐 `loginAt` 이 로그인 시각에 그대로 멈춘다. 그래서 반드시 `update({})` 처럼
+> 값을 넘긴다 (`jwt` 콜백은 넘긴 값을 쓰지 않는다). 예전에 `update()` 로 불러 마우스를 움직여도
+> 로그인 30분 뒤에 `/login?expired=1` 로 끊겼다.
+
+**화면 카운트다운은 탭마다 세지 않고 `loginAt` 에서 계산한다.**
+
+```
+남은 초 = loginAt + 30분 − 현재 시각   (1초 간격으로 다시 계산, 0 이면 logout())
+```
+
+- 탭마다 `setTimeout` 으로 따로 세면, 옆 모니터에 띄워 둔 **안 쓰는 창의 타이머가 0이 되어**
+  `logout()` 이 쿠키를 지우고 쓰고 있는 탭까지 함께 로그아웃된다
+- 한 탭의 `update({})` 가 `loginAt` 을 바꾸면 next-auth 가 BroadcastChannel 로 다른 탭에 알리고,
+  각 탭이 세션을 다시 읽어 **모든 탭의 카운트다운이 같은 값**이 된다
+- 벽시계 기준이라 백그라운드 탭의 타이머가 느려져도 돌아오는 순간 남은 시간이 맞는다
+- 5분 전 경고 팝업도 이 값으로 파생한다 (`sessionSeconds <= 5분`). `[연장]` 도 `update({})`
 
 **만료되면 로그인 화면으로 보낸다.** 모바일에서 30분 넘게 백그라운드에 뒀다가 돌아오면
 `refetchOnWindowFocus` 가 세션을 다시 읽고 서버가 이를 끊는다. 그냥 두면 메뉴만 사라진 채
