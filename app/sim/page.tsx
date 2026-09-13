@@ -2003,10 +2003,9 @@ export default function SavingsFundPage() {
           const avgRate   = divHistory.length > 0 ? divHistory.reduce((s,r)=>s+r.dist_rate,0)/divHistory.length : 0
           const annualRate = avgRate * 12
           const latest    = divHistory[0]
-          const maxAmt    = Math.max(...divHistory.map(r=>r.dist_amt), 1)
           return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[773px] max-h-[90vh] flex flex-col overflow-hidden">
 
                 {/* 헤더 */}
                 <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-5">
@@ -2102,28 +2101,8 @@ export default function SavingsFundPage() {
                               </>
                             )}
                           </td>
-                          <td className="px-4 py-2 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <div className="w-16 bg-gray-100 rounded-full h-1.5 block max-sm:hidden">
-                                <div
-                                  className="bg-amber-400 h-1.5 rounded-full"
-                                  style={{ width: `${Math.min(r.dist_rate / 2.5 * 100, 100)}%` }}
-                                />
-                              </div>
-                              <span className="font-bold text-amber-700 whitespace-nowrap">{r.dist_rate.toFixed(2)}%</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-2 text-right font-semibold text-gray-900">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <div className="w-12 bg-gray-100 rounded-full h-1.5 block max-sm:hidden">
-                                <div
-                                  className="bg-orange-300 h-1.5 rounded-full"
-                                  style={{ width: `${Math.round(r.dist_amt / maxAmt * 100)}%` }}
-                                />
-                              </div>
-                              {r.dist_amt.toLocaleString()}원
-                            </div>
-                          </td>
+                          <td className="px-4 py-2 text-right font-bold text-amber-700 whitespace-nowrap">{r.dist_rate.toFixed(2)}%</td>
+                          <td className="px-4 py-2 text-right font-semibold text-gray-900 whitespace-nowrap">{r.dist_amt.toLocaleString()}원</td>
                           <td className="px-4 py-2 text-right text-red-600 text-xs font-bold">{r.tax_base_amt.toLocaleString()}원</td>
                         </tr>
                       ))}
