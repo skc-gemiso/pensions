@@ -1200,10 +1200,44 @@ export default function StockPage() {
               <div className="overflow-y-auto">
               <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
 
-                {/* 계좌 / 일자 */}
-                <div className="grid grid-cols-2 gap-3">
+                {/* 일자 / 자금 구분 / 계좌 */}
+                <div className="grid grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5">일자</label>
+                    <input
+                      type="date"
+                      value={form.s_date}
+                      onChange={(e) => setForm((f) => ({ ...f, s_date: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  {/* 자금 구분 — 매도 행에는 의미가 없어 자리만 지키고 안내를 띄운다 (칸이 사라지면 옆 칸이 밀린다) */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5">자금 구분</label>
+                    {Number(form.qty) < 0 ? (
+                      <p className="h-[38px] flex items-center text-xs text-gray-400">매도 — 해당 없음</p>
+                    ) : (
+                      <div className="h-[38px] flex items-center gap-4">
+                        {([
+                          { v: "1", label: "현금" },
+                          { v: "2", label: "분배금" },
+                        ] as const).map(({ v, label }) => (
+                          <label key={v} className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="fund_type"
+                              checked={form.fund_type === v}
+                              onChange={() => setForm((f) => ({ ...f, fund_type: v }))}
+                              className="accent-blue-600"
+                            />
+                            {label}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   {accounts.length > 0 && (
-                    <div>
+                    <div className="col-span-2">
                       <label className="block text-xs font-medium text-gray-700 mb-1.5">계좌</label>
                       <select
                         value={form.account_no}
@@ -1218,52 +1252,11 @@ export default function StockPage() {
                       </select>
                     </div>
                   )}
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1.5">일자</label>
-                    <input
-                      type="date"
-                      value={form.s_date}
-                      onChange={(e) => setForm((f) => ({ ...f, s_date: e.target.value }))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
                 </div>
 
-                {/* 자금 구분 — 매입일 때만 (매도는 의미 없음) */}
-                {Number(form.qty) >= 0 && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1.5">자금 구분</label>
-                    <div className="flex gap-2">
-                      {([
-                        { v: "1", label: "현금",   desc: "새로 넣은 돈" },
-                        { v: "2", label: "분배금", desc: "받은 분배금 재투자" },
-                      ] as const).map(({ v, label, desc }) => (
-                        <button
-                          key={v}
-                          type="button"
-                          onClick={() => setForm((f) => ({ ...f, fund_type: v }))}
-                          className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-colors ${
-                            form.fund_type === v
-                              ? "bg-blue-600 text-white border-blue-600"
-                              : "border-gray-300 text-gray-700 hover:bg-gray-50"
-                          }`}
-                        >
-                          {label}
-                          <span className={`block text-[11px] font-normal ${form.fund_type === v ? "text-blue-100" : "text-gray-400"}`}>{desc}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* 구분 안내 */}
-                <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500">
-                  수량 <span className="font-semibold text-red-600">양수(+)</span> = 매입 &nbsp;·&nbsp;
-                  수량 <span className="font-semibold text-blue-600">음수(-)</span> = 매도
-                </div>
-
-                {/* 종목 검색 */}
-                <div>
+                {/* 종목 / 단가 / 수량 */}
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="col-span-2">
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">종목</label>
 
                   {/* 선택된 종목 칩 */}
@@ -1315,8 +1308,6 @@ export default function StockPage() {
                   )}
                 </div>
 
-                {/* 단가 / 수량 */}
-                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1.5">단가 (원)</label>
                     <input
