@@ -46,6 +46,8 @@ async function ensureStockTables(db: ReturnType<typeof getPensionPool>) {
   `)
   // id 컬럼 및 PRIMARY KEY 보장
   await db.query(`ALTER TABLE my_stock ADD COLUMN IF NOT EXISTS id SERIAL`)
+  // 투자 자금 출처 (1=현금, 2=분배금) — 기존 행은 전부 현금으로 채워진다
+  await db.query(`ALTER TABLE my_stock ADD COLUMN IF NOT EXISTS fund_type INT NOT NULL DEFAULT 1`)
   await db.query(`
     DO $$ BEGIN
       IF NOT EXISTS (
@@ -139,7 +141,8 @@ export type StockTransaction = {
   s_date: string    // YYYYMMDD
   cnt: number       // 1=매입, 2=매도
   stock_type: number
-  qty: number
+  fund_type: number // 1=현금, 2=분배금 (매입 행에만 의미)
+  qty: number       // 양수=매입, 음수=매도
   s_amt: number
   created_at: string
 }
@@ -153,6 +156,7 @@ export type StockHolding = {
   net_qty: number
   avg_buy_price: number
   total_buy_amount: number
+  total_buy_amount_cash: number // 위 금액 중 현금(fund_type=1) 매입 몫 — 잔고 비례
   latest_price: number | null   // t_stock_amt 최신 종가
   latest_date:  string | null   // t_stock_amt 최신 기준일 (YYYY-MM-DD)
   prev_price:   number | null   // t_stock_amt 전일 종가 (전일대비 계산용)
@@ -181,6 +185,8 @@ export async function getHoldings(accountNo?: string): Promise<StockHolding[]> {
       SUM(ms.qty) AS net_qty,
       SUM(CASE WHEN ms.qty > 0 THEN ms.qty * ms.s_amt ELSE 0 END)
         / NULLIF(SUM(CASE WHEN ms.qty > 0 THEN ms.qty ELSE 0 END), 0) AS avg_buy_price,
+      SUM(CASE WHEN ms.qty > 0 THEN ms.qty * ms.s_amt ELSE 0 END) AS gross_buy_amt,
+      SUM(CASE WHEN ms.qty > 0 AND ms.fund_type = 1 THEN ms.qty * ms.s_amt ELSE 0 END) AS cash_buy_amt,
       (SELECT COALESCE(sl.stock_short_name, sl.stock_name)
          FROM t_stock_list sl WHERE sl.stock_code = ms.stock_code) AS stock_name,
       (SELECT fa.e_amt
@@ -204,6 +210,11 @@ export async function getHoldings(accountNo?: string): Promise<StockHolding[]> {
     const net_qty       = Number(r.net_qty)
     const raw_avg       = Number(r.avg_buy_price)
     const avg_buy_price = Math.floor(raw_avg)
+    const total_buy     = Math.round(net_qty * raw_avg)
+    // 현금 매입 비중을 총 매입금액에 그대로 곱한다 (잔고 비례) → 매도가 있어도 총 매입금액과 기준이 같다
+    const gross_buy_amt = Number(r.gross_buy_amt ?? 0)
+    const cash_buy_amt  = Number(r.cash_buy_amt  ?? 0)
+    const cash_ratio    = gross_buy_amt > 0 ? cash_buy_amt / gross_buy_amt : 1
     return {
       account_no:   r.account_no,
       account_nm:   r.account_nm ?? null,
@@ -211,7 +222,8 @@ export async function getHoldings(accountNo?: string): Promise<StockHolding[]> {
       stock_type:   Number(r.stock_type),
       net_qty,
       avg_buy_price,
-      total_buy_amount: Math.round(net_qty * raw_avg),
+      total_buy_amount: total_buy,
+      total_buy_amount_cash: Math.round(total_buy * cash_ratio),
       stock_name:   r.stock_name   ?? null,
       latest_price: r.latest_price != null ? Number(r.latest_price) : null,
       latest_date:  r.latest_date  ?? null,
@@ -227,7 +239,7 @@ export async function getTransactions(stockCode?: string, accountNo?: string): P
   await ensureStockTables(db)
 
   const { rows } = await db.query(
-    `SELECT id, account_no, stock_code, s_date, cnt, stock_type, qty, s_amt, created_at
+    `SELECT id, account_no, stock_code, s_date, cnt, stock_type, fund_type, qty, s_amt, created_at
      FROM my_stock
      WHERE ($1::varchar IS NULL OR stock_code = $1)
        AND ($2::varchar IS NULL OR account_no  = $2)
@@ -242,6 +254,7 @@ export async function getTransactions(stockCode?: string, accountNo?: string): P
     s_date:     r.s_date,
     cnt:        Number(r.cnt),
     stock_type: Number(r.stock_type),
+    fund_type:  Number(r.fund_type ?? 1),
     qty:        Number(r.qty),
     s_amt:      Number(r.s_amt),
     created_at: (r.created_at as Date).toISOString(),
@@ -254,6 +267,7 @@ export async function addTransaction(data: {
   s_date: string
   cnt: number
   stock_type: number
+  fund_type: number
   qty: number
   s_amt: number
 }): Promise<void> {
@@ -262,24 +276,61 @@ export async function addTransaction(data: {
   const db = getPensionPool()
   await ensureStockTables(db)
 
+  const stockCode = data.stock_code.trim().toUpperCase()
+
   await db.query(
-    `INSERT INTO my_stock (account_no, stock_code, s_date, cnt, stock_type, qty, s_amt)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [data.account_no, data.stock_code.trim().toUpperCase(), data.s_date, data.cnt, data.stock_type, data.qty, data.s_amt]
+    `INSERT INTO my_stock (account_no, stock_code, s_date, cnt, stock_type, fund_type, qty, s_amt)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [data.account_no, stockCode, data.s_date, data.cnt, data.stock_type, data.fund_type, data.qty, data.s_amt]
   )
 
   // 매입 → 출금, 매도 → 입금 자동 생성
+  // 분배금으로 산 경우도 계좌에서는 똑같이 돈이 빠져나가므로 출금 행은 그대로 만들고 비고로만 구분한다
   const inOut  = data.qty > 0 ? "O" : "I"
   const amt    = Math.abs(data.qty) * data.s_amt
   const memo   = data.qty > 0
-    ? `매입: ${data.stock_code.trim().toUpperCase()}`
-    : `매도: ${data.stock_code.trim().toUpperCase()}`
+    ? `매입${data.fund_type === 2 ? "(분배금)" : ""}: ${stockCode}`
+    : `매도: ${stockCode}`
 
   await db.query(
     `INSERT INTO my_account_info (account_no, trade_date, in_out, amt, memo)
      VALUES ($1, $2, $3, $4, $5)`,
     [data.account_no, data.s_date, inOut, amt, memo]
   )
+}
+
+/**
+ * 거래 내역 1건 수정.
+ * 저장 때 자동 생성한 my_account_info 행은 이 거래와 이어주는 키가 없어 함께 고치지 않는다.
+ * 계좌 입출금은 `계좌 내역` 탭에서 따로 맞춘다 (삭제도 같은 방식).
+ */
+export async function updateTransaction(data: {
+  id: number
+  account_no: string
+  stock_code: string
+  s_date: string
+  cnt: number
+  stock_type: number
+  fund_type: number
+  qty: number
+  s_amt: number
+}): Promise<void> {
+  await requireAdmin()
+
+  const db = getPensionPool()
+  await ensureStockTables(db)
+
+  const { rowCount } = await db.query(
+    `UPDATE my_stock
+        SET account_no = $2, stock_code = $3, s_date = $4, cnt = $5,
+            stock_type = $6, fund_type = $7, qty = $8, s_amt = $9, updated_at = NOW()
+      WHERE id = $1`,
+    [
+      data.id, data.account_no, data.stock_code.trim().toUpperCase(), data.s_date,
+      data.cnt, data.stock_type, data.fund_type, data.qty, data.s_amt,
+    ]
+  )
+  if (!rowCount) throw new Error(`수정할 거래 내역이 없습니다 (id=${data.id}).`)
 }
 
 export async function addAccountInfo(data: {

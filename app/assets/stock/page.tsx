@@ -10,7 +10,7 @@ import { fmt, cc } from "@/lib/fmt"
 
 const won = (n: number | null | undefined) => n == null ? "-" : `${fmt(n)}원`
 import {
-  getAccounts, getHoldings, getTransactions, addTransaction, deleteTransaction,
+  getAccounts, getHoldings, getTransactions, addTransaction, updateTransaction, deleteTransaction,
   getDailyPrices, fetchAndSaveNaverPrices, searchStockList, getMarketIndices, getDefaultStockList,
   getAccountInfo, addAccountInfo, getMonthlyDividendByAccount,
   type Account, type StockHolding, type StockTransaction, type DailyPrice, type StockListItem, type MarketIndex, type AccountInfo, type MonthlyAccountDiv,
@@ -24,6 +24,7 @@ type FormState = {
   account_no: string
   cnt: "1" | "2"
   stock_type: "1" | "2"
+  fund_type: "1" | "2"   // 1=현금, 2=분배금
   stock_code: string
   stock_name: string
   s_date: string   // YYYY-MM-DD (input[type=date] 형식)
@@ -38,6 +39,7 @@ const EMPTY_FORM: FormState = {
   account_no: "",
   cnt: "1",
   stock_type: "1",
+  fund_type: "1",
   stock_code: "",
   stock_name: "",
   s_date: todayISO,
@@ -79,6 +81,7 @@ export default function StockPage() {
   const [txLoading, setTxLoading]         = useState(false)
   const [tooltip, setTooltip]             = useState<{ code: string; account_no: string; x: number; y: number } | null>(null)
   const [showModal, setShowModal]         = useState(false)
+  const [editTxId, setEditTxId]           = useState<number | null>(null)   // null = 추가 모드
   const [form, setForm]                   = useState<FormState>(EMPTY_FORM)
   const [submitting, setSubmitting]       = useState(false)
   const [formError, setFormError]         = useState("")
@@ -212,6 +215,34 @@ export default function StockPage() {
     setStockResults([])
   }
 
+  // 모달을 빈 추가 폼으로 연다 (버튼 진입 / 수정 모드 해제 공용)
+  function resetForm() {
+    setForm({ ...EMPTY_FORM, account_no: accounts[0]?.account_no ?? "" })
+    setEditTxId(null)
+    setFormError("")
+    setStockSearch("")
+    setStockResults([])
+  }
+
+  // 거래 행의 값을 폼에 채워 수정 모드로 전환
+  function startEditTx(tx: StockTransaction) {
+    setForm({
+      account_no: tx.account_no,
+      cnt:        String(tx.cnt) === "2" ? "2" : "1",
+      stock_type: String(tx.stock_type) === "2" ? "2" : "1",
+      fund_type:  String(tx.fund_type)  === "2" ? "2" : "1",
+      stock_code: tx.stock_code,
+      stock_name: holdings.find(h => h.stock_code === tx.stock_code)?.stock_name ?? tx.stock_code,
+      s_date:     fmtDate(tx.s_date),
+      qty:        String(tx.qty),
+      s_amt:      String(tx.s_amt),
+    })
+    setEditTxId(tx.id)
+    setFormError("")
+    setStockSearch("")
+    setStockResults([])
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setFormError("")
@@ -223,19 +254,22 @@ export default function StockPage() {
     if (!sAmt || sAmt <= 0)   { setFormError("단가를 올바르게 입력하세요."); return }
     const cnt = qty > 0 ? 1 : 2   // qty 부호로 매입/매도 자동 결정
 
+    const payload = {
+      account_no: form.account_no || accounts[0]?.account_no || "",
+      stock_code: form.stock_code.trim().toUpperCase(),
+      s_date: form.s_date.replace(/-/g, ""),   // YYYY-MM-DD → YYYYMMDD
+      cnt,
+      stock_type: Number(form.stock_type),
+      fund_type: qty > 0 ? Number(form.fund_type) : 1,   // 매도 행은 자금 구분 의미 없음
+      qty,
+      s_amt: sAmt,
+    }
+
     setSubmitting(true)
     try {
-      await addTransaction({
-        account_no: form.account_no || accounts[0]?.account_no || "",
-        stock_code: form.stock_code.trim().toUpperCase(),
-        s_date: form.s_date.replace(/-/g, ""),   // YYYY-MM-DD → YYYYMMDD
-        cnt,
-        stock_type: Number(form.stock_type),
-        qty,
-        s_amt: sAmt,
-      })
-      setShowModal(false)
-      setForm(EMPTY_FORM)
+      if (editTxId != null) await updateTransaction({ id: editTxId, ...payload })
+      else                  await addTransaction(payload)
+      resetForm()
       await loadHoldings()
       loadTransactions()
       setAccountInfo([])  // 계좌 내역 캐시 초기화 (다음 탭 진입 시 재조회)
@@ -249,6 +283,7 @@ export default function StockPage() {
   async function handleDelete(id: number) {
     if (!confirm("이 거래 내역을 삭제하시겠습니까?")) return
     await deleteTransaction(id)
+    if (editTxId === id) resetForm()
     await loadHoldings()
     loadTransactions()
   }
@@ -310,6 +345,11 @@ export default function StockPage() {
   const totalPnl   = totalEval - totalBuy
   const totalRate  = totalBuy > 0 ? (totalPnl / totalBuy) * 100 : null
 
+  // 현금 기준 — 분배금 재투자분을 원금에서 뺀 값 (내 주머니에서 실제로 나간 돈만)
+  const totalBuyCash  = portfolioRows.reduce((s, r) => s + r.total_buy_amount_cash, 0)
+  const totalPnlCash  = totalEval - totalBuyCash
+  const totalRateCash = totalBuyCash > 0 ? (totalPnlCash / totalBuyCash) * 100 : null
+
   return (
     <AppLayout>
       <div className="max-w-7xl mx-auto space-y-5">
@@ -322,7 +362,7 @@ export default function StockPage() {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => { setForm({ ...EMPTY_FORM, account_no: accounts[0]?.account_no ?? "" }); setFormError(""); setStockSearch(""); setStockResults([]); setShowModal(true) }}
+              onClick={() => { resetForm(); setShowModal(true) }}
               className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
             >
               + 매입/매도 내역 추가
@@ -370,24 +410,40 @@ export default function StockPage() {
           <>
             {/* 요약 카드 */}
             {portfolioByAccount.size > 0 && (
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-5 gap-3">
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
                   <p className="text-xs font-medium text-gray-600">총 매입금액</p>
-                  <p className="text-lg font-bold text-gray-900 mt-1">{won(totalBuy)}</p>
+                  <p className="text-base font-bold text-gray-900 mt-1">{won(totalBuy)}</p>
+                </div>
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <p className="text-xs font-medium text-gray-600">총 매입금액(현금)</p>
+                  <p className="text-base font-bold text-gray-900 mt-1">{won(totalBuyCash)}</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">분배금 재투자 {won(totalBuy - totalBuyCash)} 제외</p>
                 </div>
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
                   <p className="text-xs font-medium text-gray-600">총 평가금액</p>
-                  <p className={`text-lg font-bold mt-1 ${cc(totalEval - totalBuy)}`}>
+                  <p className={`text-base font-bold mt-1 ${cc(totalEval - totalBuy)}`}>
                     {won(totalEval)}
                   </p>
                 </div>
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
                   <p className="text-xs font-medium text-gray-600">총 평가손익 / 수익률</p>
-                  <p className={`text-lg font-bold mt-1 ${cc(totalPnl)}`}>
+                  <p className={`text-base font-bold mt-1 ${cc(totalPnl)}`}>
                     {totalPnl > 0 ? "+" : ""}{won(totalPnl)}
                     {totalRate != null && (
                       <span className="text-sm ml-1">
                         ({totalRate > 0 ? "+" : ""}{fmt(totalRate, 2)}%)
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <p className="text-xs font-medium text-gray-600">총 평가손익 / 수익률(현금)</p>
+                  <p className={`text-base font-bold mt-1 ${cc(totalPnlCash)}`}>
+                    {totalPnlCash > 0 ? "+" : ""}{won(totalPnlCash)}
+                    {totalRateCash != null && (
+                      <span className="text-sm ml-1">
+                        ({totalRateCash > 0 ? "+" : ""}{fmt(totalRateCash, 2)}%)
                       </span>
                     )}
                   </p>
@@ -690,12 +746,12 @@ export default function StockPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 sticky top-0">
                     <tr>
-                      {["일자", "종목코드", "종목명", "구분", "수량", "단가", "금액", ""].map((h, i) => (
+                      {["일자", "종목코드", "종목명", "구분", "자금", "수량", "단가", "금액", ""].map((h, i) => (
                         <th
                           key={i}
                           className={`px-3 py-2.5 text-xs font-semibold text-gray-700 whitespace-nowrap ${
                             i < 3 ? "text-left" : "text-right"
-                          } ${i === 7 ? "text-center" : ""}`}
+                          } ${i === 8 ? "text-center" : ""}`}
                         >
                           {h}
                         </th>
@@ -712,6 +768,9 @@ export default function StockPage() {
                         </td>
                         <td className={`px-3 py-2 text-right font-medium ${tx.qty > 0 ? "text-red-600" : "text-blue-600"}`}>
                           {tx.qty > 0 ? "매입" : "매도"}
+                        </td>
+                        <td className="px-3 py-2 text-right text-gray-600">
+                          {tx.qty > 0 ? (tx.fund_type === 2 ? "분배금" : "현금") : "-"}
                         </td>
                         <td className="px-3 py-2 text-right text-gray-900">{fmt(tx.qty)}주</td>
                         <td className="px-3 py-2 text-right text-gray-700">{fmt(tx.s_amt)}원</td>
@@ -1118,31 +1177,82 @@ export default function StockPage() {
           )
         })()}
 
-        {/* ── 매입/매도 추가 모달 ── */}
+        {/* ── 매입/매도 모달 (입력 폼 + 기존 거래 내역 조회·수정) ── */}
         {showModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
               <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-                <h2 className="text-base font-semibold text-gray-900">매입/매도 내역 추가</h2>
-                <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700 text-xl leading-none">×</button>
+                <h2 className="text-base font-semibold text-gray-900">
+                  {editTxId != null ? "매입/매도 내역 수정" : "매입/매도 내역 추가"}
+                </h2>
+                <div className="flex items-center gap-3">
+                  {editTxId != null && (
+                    <button
+                      onClick={resetForm}
+                      className="text-xs px-3 py-1.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 whitespace-nowrap"
+                    >
+                      새로 추가
+                    </button>
+                  )}
+                  <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700 text-xl leading-none">×</button>
+                </div>
               </div>
+              <div className="overflow-y-auto">
               <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
 
-                {/* 계좌 선택 */}
-                {accounts.length > 0 && (
+                {/* 계좌 / 일자 */}
+                <div className="grid grid-cols-2 gap-3">
+                  {accounts.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1.5">계좌</label>
+                      <select
+                        value={form.account_no}
+                        onChange={(e) => setForm((f) => ({ ...f, account_no: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        {accounts.map((acc) => (
+                          <option key={acc.account_no} value={acc.account_no}>
+                            {acc.account_no} ({acc.account_nm})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1.5">계좌</label>
-                    <select
-                      value={form.account_no}
-                      onChange={(e) => setForm((f) => ({ ...f, account_no: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      {accounts.map((acc) => (
-                        <option key={acc.account_no} value={acc.account_no}>
-                          {acc.account_no} ({acc.account_nm})
-                        </option>
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5">일자</label>
+                    <input
+                      type="date"
+                      value={form.s_date}
+                      onChange={(e) => setForm((f) => ({ ...f, s_date: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+
+                {/* 자금 구분 — 매입일 때만 (매도는 의미 없음) */}
+                {Number(form.qty) >= 0 && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5">자금 구분</label>
+                    <div className="flex gap-2">
+                      {([
+                        { v: "1", label: "현금",   desc: "새로 넣은 돈" },
+                        { v: "2", label: "분배금", desc: "받은 분배금 재투자" },
+                      ] as const).map(({ v, label, desc }) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => setForm((f) => ({ ...f, fund_type: v }))}
+                          className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                            form.fund_type === v
+                              ? "bg-blue-600 text-white border-blue-600"
+                              : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                          }`}
+                        >
+                          {label}
+                          <span className={`block text-[11px] font-normal ${form.fund_type === v ? "text-blue-100" : "text-gray-400"}`}>{desc}</span>
+                        </button>
                       ))}
-                    </select>
+                    </div>
                   </div>
                 )}
 
@@ -1150,17 +1260,6 @@ export default function StockPage() {
                 <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500">
                   수량 <span className="font-semibold text-red-600">양수(+)</span> = 매입 &nbsp;·&nbsp;
                   수량 <span className="font-semibold text-blue-600">음수(-)</span> = 매도
-                </div>
-
-                {/* 일자 */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1.5">일자</label>
-                  <input
-                    type="date"
-                    value={form.s_date}
-                    onChange={(e) => setForm((f) => ({ ...f, s_date: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
                 </div>
 
                 {/* 종목 검색 */}
@@ -1256,17 +1355,94 @@ export default function StockPage() {
                     onClick={() => setShowModal(false)}
                     className="flex-1 py-2.5 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
                   >
-                    취소
+                    닫기
                   </button>
                   <button
                     type="submit"
                     disabled={submitting}
                     className="flex-1 py-2.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
                   >
-                    {submitting ? "저장 중..." : "저장"}
+                    {submitting ? "저장 중..." : editTxId != null ? "수정" : "저장"}
                   </button>
                 </div>
               </form>
+
+              {/* ── 기존 거래 내역 조회·수정 ── */}
+              <div className="px-6 pb-6">
+                <div className="border-t border-gray-100 pt-4">
+                  <h3 className="text-sm font-semibold text-gray-800 mb-2">
+                    기존 거래 내역
+                    <span className="ml-2 text-xs font-normal text-gray-400">{transactions.length}건 · 행의 [수정]을 누르면 위 폼에 채워집니다</span>
+                  </h3>
+                  {transactions.length === 0 ? (
+                    <p className="text-center text-gray-500 py-6 text-sm">거래 내역이 없습니다.</p>
+                  ) : (
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="max-h-72 overflow-y-auto">
+                        <table className="w-full text-xs">
+                          <thead className="bg-gray-50 sticky top-0 z-10">
+                            <tr>
+                              {["일자", "계좌", "종목", "구분", "자금", "수량", "단가", "금액", ""].map((h, i) => (
+                                <th
+                                  key={i}
+                                  className={`px-2 py-2 text-xs font-semibold text-gray-700 whitespace-nowrap border-b border-gray-200 ${
+                                    i < 3 ? "text-left" : i === 8 ? "text-center" : "text-right"
+                                  }`}
+                                >
+                                  {h}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {transactions.map((tx) => (
+                              <tr
+                                key={tx.id}
+                                className={editTxId === tx.id ? "bg-blue-50" : "hover:bg-gray-50"}
+                              >
+                                <td className="px-2 py-1.5 text-gray-700 whitespace-nowrap">{fmtDate(tx.s_date)}</td>
+                                <td className="px-2 py-1.5 font-mono text-gray-500 whitespace-nowrap">{tx.account_no}</td>
+                                <td className="px-2 py-1.5 text-gray-900 whitespace-nowrap">
+                                  {holdings.find(h => h.stock_code === tx.stock_code)?.stock_name ?? tx.stock_code}
+                                </td>
+                                <td className={`px-2 py-1.5 text-right font-medium ${tx.qty > 0 ? "text-red-600" : "text-blue-600"}`}>
+                                  {tx.qty > 0 ? "매입" : "매도"}
+                                </td>
+                                <td className="px-2 py-1.5 text-right text-gray-600">
+                                  {tx.qty > 0 ? (tx.fund_type === 2 ? "분배금" : "현금") : "-"}
+                                </td>
+                                <td className="px-2 py-1.5 text-right text-gray-900">{fmt(tx.qty)}주</td>
+                                <td className="px-2 py-1.5 text-right text-gray-700">{fmt(tx.s_amt)}원</td>
+                                <td className="px-2 py-1.5 text-right text-gray-700">{won(tx.qty * tx.s_amt)}</td>
+                                <td className="px-2 py-1.5 text-center whitespace-nowrap">
+                                  <button
+                                    type="button"
+                                    onClick={() => startEditTx(tx)}
+                                    className="text-xs text-blue-600 hover:text-blue-800 px-1.5 py-1"
+                                  >
+                                    수정
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDelete(tx.id)}
+                                    className="text-xs text-gray-500 hover:text-red-500 px-1.5 py-1"
+                                  >
+                                    삭제
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-gray-400 mt-2">
+                    거래를 수정·삭제해도 저장 때 자동 생성된 계좌 입출금 행은 따라 바뀌지 않습니다. 「계좌 내역」 탭에서 따로 맞추세요.
+                  </p>
+                </div>
+              </div>
+              </div>
             </div>
           </div>
         )}

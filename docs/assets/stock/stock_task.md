@@ -7,21 +7,34 @@
 ```sql
 CREATE TABLE IF NOT EXISTS my_stock (
   id         SERIAL,                          -- 자동 증가 PK (기존 테이블 ALTER로 추가)
+  account_no VARCHAR(20),                     -- 계좌번호 (my_account FK)
   stock_code VARCHAR(20)  NOT NULL,           -- 종목코드 (대문자)
   s_date     VARCHAR(8)   NOT NULL,           -- 거래일 (YYYYMMDD 문자열)
-  cnt        INT          NOT NULL,           -- 1=매입, 2=매도
+  cnt        INT          NOT NULL,           -- 1=매입, 2=매도 (qty 부호에서 파생)
   stock_type INT          NOT NULL DEFAULT 1, -- 1=주식, 2=ETF
-  qty        NUMERIC      NOT NULL,           -- 수량 (주)
+  fund_type  INT          NOT NULL DEFAULT 1, -- 1=현금, 2=분배금 (매입 행에만 의미)
+  qty        NUMERIC      NOT NULL,           -- 수량 (주) — 양수=매입, 음수=매도
   s_amt      NUMERIC      NOT NULL,           -- 단가 (원)
   created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 ALTER TABLE my_stock ADD COLUMN IF NOT EXISTS id SERIAL;
+ALTER TABLE my_stock ADD COLUMN IF NOT EXISTS fund_type INT NOT NULL DEFAULT 1;
 ```
 
-- 잔고 계산: `SUM(CASE WHEN cnt=1 THEN qty ELSE -qty END)` — 매입 합산, 매도 차감
+- 잔고 계산: `SUM(qty)` — 매입(양수) 합산, 매도(음수) 차감
 - 평균 매입가: `SUM(매입qty × s_amt) / SUM(매입qty)`
 - 잔고 > 0인 종목만 포트폴리오 표시
+
+#### `fund_type` — 투자한 돈의 출처
+
+| 값 | 의미 |
+|----|------|
+| `1` | 현금 — 내 주머니에서 새로 넣은 돈 |
+| `2` | 분배금 — 이 투자에서 받은 분배금을 재투자한 돈 |
+
+매도 행(`qty < 0`)에는 의미가 없어 항상 기본값 `1` 로 둔다.
+기존 데이터는 마이그레이션 시 전부 `1`(현금)로 채워진다 — 분배금 재투자였던 건은 화면에서 직접 고친다.
 
 ### `t_stock_amt` — 종목별 일별 주가
 
@@ -82,8 +95,9 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `getMarketIndices()` | KOSPI·KOSDAQ 지수 조회 (네이버 모바일 API) | 없음 |
 | `getHoldings()` | 보유 종목 집계 (잔고·평균매입가·현재가·전일가) | 세션 필요 |
 | `getTransactions(stockCode?)` | 거래 내역 조회 (전체 또는 종목별) | 세션 필요 |
-| `addTransaction(data)` | 거래 내역 INSERT | 세션 필요 |
-| `deleteTransaction(id)` | 거래 내역 DELETE | 세션 필요 |
+| `addTransaction(data)` | 거래 내역 INSERT (`fund_type` 포함) + `my_account_info` 대응 행 자동 생성. 분배금 매입이면 비고에 `매입(분배금): {코드}` | 세션 필요 |
+| `updateTransaction(data)` | 거래 내역 1건 UPDATE (`id` 로 찾음). `cnt` 는 `qty` 부호에서 다시 파생. **`my_account_info` 자동 생성 행은 건드리지 않는다** | 세션 필요 |
+| `deleteTransaction(id)` | 거래 내역 DELETE. **`my_account_info` 자동 생성 행은 남는다** | 세션 필요 |
 | `searchStockList(q)` | 종목 검색 (`t_stock_list`) | 세션 필요 |
 | `getDailyPrices(stockCode)` | 일별 주가 조회 (`t_stock_amt`) | 세션 필요 |
 | `fetchAndSaveNaverPrices(stockCode, stockType)` | 네이버 `sise_day.naver` 수집 → `t_stock_amt` 저장, 저장 건수 반환 | 세션 필요 |
@@ -124,22 +138,27 @@ type MarketIndex = {
 
 type StockTransaction = {
   id: number
+  account_no: string
   stock_code: string
   s_date: string    // YYYYMMDD
   cnt: number       // 1=매입, 2=매도
   stock_type: number
-  qty: number
+  fund_type: number // 1=현금, 2=분배금
+  qty: number       // 양수=매입, 음수=매도
   s_amt: number
   created_at: string
 }
 
 type StockHolding = {
+  account_no: string
+  account_nm: string | null
   stock_code: string
   stock_name: string | null
   stock_type: number
   net_qty: number
   avg_buy_price: number
   total_buy_amount: number
+  total_buy_amount_cash: number // 위 금액 중 현금 매입 몫 (잔고 비례)
   latest_price: number | null   // t_stock_amt.e_amt 최신 종가
   latest_date:  string | null   // t_stock_amt.e_date 최신 기준일 (YYYY-MM-DD)
   prev_price:   number | null   // t_stock_amt.e_amt 전일 종가
@@ -290,8 +309,9 @@ ON CONFLICT DO NOTHING;
 | `chartDays` | `number` | 차트 기간 필터 (30/90/180/365/9999) |
 | `transactions` | `StockTransaction[]` | 전체 거래 내역 |
 | `activeTab` | `"portfolio" \| "history"` | 현재 탭 |
-| `showModal` | `boolean` | 매입/매도 추가 모달 표시 여부 |
-| `form` | `FormState` | 모달 입력 폼 상태 |
+| `showModal` | `boolean` | 매입/매도 모달 표시 여부 |
+| `form` | `FormState` | 모달 입력 폼 상태 (`fund_type` 포함) |
+| `editTxId` | `number \| null` | 수정 중인 거래 id. `null` 이면 추가 모드 |
 | `tooltip` | `{ code, x, y } \| null` | 호버 툴팁 위치 |
 
 ### 포트폴리오 계산 (`portfolioRows`)
@@ -306,6 +326,38 @@ const priceChangeRate = priceChange / h.prev_price * 100   // 전일대비율(%)
 ```
 
 - `portfolioRows`: 평가금액 큰 순으로 정렬
+
+### 현금 기준 매입금액 (`total_buy_amount_cash`)
+
+`getHoldings()` 가 계좌+종목 단위로 계산한다. 매도가 섞여도 `total_buy_amount` 와 기준이 같도록
+**매입액 비중을 그대로 곱하는 잔고 비례 방식**을 쓴다.
+
+```sql
+-- getHoldings() 집계 컬럼
+SUM(CASE WHEN ms.qty > 0 THEN ms.qty * ms.s_amt ELSE 0 END)                          AS gross_buy_amt
+SUM(CASE WHEN ms.qty > 0 AND ms.fund_type = 1 THEN ms.qty * ms.s_amt ELSE 0 END)     AS cash_buy_amt
+```
+
+```typescript
+// TypeScript 쪽 환산
+const cash_ratio = gross_buy_amt > 0 ? cash_buy_amt / gross_buy_amt : 1
+total_buy_amount_cash = Math.round(total_buy_amount * cash_ratio)
+```
+
+화면 합계 카드:
+
+```typescript
+const totalBuy      = Σ r.total_buy_amount
+const totalBuyCash  = Σ r.total_buy_amount_cash
+const totalEval     = Σ r.evalAmt
+const totalPnl      = totalEval - totalBuy
+const totalRate     = totalBuy     > 0 ? totalPnl     / totalBuy     * 100 : null
+const totalPnlCash  = totalEval - totalBuyCash
+const totalRateCash = totalBuyCash > 0 ? totalPnlCash / totalBuyCash * 100 : null
+```
+
+- 보유 종목이 전부 현금 매입이면 `totalBuyCash === totalBuy` 라 두 손익 카드 값이 같다
+- 분배금 재투자가 섞이면 현금 기준 원금이 작아져 **현금 수익률이 더 높게** 나온다
 
 ### 배당 팝업 계산
 

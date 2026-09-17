@@ -18,6 +18,7 @@
 | `app/invest/etf/**` | `docs/invest/etf/etf_project.md`, `docs/invest/etf/etf_task.md` |
 | `app/invest/usa/**` | `docs/invest/usa/usa_project.md`, `docs/invest/usa/usa_task.md` |
 | `app/invest/jangam2/**`, `data/jangam2.md` | `docs/invest/jangam2/jangam2_project.md`, `docs/invest/jangam2/jangam2_task.md` |
+| `app/assets/stock/**` | `docs/assets/stock/stock_project.md`, `docs/assets/stock/stock_task.md` |
 | `components/**`, `lib/**`, `auth.ts`, `middleware.ts`, `proxy.ts` | `docs/environment.md` |
 | 메뉴 추가·삭제·경로 변경 | `docs/main_project.md` |
 
