@@ -1180,7 +1180,7 @@ export default function StockPage() {
         {/* ── 매입/매도 모달 (입력 폼 + 기존 거래 내역 조회·수정) ── */}
         {showModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-[883px] max-h-[90vh] flex flex-col">
               <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
                 <h2 className="text-base font-semibold text-gray-900">
                   {editTxId != null ? "매입/매도 내역 수정" : "매입/매도 내역 추가"}
@@ -1395,13 +1395,20 @@ export default function StockPage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
-                            {transactions.map((tx) => (
+                            {transactions.map((tx) => {
+                              const account_nm = accounts.find(a => a.account_no === tx.account_no)?.account_nm
+                              return (
                               <tr
                                 key={tx.id}
                                 className={editTxId === tx.id ? "bg-blue-50" : "hover:bg-gray-50"}
                               >
                                 <td className="px-2 py-1.5 text-gray-700 whitespace-nowrap">{fmtDate(tx.s_date)}</td>
-                                <td className="px-2 py-1.5 font-mono text-gray-500 whitespace-nowrap">{tx.account_no}</td>
+                                <td className="px-2 py-1.5 text-gray-500 whitespace-nowrap">
+                                  <span className="font-mono">{tx.account_no}</span>
+                                  {account_nm && (
+                                    <span className="block text-[11px] text-gray-400">{account_nm}</span>
+                                  )}
+                                </td>
                                 <td className="px-2 py-1.5 text-gray-900 whitespace-nowrap">
                                   {holdings.find(h => h.stock_code === tx.stock_code)?.stock_name ?? tx.stock_code}
                                 </td>
@@ -1431,7 +1438,8 @@ export default function StockPage() {
                                   </button>
                                 </td>
                               </tr>
-                            ))}
+                              )
+                            })}
                           </tbody>
                         </table>
                       </div>
