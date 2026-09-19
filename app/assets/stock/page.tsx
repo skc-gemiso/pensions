@@ -542,6 +542,11 @@ export default function StockPage() {
                       const accEval = rows.reduce((s, r) => s + (r.evalAmt ?? 0), 0)
                       const accPnl  = accEval - accBuy
                       const accRate = accBuy > 0 ? (accPnl / accBuy) * 100 : null
+                      // 현금 기준 — 분배금 재투자분을 원금에서 뺀 값 (요약 카드와 같은 기준)
+                      const accBuyCash  = rows.reduce((s, r) => s + r.total_buy_amount_cash, 0)
+                      const accDivBuy   = accBuy - accBuyCash
+                      const accPnlCash  = accEval - accBuyCash
+                      const accRateCash = accBuyCash > 0 ? (accPnlCash / accBuyCash) * 100 : null
                       return (
                         <tbody key={accNo}>
                           {/* 계좌 헤더 행 */}
@@ -551,6 +556,17 @@ export default function StockPage() {
                                 <span className="text-xs font-bold text-gray-700">
                                   {accNo}
                                   {account_nm && <span className="font-normal text-gray-500 ml-1">({account_nm})</span>}
+                                  {/* 분배금 재투자 몫과 그것을 뺀 현금 기준 손익 — 요약 카드와 같은 기준 */}
+                                  <span className="font-normal text-gray-400 ml-3">
+                                    분배금 재투자 {won(accDivBuy)} 제외
+                                    <span className="text-gray-500 ml-1">
+                                      현금 {won(accBuyCash)} →
+                                      <span className={`font-semibold ml-1 ${cc(accPnlCash)}`}>
+                                        {accPnlCash > 0 ? "+" : ""}{won(accPnlCash)}
+                                        {accRateCash != null && <span className="ml-0.5">({accRateCash > 0 ? "+" : ""}{fmt(accRateCash, 2)}%)</span>}
+                                      </span>
+                                    </span>
+                                  </span>
                                 </span>
                                 <span className="text-xs text-gray-500 flex items-center gap-3">
                                   <span>매입 {won(accBuy)}</span>
