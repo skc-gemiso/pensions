@@ -340,6 +340,12 @@ export default function StockPage() {
     return map
   }, [transactions])
 
+  // 모달 하단 목록 — 폼에서 고른 계좌의 거래만 보여준다 (계좌를 바꾸면 목록도 따라 바뀐다)
+  const modalTransactions = useMemo(
+    () => form.account_no ? transactions.filter(tx => tx.account_no === form.account_no) : transactions,
+    [transactions, form.account_no]
+  )
+
   const totalBuy   = portfolioRows.reduce((s, r) => s + r.total_buy_amount, 0)
   const totalEval  = portfolioRows.reduce((s, r) => s + (r.evalAmt ?? 0), 0)
   const totalPnl   = totalEval - totalBuy
@@ -1363,10 +1369,14 @@ export default function StockPage() {
                 <div className="border-t border-gray-100 pt-4">
                   <h3 className="text-sm font-semibold text-gray-800 mb-2">
                     기존 거래 내역
-                    <span className="ml-2 text-xs font-normal text-gray-400">{transactions.length}건 · 행의 [수정]을 누르면 위 폼에 채워집니다</span>
+                    <span className="ml-2 text-xs font-normal text-gray-400">
+                      {form.account_no ? `${form.account_no} · ` : ""}{modalTransactions.length}건 · 행의 [수정]을 누르면 위 폼에 채워집니다
+                    </span>
                   </h3>
-                  {transactions.length === 0 ? (
-                    <p className="text-center text-gray-500 py-6 text-sm">거래 내역이 없습니다.</p>
+                  {modalTransactions.length === 0 ? (
+                    <p className="text-center text-gray-500 py-6 text-sm">
+                      {form.account_no ? "이 계좌의 거래 내역이 없습니다." : "거래 내역이 없습니다."}
+                    </p>
                   ) : (
                     <div className="border border-gray-200 rounded-lg overflow-hidden">
                       <div className="max-h-72 overflow-y-auto">
@@ -1386,7 +1396,7 @@ export default function StockPage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
-                            {transactions.map((tx) => {
+                            {modalTransactions.map((tx) => {
                               const account_nm = accounts.find(a => a.account_no === tx.account_no)?.account_nm
                               return (
                               <tr

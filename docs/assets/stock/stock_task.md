@@ -312,6 +312,7 @@ ON CONFLICT DO NOTHING;
 | `showModal` | `boolean` | 매입/매도 모달 표시 여부 |
 | `form` | `FormState` | 모달 입력 폼 상태 (`fund_type` 포함) |
 | `editTxId` | `number \| null` | 수정 중인 거래 id. `null` 이면 추가 모드 |
+| `modalTransactions` | `StockTransaction[]` | `transactions` 를 `form.account_no` 로 거른 값 (useMemo). 모달 하단 목록 전용 |
 | `tooltip` | `{ code, x, y } \| null` | 호버 툴팁 위치 |
 
 ### 포트폴리오 계산 (`portfolioRows`)
