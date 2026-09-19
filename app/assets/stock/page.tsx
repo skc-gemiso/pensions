@@ -453,6 +453,7 @@ export default function StockPage() {
                       </span>
                     )}
                   </p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">분배금 재투자 {won(totalBuy - totalBuyCash)} 제외</p>
                 </div>
               </div>
             )}
