@@ -445,8 +445,8 @@ export async function fetchAndSaveNaverPrices(stockCode: string): Promise<number
   )
   const maxDateStr: string | null = maxRows[0]?.max_date ?? null
 
-  // 기존 데이터 있으면 최근 6페이지만, 없으면 전체 30페이지 수집
-  const maxPage = maxDateStr ? 6 : 30
+  // 1페이지 60영업일 — 증분이면 2페이지(120일), 최초 수집이면 5페이지(300일)
+  const maxPage = maxDateStr ? 2 : 5
   const allPrices: SiseRow[] = []
   let done = false
 
@@ -641,58 +641,58 @@ export async function updateEtfDividend(data: {
 
 type SiseRow = { date: string; close: number; e_amt: number; e_rate: number; e_trade: number }
 
-// sise_day.naver 1페이지 스크래핑 (EUC-KR 디코딩 + HTML 파싱)
+// 1페이지 = 60영업일. 100 을 넘기면 네이버가 빈 응답을 준다
+const NAVER_PAGE_SIZE = 60
+
+const _num = (v: unknown) => Number(String(v ?? "").replace(/,/g, "")) || 0
+
+/**
+ * 네이버 일별 시세 1페이지.
+ *
+ * 구 `finance.naver.com/item/sise_day.naver` 는 2026-09 부터 HTTP 410 Gone 이라
+ * 모바일 JSON API 로 옮겼다. EUC-KR 디코딩과 HTML 파싱이 통째로 사라졌다.
+ */
 async function _fetchSisePage(code: string, page: number): Promise<SiseRow[]> {
   try {
     const res = await fetch(
-      `https://finance.naver.com/item/sise_day.naver?code=${code}&page=${page}`,
+      `https://m.stock.naver.com/api/stock/${code}/price?pageSize=${NAVER_PAGE_SIZE}&page=${page}`,
       {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Referer": `https://finance.naver.com/item/main.naver?code=${code}`,
-          "Accept": "text/html,application/xhtml+xml",
+          "Referer": `https://m.stock.naver.com/domestic/stock/${code}/total`,
+          "Accept": "application/json",
           "Accept-Language": "ko-KR,ko;q=0.9",
         },
       }
     )
     if (!res.ok) return []
-    const buf  = await res.arrayBuffer()
-    const html = new TextDecoder("euc-kr").decode(buf)
-    return _parseSiseDay(html)
+    return _parseSiseDay(await res.json())
   } catch {
     return []
   }
 }
 
-// sise_day HTML 파싱 — 날짜·종가·전일대비·등락률·거래량 추출
-// 순수 숫자 span: [종가, 시가, 고가, 저가, 거래량] (등락 컬럼은 <em> 태그 포함으로 불일치)
-// 등락 부호: dn.gif / 하락 → 음수, up.gif / 상승 → 양수
-function _parseSiseDay(html: string): SiseRow[] {
+/**
+ * 일별 시세 JSON → SiseRow.
+ *
+ * 전일대비(`compareToPreviousClosePrice`)는 값 자체에 부호가 들어 있어("-11,000")
+ * 구 파서처럼 `em` 태그 class 로 부호를 추론할 필요가 없다.
+ * 등락률은 네이버 공시값(`fluctuationsRatio`)이 있지만 쓰지 않는다 —
+ * 이미 쌓인 데이터가 아래 공식으로 계산된 값이라 기준을 맞춘다.
+ */
+function _parseSiseDay(data: unknown): SiseRow[] {
+  if (!Array.isArray(data)) return []
   const result: SiseRow[] = []
-  for (const seg of html.split(/<\/tr>/i)) {
-    const dateM = seg.match(/(\d{4})\.(\d{2})\.(\d{2})/)
-    if (!dateM) continue
-    const date = `${dateM[1]}-${dateM[2]}-${dateM[3]}`
-
-    // 순수 숫자 span (nested 태그 없는 것만 매칭)
-    const numSpans = [...seg.matchAll(/<span class="tah p11">([\d,]+)<\/span>/g)]
-    if (!numSpans[0]) continue
-    const close = Number(numSpans[0][1].replace(/,/g, ""))
+  for (const d of data) {
+    const date = String(d?.localTradedAt ?? "")
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
+    const close = _num(d.closePrice)
     if (!close) continue
 
-    // 거래량: 5번째 순수 숫자 span (index 4)
-    const e_trade = numSpans[4] ? Number(numSpans[4][1].replace(/,/g, "")) : 0
+    const e_amt   = _num(d.compareToPreviousClosePrice)
+    const e_trade = _num(d.accumulatedTradingVolume)
 
-    // 전일대비: em class="bu_pdn" 이면 음수, bu_pup 이면 양수
-    let e_amt = 0
-    const emCls   = (seg.match(/<em class="([^"]*)"/)?.[1] ?? "")
-    const changeM = seg.match(/<span class="tah p11 [^"]*">\s*([\d,]+)\s*<\/span>/)
-    if (changeM) {
-      const num = Number(changeM[1].replace(/,/g, ""))
-      e_amt = emCls.includes("bu_pdn") ? -num : (emCls.includes("bu_pup") ? num : 0)
-    }
-
-    // 등락률 계산: (e_amt / 전일종가) × 100, 소수점 2자리
+    // 등락률: (전일대비 / 전일종가) × 100, 소수점 2자리
     const prevClose = close - e_amt
     const e_rate    = prevClose > 0 ? Math.round(e_amt / prevClose * 10000) / 100 : 0
 

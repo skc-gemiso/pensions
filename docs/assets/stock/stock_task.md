@@ -179,38 +179,74 @@ type StockListItem = { code: string; name: string; market: string }
 ### 대상 URL
 
 ```
-https://finance.naver.com/item/sise_day.naver?code={종목코드}&page={N}
+https://m.stock.naver.com/api/stock/{종목코드}/price?pageSize=60&page={N}
 ```
 
-- 응답: EUC-KR 인코딩 HTML
-- 페이지당 약 10영업일 데이터
+- 응답: JSON 배열 (구 `sise_day.naver` 는 2026-09 부터 **HTTP 410 Gone**)
+- 페이지당 **60영업일**. `pageSize` 가 100 이면 빈 응답이 온다 (`NAVER_PAGE_SIZE = 60`)
+
+#### 응답 필드 → `t_stock_amt` 매핑
+
+| JSON 필드 | 예시 | 저장 컬럼 | 비고 |
+|-----------|------|-----------|------|
+| `localTradedAt` | `"2026-09-21"` | `e_date` | 거래일. 이미 `YYYY-MM-DD` 라 변환 불필요 |
+| `closePrice` | `"275,000"` | `e_amt` | 종가. 콤마 제거 |
+| `compareToPreviousClosePrice` | `"14,000"` / `"-11,000"` | `c_amt` | 전일대비. **값에 부호 포함** |
+| `accumulatedTradingVolume` | `33876593` | `e_trade` | 거래량 (숫자형) |
+| `fluctuationsRatio` | `"5.36"` / `"-4.24"` | — | **쓰지 않음**. `e_rate` 는 직접 계산 |
+| `compareToPreviousPrice.code` | `2`=상승 `3`=보합 `5`=하락 | — | 부호가 값에 있어 쓸 일이 없다 |
+
+`e_rate` 는 기존 데이터와 기준을 맞추려 직접 계산한다.
+
+```typescript
+const prevClose = close - e_amt
+const e_rate    = prevClose > 0 ? Math.round(e_amt / prevClose * 10000) / 100 : 0
+```
+
+삼성전자·`498400`·`069500` 180행 대조 결과 `fluctuationsRatio` 와 **차이 0건** —
+전환 시점에 값이 튀지 않는다.
+
+**대안으로 쓰지 않는 API** — `api.stock.naver.com/chart/domestic/item/{code}/day` 는
+전일대비·등락률 필드가 없고 당일 거래량이 어긋난다.
 
 ### 수집 흐름 (`fetchAndSaveNaverPrices`)
 
 1. 오늘 날짜(`todayStr`) `t_stock_amt` 레코드 삭제 (당일 재수집)
 2. `MAX(e_date)` 조회 → `maxDateStr`
-3. `maxDateStr` 있으면 `maxPage = 6` (증분), 없으면 마지막 페이지까지 전체 수집
+3. `maxPage` = `maxDateStr` 있으면 `2`(120영업일), 없으면 `5`(300영업일)
 4. 3페이지씩 병렬 요청(배치) → `maxDateStr` 도달 시 수집 중단
 5. 중복 날짜 제거 (Set 기반)
 6. `t_stock_amt` UPSERT (`ON CONFLICT (e_date, stock_code) DO UPDATE`)
 7. INSERT 컬럼: `(e_date, stock_code, e_amt, c_amt, e_rate, e_trade, finish_yn)` (stock_type 제외)
 
-### HTML 파싱 (`_parseSiseDay`)
+`scripts/sync-stock-prices.mjs` 는 `--resync-days N` 구간을 덮도록
+`maxPage = Math.max(2, Math.ceil(resyncDays / 60))` 로 넓힌다.
 
-- `</tr>` 기준으로 분할
-- 날짜 추출: `(\d{4})\.(\d{2})\.(\d{2})` → `YYYY-MM-DD` 변환
-- 종가 추출: `<span class="tah p11">([\d,]+)</span>` → 쉼표 제거 후 숫자 변환
-- 전일비(c_amt) 추출: `<em>` 태그 내 숫자, class `bu_pdn`=하락(음수), `bu_pup`=상승(양수)
-- 등락률(e_rate) 추출: 전일비 다음 `<span class="tah p11">` 값 → % 단위 (부호 별도 적용)
+### JSON 파싱 (`_parseSiseDay`)
+
+- 배열이 아니면 빈 배열 반환 (에러 응답 방어)
+- `localTradedAt` 이 `YYYY-MM-DD` 정규식에 맞지 않으면 그 행 건너뜀
+- 콤마 제거 후 숫자 변환은 `_num()` 헬퍼 하나로 처리
+- 종가가 0/NaN 이면 그 행 건너뜀
 
 ### 요청 헤더
 
 ```
 User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
-Referer: https://finance.naver.com/item/main.naver?code={종목코드}
-Accept: text/html,application/xhtml+xml
+Referer: https://m.stock.naver.com/domestic/stock/{종목코드}/total
+Accept: application/json
 Accept-Language: ko-KR,ko;q=0.9
 ```
+
+### 같은 로직이 복제된 3곳
+
+수집 코드를 고칠 때 **세 파일을 함께** 고쳐야 한다.
+
+| 파일 | 함수 |
+|------|------|
+| `app/assets/stock/actions.ts` | `_fetchSisePage` / `_parseSiseDay` |
+| `app/api/cron/stock-sync/route.ts` | `fetchSisePage` |
+| `scripts/sync-stock-prices.mjs` | `fetchSisePage` |
 
 ---
 

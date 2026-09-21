@@ -67,7 +67,7 @@
 - 평가금액 큰 순으로 정렬
 - 행 클릭 → 해당 종목 일별 주가 차트 표시 (토글)
 - 행 호버 → 종목별 매입 내역 툴팁 (매입일 / 수량 / 매입가 / 현재가 / 수익률)
-- **네이버 주가 가져오기** 버튼: `t_stock_list default_yn='Y'` 전체 종목 대상 `sise_day.naver` 증분 수집 → `t_stock_amt` 저장
+- **네이버 주가 가져오기** 버튼: `t_stock_list default_yn='Y'` 전체 종목 대상 모바일 JSON API 증분 수집 → `t_stock_amt` 저장
 - **네이버 금융 →** 링크: 선택 종목 네이버 금융 페이지 새 탭 오픈
 - 코스피·코스닥 지수 실시간 조회 결과를 헤더에 표시
 
@@ -213,15 +213,30 @@
 
 ## 핵심 기능
 
-### 주가 자동 수집 (Naver sise_day.naver HTML 파싱)
+### 주가 자동 수집 (Naver 모바일 JSON API)
 
-- `finance.naver.com/item/sise_day.naver` HTML을 EUC-KR 디코딩 후 파싱
+**2026-09: 구 `finance.naver.com/item/sise_day.naver` 가 HTTP 410 Gone 으로 폐지됐다.**
+`m.stock.naver.com/api/stock/{code}/price` 로 옮겼고, EUC-KR 디코딩과 HTML 파싱은 사라졌다.
+
+```
+GET https://m.stock.naver.com/api/stock/{종목코드}/price?pageSize=60&page={N}
+```
+
+- 1페이지 = **60영업일**. `pageSize` 를 100 으로 올리면 빈 응답이 온다
 - 당일 데이터 재수집을 위해 오늘 날짜 레코드를 먼저 삭제 후 수집
-- 기존 데이터 있으면 최근 6페이지(약 60영업일), 없으면 마지막 페이지까지 전체 수집 (페이지 수 고정 30 제한 없음)
+- 기존 데이터 있으면 2페이지(120영업일), 없으면 5페이지(300영업일)
 - 3페이지씩 병렬 요청(배치) → 기존 최신 저장일 도달 시 수집 중단 (증분 방식)
-- 수집 대상: `t_stock_list default_yn='Y'` 전체 종목 (기존: `my_stock` 보유 종목만)
-- 전일비 부호 감지: `em` 태그 class `bu_pdn`=하락, `bu_pup`=상승 (기존: dn.gif/up.gif 이미지)
+- 수집 대상: `t_stock_list default_yn='Y'` 전체 종목
+- **전일비 부호는 값에 들어 있다** (`"-11,000"`) — 구 파서처럼 `em` 태그 class 로 추론하지 않는다
+- 등락률은 네이버 공시값(`fluctuationsRatio`)을 쓰지 않고 **직접 계산**한다 (아래 참고)
 - `t_stock_amt(e_date, stock_code)` PRIMARY KEY 기준 UPSERT
+
+**등락률을 직접 계산하는 이유** — 이미 쌓인 데이터가 `전일대비 ÷ 전일종가 × 100` 으로
+계산된 값이라 기준을 맞춘다. 삼성전자·KODEX 2종 180행으로 대조한 결과 네이버 공시값과
+**차이가 없어** 전환 경계에 단절이 생기지 않는다.
+
+**쓰지 않는 대안** — `api.stock.naver.com/chart/domestic/item/{code}/day` 는 전일대비·등락률이
+없고 당일 거래량이 어긋난다 (2026-09-21 삼성전자: 22,223,579 vs 정상 33,876,593).
 
 ### 시장 지수 조회
 
@@ -283,3 +298,4 @@
 | 2026-05 | 네이버 파서 전일비 감지 방식 변경: dn.gif/up.gif → em class bu_pdn/bu_pup |
 | 2026-05 | 전체 수집 페이지 한계: 30페이지 고정 → 마지막 페이지까지 전체 수집 |
 | 2026-09 | 자금 구분(현금·분배금) 도입 — `my_stock.fund_type`, 요약 카드 3개 → 5개(현금 기준 매입금액·평가손익 추가), 매입/매도 모달에 거래 내역 조회·수정·삭제 통합 |
+| 2026-09 | 네이버 sise_day.naver HTTP 410 폐지 → m.stock.naver.com 모바일 JSON API 로 교체 (HTML 파싱 제거, 1페이지 10건 → 60건) |

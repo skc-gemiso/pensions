@@ -18,38 +18,37 @@ const pool = new Pool({
   max: 3,
 })
 
+// 1페이지 = 60영업일. 100 을 넘기면 네이버가 빈 응답을 준다
+const NAVER_PAGE_SIZE = 60
+
+const num = (v) => Number(String(v ?? "").replace(/,/g, "")) || 0
+
+// 구 sise_day.naver 는 2026-09 부터 HTTP 410 Gone → 모바일 JSON API 로 교체
+// 전일대비는 값에 부호가 들어 있고(-11,000), 등락률은 기존 데이터와 기준을 맞추려 직접 계산한다
 async function fetchSisePage(code, page) {
   try {
     const res = await fetch(
-      `https://finance.naver.com/item/sise_day.naver?code=${code}&page=${page}`,
+      `https://m.stock.naver.com/api/stock/${code}/price?pageSize=${NAVER_PAGE_SIZE}&page=${page}`,
       {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          "Referer": `https://finance.naver.com/item/main.naver?code=${code}`,
+          "Referer": `https://m.stock.naver.com/domestic/stock/${code}/total`,
+          "Accept": "application/json",
           "Accept-Language": "ko-KR,ko;q=0.9",
         },
       }
     )
     if (!res.ok) return []
-    const buf  = await res.arrayBuffer()
-    const html = new TextDecoder("euc-kr").decode(buf)
+    const data = await res.json()
+    if (!Array.isArray(data)) return []
     const result = []
-    for (const seg of html.split(/<\/tr>/i)) {
-      const dateM = seg.match(/(\d{4})\.(\d{2})\.(\d{2})/)
-      if (!dateM) continue
-      const date  = `${dateM[1]}-${dateM[2]}-${dateM[3]}`
-      const numSpans = [...seg.matchAll(/<span class="tah p11">([\d,]+)<\/span>/g)]
-      if (!numSpans[0]) continue
-      const close = Number(numSpans[0][1].replace(/,/g, ""))
+    for (const d of data) {
+      const date = String(d?.localTradedAt ?? "")
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
+      const close = num(d.closePrice)
       if (!close) continue
-      const e_trade = numSpans[4] ? Number(numSpans[4][1].replace(/,/g, "")) : 0
-      let e_amt = 0
-      const emCls   = (seg.match(/<em class="([^"]*)"/)?.[1] ?? "")
-      const changeM = seg.match(/<span class="tah p11 [^"]*">\s*([\d,]+)\s*<\/span>/)
-      if (changeM) {
-        const num = Number(changeM[1].replace(/,/g, ""))
-        e_amt = emCls.includes("bu_pdn") ? -num : (emCls.includes("bu_pup") ? num : 0)
-      }
+      const e_amt     = num(d.compareToPreviousClosePrice)
+      const e_trade   = num(d.accumulatedTradingVolume)
       const prevClose = close - e_amt
       const e_rate    = prevClose > 0 ? Math.round(e_amt / prevClose * 10000) / 100 : 0
       result.push({ date, close, e_amt, e_rate, e_trade })
@@ -78,7 +77,9 @@ async function syncStock(stockCode, resyncDays = 0) {
   )
   const maxDateStr = rows[0]?.max_date ?? null
 
-  const maxPage = maxDateStr ? 6 : 30
+  // 1페이지 60영업일 — 증분이면 2페이지(120일), 최초 수집이면 5페이지(300일)
+  // --resync-days 가 길면 그 구간을 덮도록 페이지를 늘린다 (루프는 기존 최신일에서 알아서 멈춘다)
+  const maxPage = maxDateStr ? Math.max(2, Math.ceil(resyncDays / 60)) : 5
   const allPrices = []
   let done = false
 
