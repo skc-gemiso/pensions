@@ -20,19 +20,38 @@ CREATE TABLE my_shopping (
 );
 ```
 
-### `my_shopping_ref` — 참고 자료
+### 참고 자료 — 별도 테이블이 아니다
 
-```sql
-CREATE TABLE my_shopping_ref (
-  id          SERIAL PRIMARY KEY,
-  category    TEXT NOT NULL,   -- 'phone' | 'laptop' | 'domestic' | 'overseas' | 'etc'
-  title       TEXT NOT NULL,
-  url         TEXT,            -- 참고 링크 (선택)
-  content     TEXT,            -- 내용 (여러 줄)
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+참고 자료는 `my_shopping` 의 `item_type = 'ref'` 행이다. `my_shopping_ref` 테이블은 없다.
+
+| `my_shopping` 컬럼 | 참고 자료에서의 뜻 |
+|--------------------|-------------------|
+| `item_type` | 항상 `'ref'` |
+| `category` | **구분** — 어느 메뉴의 글인지 (아래) |
+| `product_nm` | 제목 |
+| `content` | 내용 (RichEditor HTML) |
+| `created_at` | 등록일 |
+| `purchase_place` · `original_price` | 쇼핑 참고 자료만 씀 (구매처·제품가격) |
+| 나머지 | `NULL` |
+
+#### `category` = 구분 (`app/shopping/ref-groups.ts`)
+
+`item_type='ref'` 행을 여러 메뉴가 나눠 쓴다. 어느 메뉴 것인지는 `category` 가 가른다.
+**화면에서 고르는 값이 아니라 호출하는 메뉴가 정한다.**
+
+| 값 | 표시명 | 쓰는 화면 |
+|----|--------|-----------|
+| `ref` | 참고 자료 | `/shopping` 참고 자료 탭 |
+| `stock` | 주식 투자 | `/assets/stock` 투자 이력 탭 |
+
+```typescript
+export const REF_GROUPS = { ref: "참고 자료", stock: "주식 투자" } as const
+export type RefGroup = keyof typeof REF_GROUPS
 ```
+
+- 구 참고 자료 행은 `category` 가 전부 `'ref'` 로 고정돼 있어 **마이그레이션 없이** 그대로 구분값이 됐다
+- 메뉴가 늘면 `REF_GROUPS` 에 한 줄 더하고 그 화면에서 `getRefList(그룹)` 을 부른다
+- `actions.ts` 는 `"use server"` 라 async 함수만 export 할 수 있어 이 상수는 별도 모듈에 둔다
 
 ### `my_shopping_file` — 첨부파일 (구매/참고 공용)
 
@@ -86,9 +105,9 @@ FK(`card_item_id → my_cost_item.id`)는 그대로 유지하되, **표시되는
 | `addShopping(data)` | 구매 항목 추가 |
 | `updateShopping(id, data)` | 구매 항목 수정 |
 | `deleteShopping(id)` | 구매 항목 삭제 (첨부파일 Storage 삭제 포함) |
-| `getRefList()` | 참고 자료 최근 30건 |
+| `getRefList(group?)` | 참고 자료 최근 30건. `group` 기본값 `'ref'` — `category` 로 걸러 다른 메뉴 글이 섞이지 않는다 |
 | `getRefFiles(refId)` | 참고 자료의 첨부파일 목록 + Signed URL |
-| `addRef(data)` | 참고 자료 추가 |
+| `addRef(data)` | 참고 자료 추가. `data.group` 으로 구분 지정 (기본 `'ref'`) |
 | `updateRef(id, data)` | 참고 자료 수정 |
 | `deleteRef(id)` | 참고 자료 삭제 (첨부파일 Storage 삭제 포함) |
 | `deleteShoppingFile(fileId)` | 첨부파일 단건 삭제 (Storage + DB) |

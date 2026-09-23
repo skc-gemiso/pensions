@@ -17,6 +17,7 @@ import {
 } from "./actions"
 import { getEtfDividendHistory, type EtfDividendRow } from "@/app/sim/actions"
 import { DividendForm } from "./DividendForm"
+import InvestHistory from "./InvestHistory"
 
 type StockSearchItem = StockListItem
 
@@ -85,7 +86,7 @@ export default function StockPage() {
   const [form, setForm]                   = useState<FormState>(EMPTY_FORM)
   const [submitting, setSubmitting]       = useState(false)
   const [formError, setFormError]         = useState("")
-  const [activeTab, setActiveTab]         = useState<"portfolio" | "history" | "account">("portfolio")
+  const [activeTab, setActiveTab]         = useState<"portfolio" | "history" | "account" | "invest">("portfolio")
   const [accountInfo, setAccountInfo]     = useState<AccountInfo[]>([])
   const [acInfoLoading, setAcInfoLoading] = useState(false)
   const [showAcModal, setShowAcModal]     = useState(false)
@@ -388,6 +389,7 @@ export default function StockPage() {
             { key: "portfolio", label: "포트폴리오" },
             { key: "history",   label: "거래 내역" },
             { key: "account",   label: "계좌 내역" },
+            { key: "invest",    label: "투자 이력" },
           ] as const).map(({ key, label }) => (
             <button
               key={key}
@@ -895,6 +897,9 @@ export default function StockPage() {
             </div>
           )
         })()}
+
+        {/* ── 투자 이력 탭 ── */}
+        {activeTab === "invest" && <InvestHistory />}
 
         {/* ── 보유 종목 호버 툴팁 ── */}
         {tooltip && (() => {

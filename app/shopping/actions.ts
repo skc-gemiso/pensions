@@ -3,6 +3,7 @@
 import { getPensionPool } from "@/lib/pension-db"
 import { requireAdmin } from "@/lib/guard"
 import { deleteFile as storageDeleteFile, getSignedUrl } from "@/lib/supabase-storage"
+import type { RefGroup } from "./ref-groups"
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -180,8 +181,12 @@ export async function deleteShopping(id: number): Promise<void> {
 }
 
 // ── 참고 자료 ─────────────────────────────────────────────────────────────────
+//
+// `item_type = 'ref'` 행은 여러 메뉴가 나눠 쓴다. 어느 메뉴 것인지는 `category` 가 가른다
+// (구 참고 자료 행은 전부 'ref' 고정이라 그대로 쓸 수 있었다).
+// 구분 값은 화면에서 고르는 게 아니라 호출하는 메뉴가 정한다 — `ref-groups.ts` 참고.
 
-export async function getRefList(): Promise<Shopping[]> {
+export async function getRefList(group: RefGroup = "ref"): Promise<Shopping[]> {
   await requireAdmin()
 
   const pool = getPensionPool()
@@ -192,9 +197,10 @@ export async function getRefList(): Promise<Shopping[]> {
        original_price, NULL::int AS purchase_price, NULL AS purchase_place,
        content, created_at::text, updated_at::text
      FROM my_shopping
-     WHERE item_type = 'ref'
+     WHERE item_type = 'ref' AND category = $1
      ORDER BY created_at DESC
-     LIMIT 30`
+     LIMIT 30`,
+    [group]
   )
   return rows
 }
@@ -218,6 +224,7 @@ export async function getRefFiles(refId: number): Promise<ShoppingFile[]> {
 }
 
 export async function addRef(data: {
+  group?: RefGroup
   product_nm: string
   purchase_place?: string | null
   original_price?: number | null
@@ -228,8 +235,8 @@ export async function addRef(data: {
   const pool = getPensionPool()
   const { rows } = await pool.query<{ id: number }>(
     `INSERT INTO my_shopping (item_type, category, product_nm, purchase_place, original_price, content)
-     VALUES ('ref', 'ref', $1, $2, $3, $4) RETURNING id`,
-    [data.product_nm, data.purchase_place ?? null, data.original_price ?? null, data.content ?? null]
+     VALUES ('ref', $1, $2, $3, $4, $5) RETURNING id`,
+    [data.group ?? "ref", data.product_nm, data.purchase_place ?? null, data.original_price ?? null, data.content ?? null]
   )
   return rows[0].id
 }

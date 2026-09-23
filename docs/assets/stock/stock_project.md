@@ -27,6 +27,8 @@
 |-------|---------|------|
 | `portfolio` | 포트폴리오 | 요약 카드 + 보유 종목 테이블 + 선택 종목 주가 차트 |
 | `history` | 거래 내역 | 전체 거래 내역 테이블 |
+| `account` | 계좌 내역 | 계좌별 입출금 내역 (`my_account_info`) |
+| `invest` | 투자 이력 | 자유 형식 기록 — 쇼핑 「참고 자료」와 같은 구조 |
 
 ---
 
@@ -132,6 +134,30 @@
 - 수정 모드에서 `[새로 추가]` 를 누르면 빈 추가 폼으로 되돌아간다
 - **거래를 수정·삭제해도 저장 때 자동 생성된 `my_account_info` 행은 따라 바뀌지 않는다.**
   계좌 입출금은 `계좌 내역` 탭에서 따로 맞춘다
+
+---
+
+## 투자 이력 탭
+
+쇼핑 「참고 자료」와 **같은 구조·같은 데이터**를 쓴다. 좌측 목록 + 우측 상세 2단.
+
+- 저장소: `my_shopping` 의 `item_type='ref'` + `category='stock'` (전용 테이블 없음)
+- 서버 액션도 쇼핑 것을 그대로 쓴다 — `getRefList('stock')` / `addRef({group:'stock', …})` / `updateRef` / `deleteRef`
+- 컴포넌트: `app/assets/stock/InvestHistory.tsx`
+
+| 영역 | 내용 |
+|------|------|
+| 좌측 목록 | 등록일 + 제목. 최신순 30건, 클릭하면 우측에 펼침 |
+| 우측 상세 (보기) | 구분 · 등록일 표 + 내용(HTML 렌더) + `[+ 추가] [편집] [삭제]` |
+| 우측 상세 (입력) | 제목 입력 + 구분(읽기 전용) + 내용 `RichEditor` + `[저장] [취소]` |
+
+**다루는 항목은 4개뿐** — 구분 / 제목 / 등록일 / 내용.
+
+- **첨부파일 기능은 넣지 않는다.** 쇼핑 참고 자료의 `FileDropZone`·`FileList` 를 쓰지 않는다
+- 구매처·제품가격은 쇼핑 전용이라 이 화면에서 안 쓴다 (`NULL` 로 남는다)
+- **구분은 화면에서 고르지 않는다.** 이 탭에서 쓴 글은 항상 `주식 투자` 다.
+  값은 `app/shopping/ref-groups.ts` 의 `REF_GROUPS` 에서 온다
+- 제목이 비면 저장하지 않고 알린다
 
 ---
 
@@ -273,6 +299,8 @@ GET https://m.stock.naver.com/api/stock/{종목코드}/price?pageSize=60&page={N
 |------|------|
 | `app/assets/stock/page.tsx` | 포트폴리오 UI (클라이언트 컴포넌트) |
 | `app/assets/stock/actions.ts` | DB CRUD + 네이버 주가 수집 서버 액션 |
+| `app/assets/stock/InvestHistory.tsx` | 투자 이력 탭 (목록 + 상세, 쇼핑 참고 자료 액션 재사용) |
+| `app/shopping/ref-groups.ts` | 참고 자료 구분값 `REF_GROUPS` (`ref` / `stock`) |
 | `app/assets/page.tsx` | `/assets/stock` 리다이렉트 |
 | `app/api/cron/stock-sync/route.ts` | Vercel Cron 주가 수집 엔드포인트 |
 | `app/api/stock/price/route.ts` | 네이버 실시간 가격 프록시 (현재 미사용) |
@@ -299,3 +327,4 @@ GET https://m.stock.naver.com/api/stock/{종목코드}/price?pageSize=60&page={N
 | 2026-05 | 전체 수집 페이지 한계: 30페이지 고정 → 마지막 페이지까지 전체 수집 |
 | 2026-09 | 자금 구분(현금·분배금) 도입 — `my_stock.fund_type`, 요약 카드 3개 → 5개(현금 기준 매입금액·평가손익 추가), 매입/매도 모달에 거래 내역 조회·수정·삭제 통합 |
 | 2026-09 | 네이버 sise_day.naver HTTP 410 폐지 → m.stock.naver.com 모바일 JSON API 로 교체 (HTML 파싱 제거, 1페이지 10건 → 60건) |
+| 2026-09 | 투자 이력 탭 추가 — 쇼핑 참고 자료 구조·액션 재사용, `my_shopping.category` 를 구분값으로 활용 (첨부파일 없음) |
