@@ -550,6 +550,84 @@ export async function getMonthlyDividendByAccount(stockCode: string): Promise<Mo
   })
 }
 
+// ── 분배금 → 계좌 입금 연동 ───────────────────────────────────────────────────
+//
+// my_account_info 에는 분배금과 이어줄 컬럼이 없어 **비고 문자열을 키로 쓴다**.
+// 이 형식으로 만든 행은 이 코드가 관리하는 행이라는 뜻이다 — 화면에서 비고를 고치면 연결이 끊긴다.
+const divMemo = (stockCode: string, refDate: string) => `분배금: ${stockCode} (${refDate})`
+
+/**
+ * 분배금 1건의 계좌 입금 내역을 지금 상태에 맞춘다.
+ *
+ * 비고 키로 기존 행을 **모두 지우고 다시 넣는다** — 몇 번을 돌려도 결과가 같고
+ * 계좌가 늘거나 수량이 바뀌어도 알아서 맞는다.
+ *
+ * - 입금일자는 **실지급일**(`pay_date`). 실지급일이 없으면 넣을 날짜가 없어 행을 지우기만 한다
+ * - 금액은 지급 이력 테이블과 같은 **13일 기산 수량 × 주당 분배금** (세전)
+ * - 계좌별로 한 행씩, 그날 수량이 있는 계좌만
+ */
+async function _syncDividendDeposits(
+  db: ReturnType<typeof getPensionPool>,
+  stockCode: string,
+  refDate: string,
+): Promise<number> {
+  const memo = divMemo(stockCode, refDate)
+  await db.query(`DELETE FROM my_account_info WHERE memo = $1`, [memo])
+
+  const { rows: divRows } = await db.query(
+    `SELECT TO_CHAR(pay_date, 'YYYYMMDD') AS pay_date, dist_amt
+     FROM t_etf_dividend WHERE stock_code = $1 AND ref_date = $2::date`,
+    [stockCode, refDate]
+  )
+  const div = divRows[0]
+  if (!div?.pay_date || !Number(div.dist_amt)) return 0
+
+  // 지급기준일이 속한 달 13일까지 누적된 계좌별 순수량 (getMonthlyDividendByAccount 와 같은 기준)
+  const { rows: acctRows } = await db.query(
+    `SELECT ms.account_no, SUM(ms.qty)::int AS qty_13th
+     FROM my_stock ms
+     WHERE ms.stock_code = $1
+       AND ms.s_date <= TO_CHAR($2::date, 'YYYYMM') || '13'
+     GROUP BY ms.account_no
+     HAVING SUM(ms.qty) > 0`,
+    [stockCode, refDate]
+  )
+
+  let saved = 0
+  for (const a of acctRows) {
+    const amt = Math.round(Number(a.qty_13th) * Number(div.dist_amt))
+    if (amt <= 0) continue
+    await db.query(
+      `INSERT INTO my_account_info (account_no, trade_date, in_out, amt, memo)
+       VALUES ($1, $2, 'I', $3, $4)`,
+      [a.account_no, div.pay_date, amt, memo]
+    )
+    saved++
+  }
+  return saved
+}
+
+/**
+ * 등록된 분배금 전체에 대해 계좌 입금 내역을 다시 만든다 (소급 생성).
+ *
+ * `_syncDividendDeposits` 가 비고 키로 지우고 다시 넣으므로 여러 번 눌러도 중복되지 않는다.
+ * 다만 이 기능 이전에 **손으로 넣은 분배금 입금 행은 비고가 달라 남는다** — 그건 직접 지워야 한다.
+ */
+export async function backfillDividendDeposits(stockCode: string): Promise<{ dividends: number; deposits: number }> {
+  await requireAdmin()
+
+  const db = getPensionPool()
+  const { rows } = await db.query(
+    `SELECT TO_CHAR(ref_date, 'YYYY-MM-DD') AS ref_date
+     FROM t_etf_dividend WHERE stock_code = $1 ORDER BY ref_date`,
+    [stockCode]
+  )
+
+  let deposits = 0
+  for (const r of rows) deposits += await _syncDividendDeposits(db, stockCode, r.ref_date)
+  return { dividends: rows.length, deposits }
+}
+
 /**
  * 분배금 1건 등록. PK가 (stock_code, ref_date) 라 같은 지급기준일은 중복 등록할 수 없다.
  * 덮어쓰면 기존 이력이 조용히 바뀌므로 UPSERT 대신 예외를 던진다.
@@ -589,6 +667,8 @@ export async function addEtfDividend(data: {
       data.tax_base_amt ?? null,
     ]
   )
+
+  await _syncDividendDeposits(db, data.stock_code, data.ref_date)
 }
 
 /**
@@ -637,6 +717,12 @@ export async function updateEtfDividend(data: {
     ]
   )
   if (!rowCount) throw new Error(`수정할 분배금이 없습니다 (${data.orig_ref_date}).`)
+
+  // 지급기준일이 바뀌면 비고 키도 바뀐다 — 옛 키로 만든 입금 행을 먼저 지운다
+  if (data.ref_date !== data.orig_ref_date) {
+    await db.query(`DELETE FROM my_account_info WHERE memo = $1`, [divMemo(data.stock_code, data.orig_ref_date)])
+  }
+  await _syncDividendDeposits(db, data.stock_code, data.ref_date)
 }
 
 type SiseRow = { date: string; close: number; e_amt: number; e_rate: number; e_trade: number }

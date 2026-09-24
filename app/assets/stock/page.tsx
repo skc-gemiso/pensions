@@ -12,7 +12,7 @@ const won = (n: number | null | undefined) => n == null ? "-" : `${fmt(n)}원`
 import {
   getAccounts, getHoldings, getTransactions, addTransaction, updateTransaction, deleteTransaction,
   getDailyPrices, fetchAndSaveNaverPrices, searchStockList, getMarketIndices, getDefaultStockList,
-  getAccountInfo, addAccountInfo, getMonthlyDividendByAccount,
+  getAccountInfo, addAccountInfo, getMonthlyDividendByAccount, backfillDividendDeposits,
   type Account, type StockHolding, type StockTransaction, type DailyPrice, type StockListItem, type MarketIndex, type AccountInfo, type MonthlyAccountDiv,
 } from "./actions"
 import { getEtfDividendHistory, type EtfDividendRow } from "@/app/sim/actions"
@@ -77,6 +77,7 @@ export default function StockPage() {
   const [divHistory, setDivHistory]       = useState<EtfDividendRow[]>([])
   const [monthlyAcctDiv, setMonthlyAcctDiv] = useState<MonthlyAccountDiv[]>([])
   const [showDivForm, setShowDivForm]     = useState(false)
+  const [backfilling, setBackfilling]     = useState(false)
   const [divEditRow, setDivEditRow]       = useState<EtfDividendRow | null>(null)  // 수정 중인 행 (null 이면 추가 모드)
   const [transactions, setTransactions]   = useState<StockTransaction[]>([])
   const [txLoading, setTxLoading]         = useState(false)
@@ -170,6 +171,23 @@ export default function StockPage() {
   async function handleDividendSaved() {
     await reloadDividend()
     closeDividendForm()
+    // 분배금 저장이 계좌 입금 행을 함께 바꾸므로 캐시를 비워 다음 탭 진입 때 다시 읽는다
+    setAccountInfo([])
+  }
+
+  // 등록된 분배금 전체에 대해 계좌 입금 행을 다시 만든다 (비고 키로 지우고 다시 넣어 중복 없음)
+  async function handleBackfillDeposits() {
+    if (!confirm("등록된 분배금 전체에 대해 계좌 입금 내역을 다시 만듭니다.\n이 기능으로 만든 기존 행은 지우고 새로 넣습니다. 진행할까요?")) return
+    setBackfilling(true)
+    try {
+      const { dividends, deposits } = await backfillDividendDeposits(DIV_STOCK_CODE)
+      setAccountInfo([])
+      alert(`분배금 ${dividends}건 → 계좌 입금 ${deposits}건 생성 완료`)
+    } catch (e) {
+      alert(`오류: ${e instanceof Error ? e.message : "알 수 없는 오류"}`)
+    } finally {
+      setBackfilling(false)
+    }
   }
 
   async function handleFetchNaver(codeToLoad?: string | null, silent = false) {
@@ -978,22 +996,41 @@ export default function StockPage() {
             nm: monthlyAcctDiv.find(r => r.account_no === no)?.account_nm ?? no,
           }))
           const acctDivIdx = new Map(monthlyAcctDiv.map(r => [`${r.ref_date}|${r.account_no}`, r]))
-          // 카드용: 지금 시점의 보유 잔고 × 당일 종가 × 월평균 분배율
+          // 이번 달 지급 이력이 있으면 그 실적치로 고정하고, 없을 때만 추정한다
+          const thisMonth = todayISO.slice(0, 7)                                  // YYYY-MM
+          const fixedDiv  = divHistory.find(r => r.ref_date.slice(0, 7) === thisMonth) ?? null
+          const fixedRows = fixedDiv ? monthlyAcctDiv.filter(r => r.ref_date === fixedDiv.ref_date) : []
+          const isFixed   = fixedDiv != null && fixedRows.length > 0
+
           const curHoldings  = holdings.filter(h => h.stock_code === DIV_STOCK_CODE && h.net_qty > 0)
           const curPrice     = curHoldings.find(h => h.latest_price != null)?.latest_price ?? null
           const curPriceDate = curHoldings.find(h => h.latest_date  != null)?.latest_date  ?? null
           const perShareTax  = latest?.tax_base_amt ?? 0
-          const curRows = curHoldings.map(h => ({
-            account_no: h.account_no,
-            account_nm: h.account_nm,
-            qty: h.net_qty,
-            price: h.latest_price ?? 0,
-            div: Math.round(h.net_qty * (h.latest_price ?? 0) * avgRate / 100),
-            tax: Math.round(h.net_qty * perShareTax),
-          }))
-          const totalQty = curRows.reduce((s, r) => s + r.qty, 0)
-          const totalDiv = curRows.reduce((s, r) => s + r.div, 0)
-          const totalTax = curRows.reduce((s, r) => s + r.tax, 0)
+
+          // 두 경우 모두 같은 5열을 쓴다. 3열(unit)만 뜻이 다르다 — 확정은 주당 분배금, 추정은 당일 종가
+          const curRows = isFixed
+            // 확정: 13일 기산 수량 × 주당 분배금 (지급 이력 테이블과 같은 숫자)
+            ? fixedRows.map(r => ({
+                account_no: r.account_no,
+                account_nm: r.account_nm,
+                qty:  r.qty_13th,
+                unit: fixedDiv!.dist_amt,
+                div:  r.dist_total,
+                tax:  r.tax_total,
+              }))
+            // 추정: 지금 시점의 보유 잔고 × 당일 종가 × 월평균 분배율
+            : curHoldings.map(h => ({
+                account_no: h.account_no,
+                account_nm: h.account_nm,
+                qty:  h.net_qty,
+                unit: h.latest_price ?? 0,
+                div:  Math.round(h.net_qty * (h.latest_price ?? 0) * avgRate / 100),
+                tax:  Math.round(h.net_qty * perShareTax),
+              }))
+          const totalQty  = curRows.reduce((s, r) => s + r.qty, 0)
+          const totalDiv  = curRows.reduce((s, r) => s + r.div, 0)
+          const totalTax  = curRows.reduce((s, r) => s + r.tax, 0)
+          const totalUnit = isFixed ? (fixedDiv!.dist_amt) : curPrice
           return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[1224px] max-h-[90vh] flex flex-col overflow-hidden">
@@ -1035,22 +1072,35 @@ export default function StockPage() {
                     {totalQty > 0 && (
                       <div className="bg-white rounded-xl border border-orange-300 overflow-hidden">
                         <div className="flex items-center justify-between px-3 py-2 border-b border-orange-100">
-                          <p className="text-xs font-semibold text-orange-700">내 잔고 기준 이번 달 예상 분배금</p>
-                          <span className="text-xs text-gray-500">현재 잔고 × 당일 종가 × 월평균 분배율</span>
+                          <p className="text-xs font-semibold text-orange-700 flex items-center gap-1.5">
+                            {isFixed ? `${thisMonth.replace("-", ".")} 분배금` : "내 잔고 기준 이번 달 예상 분배금"}
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                              isFixed ? "bg-orange-600 text-white" : "bg-gray-200 text-gray-600"
+                            }`}>
+                              {isFixed ? "확정" : "추정"}
+                            </span>
+                          </p>
+                          <span className="text-xs text-gray-500">
+                            {isFixed ? "13일 기산 수량 × 주당 분배금" : "현재 잔고 × 당일 종가 × 월평균 분배율"}
+                          </span>
                         </div>
                         {/* 컬럼 헤더 */}
                         <div className="grid grid-cols-5 gap-2 px-3 py-1.5 bg-orange-50 border-b border-orange-100 text-xs font-semibold text-gray-500">
                           <div>계좌</div>
                           <div className="text-right">보유 잔고</div>
-                          <div className="text-right">{curPriceDate ? `${curPriceDate.replace(/-/g, ".")} 종가 기준` : "종가 기준"}</div>
-                          <div className="text-right">예상 분배금</div>
+                          <div className="text-right">
+                            {isFixed
+                              ? "주당 분배금"
+                              : curPriceDate ? `${curPriceDate.replace(/-/g, ".")} 종가 기준` : "종가 기준"}
+                          </div>
+                          <div className="text-right">{isFixed ? "분배금" : "예상 분배금"}</div>
                           <div className="text-right">과세표준액</div>
                         </div>
                         {/* 합계 행 */}
                         <div className="grid grid-cols-5 gap-2 px-3 py-2.5 bg-orange-50/50 border-b border-orange-200">
                           <div className="text-xs font-bold text-orange-700">합계</div>
                           <div className="text-right text-sm font-bold text-gray-800">{fmt(totalQty)}주</div>
-                          <div className="text-right text-sm font-bold text-gray-700">{fmt(curPrice)}원</div>
+                          <div className="text-right text-sm font-bold text-gray-700">{fmt(totalUnit)}원</div>
                           <div className="text-right text-sm font-bold text-orange-600">{fmt(totalDiv)}원</div>
                           <div className="text-right text-sm font-bold text-gray-700">{fmt(totalTax)}원</div>
                         </div>
@@ -1059,14 +1109,16 @@ export default function StockPage() {
                           <div key={r.account_no} className="grid grid-cols-5 gap-2 px-3 py-2 border-b border-gray-100 last:border-0 text-xs">
                             <div className="text-gray-600 truncate">{r.account_nm ?? r.account_no}</div>
                             <div className="text-right text-gray-800">{fmt(r.qty)}주</div>
-                            <div className="text-right text-gray-600">{fmt(r.price)}원</div>
+                            <div className="text-right text-gray-600">{fmt(r.unit)}원</div>
                             <div className="text-right text-orange-500">{fmt(r.div)}원</div>
                             <div className="text-right text-gray-600">{fmt(r.tax)}원</div>
                           </div>
                         ))}
                         {/* 계산 기준 */}
                         <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
-                          월평균 분배율 {avgRate.toFixed(2)}% · 주당 과세표준 {fmt(perShareTax)}원
+                          {isFixed
+                            ? `지급기준일 ${fixedDiv!.ref_date} · 실지급일 ${fixedDiv!.pay_date || "미정"} · 분배율 ${fixedDiv!.dist_rate.toFixed(2)}% · 주당 과세표준 ${fmt(fixedDiv!.tax_base_amt)}원`
+                            : `월평균 분배율 ${avgRate.toFixed(2)}% · 주당 과세표준 ${fmt(perShareTax)}원`}
                         </div>
                       </div>
                     )}
@@ -1076,17 +1128,27 @@ export default function StockPage() {
                 <div className="px-5 py-2 border-b border-gray-200 bg-white">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-gray-600">분배금 지급 이력</span>
-                    <button
-                      onClick={() => {
-                        // 추가 폼이 열려 있으면 닫고, 닫혀 있거나 수정 중이면 빈 추가 폼으로 연다
-                        if (showDivForm && !divEditRow) { closeDividendForm(); return }
-                        closeDividendForm()
-                        setShowDivForm(true)
-                      }}
-                      className="text-xs px-3 py-1 border border-amber-400 text-amber-700 bg-amber-50 rounded-lg hover:bg-amber-100 font-medium"
-                    >
-                      {showDivForm && !divEditRow ? "닫기" : "+ 분배금 추가"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {/* 이 기능 이전에 등록한 분배금에도 계좌 입금 행을 만든다 (여러 번 눌러도 중복 없음) */}
+                      <button
+                        onClick={handleBackfillDeposits}
+                        disabled={backfilling}
+                        className="text-xs px-3 py-1 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap"
+                      >
+                        {backfilling ? "생성 중..." : "계좌 입금 내역 재생성"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          // 추가 폼이 열려 있으면 닫고, 닫혀 있거나 수정 중이면 빈 추가 폼으로 연다
+                          if (showDivForm && !divEditRow) { closeDividendForm(); return }
+                          closeDividendForm()
+                          setShowDivForm(true)
+                        }}
+                        className="text-xs px-3 py-1 border border-amber-400 text-amber-700 bg-amber-50 rounded-lg hover:bg-amber-100 font-medium"
+                      >
+                        {showDivForm && !divEditRow ? "닫기" : "+ 분배금 추가"}
+                      </button>
+                    </div>
                   </div>
 
                   {showDivForm && (

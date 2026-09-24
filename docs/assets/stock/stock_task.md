@@ -106,8 +106,9 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `getAccountInfo()` | 계좌 입출금 내역 (`my_account_info` + `my_account` JOIN) | 세션 필요 |
 | `addAccountInfo(data)` | 계좌 입출금 내역 INSERT (`account_no`, `trade_date`, `in_out`, `amt`, `memo`) | 세션 필요 |
 | `getMonthlyDividendByAccount(stockCode)` | 분배금 지급기준일별 계좌 보유수량·분배금·세금. 각 기준일의 **해당 월 13일까지 누적 순수량** 기준. 배당 팝업의 **지급 이력 테이블 전용** — 요약 카드는 현재 잔고를 쓴다 | 세션 필요 |
-| `addEtfDividend(data)` | `t_etf_dividend` 1건 INSERT. 같은 `(stock_code, ref_date)` 가 이미 있으면 덮어쓰지 않고 예외 — 배당 팝업의 `[+ 분배금 추가]` 에서 호출 | 세션 필요 |
-| `updateEtfDividend(data)` | `t_etf_dividend` 1건 UPDATE. `orig_ref_date` 로 행을 찾고 `ref_date`(PK 포함) 5개 값과 `updated_at` 을 갱신. 바꾼 `ref_date` 가 다른 행과 겹치면 예외, 대상 행이 없어도 예외 — 지급 이력 행의 `[수정]` 에서 호출 | 세션 필요 |
+| `addEtfDividend(data)` | `t_etf_dividend` 1건 INSERT. 같은 `(stock_code, ref_date)` 가 이미 있으면 덮어쓰지 않고 예외. INSERT 후 `_syncDividendDeposits` 로 계좌 입금 행 생성 — 배당 팝업의 `[+ 분배금 추가]` 에서 호출 | 세션 필요 |
+| `backfillDividendDeposits(stockCode)` | 등록된 분배금 전체에 대해 계좌 입금 행 재생성. `{ dividends, deposits }` 반환 — `[계좌 입금 내역 재생성]` 버튼 | 세션 필요 |
+| `updateEtfDividend(data)` | `t_etf_dividend` 1건 UPDATE. `orig_ref_date` 로 행을 찾고 `ref_date`(PK 포함) 5개 값과 `updated_at` 을 갱신. 바꾼 `ref_date` 가 다른 행과 겹치면 예외, 대상 행이 없어도 예외. UPDATE 후 옛 키의 입금 행을 지우고 새 키로 다시 생성 — 지급 이력 행의 `[수정]` 에서 호출 | 세션 필요 |
 
 ### 분배금 입력 폼 (`app/assets/stock/DividendForm.tsx`)
 
@@ -396,6 +397,41 @@ const totalRateCash = totalBuyCash > 0 ? totalPnlCash / totalBuyCash * 100 : nul
 - 보유 종목이 전부 현금 매입이면 `totalBuyCash === totalBuy` 라 두 손익 카드 값이 같다
 - 분배금 재투자가 섞이면 현금 기준 원금이 작아져 **현금 수익률이 더 높게** 나온다
 
+### 분배금 → 계좌 입금 연동 (`_syncDividendDeposits`)
+
+`my_account_info` 에 분배금과 이어줄 컬럼이 없어 **비고 문자열을 키로 쓴다**.
+
+```typescript
+const divMemo = (stockCode, refDate) => `분배금: ${stockCode} (${refDate})`
+```
+
+호출되는 시점은 3곳 — `addEtfDividend`, `updateEtfDividend`, `backfillDividendDeposits`.
+
+**동작** (같은 인자로 몇 번을 돌려도 결과가 같다)
+
+1. `DELETE FROM my_account_info WHERE memo = {키}` — 이 키로 만든 행을 전부 지운다
+2. `t_etf_dividend` 에서 `pay_date`·`dist_amt` 조회.
+   **`pay_date` 가 없거나 `dist_amt` 가 0이면 여기서 끝** (지우기만 하고 INSERT 안 함)
+3. 계좌별 13일 기산 수량 조회 — `getMonthlyDividendByAccount` 과 같은 기준
+
+   ```sql
+   SELECT ms.account_no, SUM(ms.qty)::int AS qty_13th
+   FROM my_stock ms
+   WHERE ms.stock_code = $1
+     AND ms.s_date <= TO_CHAR($2::date, 'YYYYMM') || '13'
+   GROUP BY ms.account_no
+   HAVING SUM(ms.qty) > 0
+   ```
+
+4. 계좌마다 `INSERT` — `trade_date = pay_date`(YYYYMMDD), `in_out = 'I'`,
+   `amt = Math.round(qty_13th × dist_amt)`, `memo = {키}`
+
+**지급기준일을 바꾸면** 키가 바뀐다. `updateEtfDividend` 가 옛 키의 행을 먼저 지우고
+새 키로 `_syncDividendDeposits` 를 부른다.
+
+**한계** — 비고를 화면에서 고치면 연결이 끊겨 다음 수정 때 옛 행이 남는다.
+이 연동 이전에 손으로 넣은 분배금 입금 행도 비고가 달라 그대로 남는다 (직접 삭제 필요).
+
 ### 배당 팝업 계산
 
 요약 카드(추정치)와 지급 이력 테이블(실적치)은 **수량 기준이 다르다**. 섞으면 안 된다.
@@ -405,8 +441,16 @@ const totalRateCash = totalBuyCash > 0 ? totalPnlCash / totalBuyCash * 100 : nul
 const avgWindow = divHistory.slice(0, 12)
 const avgRate   = avgWindow.reduce((s, r) => s + r.dist_rate, 0) / avgWindow.length
 
-// 요약 카드 "내 잔고 기준 이번 달 분배금" — 지금 시점의 잔고 기준 추정치
-const curHoldings = holdings.filter(h => h.stock_code === DIV_STOCK_CODE && h.net_qty > 0)
+// 이번 달 분배금 카드 — 지급 이력이 있으면 실적치로 고정, 없을 때만 추정
+const thisMonth = todayISO.slice(0, 7)                                       // YYYY-MM
+const fixedDiv  = divHistory.find(r => r.ref_date.slice(0, 7) === thisMonth) ?? null
+const fixedRows = fixedDiv ? monthlyAcctDiv.filter(r => r.ref_date === fixedDiv.ref_date) : []
+const isFixed   = fixedDiv != null && fixedRows.length > 0
+
+// 확정 — getMonthlyDividendByAccount() 값을 그대로. 지급 이력 테이블과 숫자가 같다
+//   qty = r.qty_13th, unit = fixedDiv.dist_amt, div = r.dist_total, tax = r.tax_total
+// 추정 — 지금 시점의 잔고 기준
+//   qty = h.net_qty, unit = h.latest_price
 const div = Math.round(h.net_qty * (h.latest_price ?? 0) * avgRate / 100)
 const tax = Math.round(h.net_qty * (latest?.tax_base_amt ?? 0))
 
@@ -417,8 +461,12 @@ const rowTotal = Σ acctDivIdx.get(`${ref_date}|${account_no}`)?.dist_total   //
 
 | | 수량 출처 | 성격 |
 |---|---|---|
-| 요약 카드 | `getHoldings()` 의 `net_qty` (현재) | 추정 |
+| 이번 달 카드 — 지급 이력 **있음** | `getMonthlyDividendByAccount()` 의 `qty_13th` | 실적 |
+| 이번 달 카드 — 지급 이력 **없음** | `getHoldings()` 의 `net_qty` (현재) | 추정 |
 | 지급 이력 테이블 | `getMonthlyDividendByAccount()` 의 `qty_13th` (13일 기산) | 실적 |
+
+지급 이력이 있는 달에는 카드와 지급 이력 테이블이 **같은 수량·같은 금액**을 쓴다.
+없는 달에만 카드가 현재 잔고 기준 추정으로 내려간다.
 
 ### 종목 검색 (모달)
 
