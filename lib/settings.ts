@@ -146,3 +146,48 @@ export function natSettingsFromEnv(): NatSettings {
     invest_until_age: int("PENSION_NAT_INVEST_UNTIL_AGE", 65),
   }
 }
+
+export type AccumSettings = {
+  /** 주식모으기 대상 계좌번호 */
+  accounts: string[]
+  /** 적립 종목코드 */
+  stock_code: string
+  /** 1일 매수 한도(원) */
+  daily_limit: number
+  /** 분배금 기산일 (매월 N일). 지급기준일 T-2 결제일에 해당한다 */
+  base_day: number
+  /** 연금저축 자동이체일 (매월 N일, 휴일 무관) */
+  transfer_day: number
+  /** 연금저축 월 자동이체액(원) */
+  transfer_amount: number
+  /** 예수금 경보 기준 — 남은 거래일 수 */
+  warn_days: number
+  alert_days: number
+}
+
+/**
+ * 주식모으기(적립) 설정.
+ *
+ * ACCUM_ACCOUNTS        대상 계좌번호 (쉼표 구분)
+ * ACCUM_STOCK_CODE      적립 종목코드
+ * ACCUM_DAILY_LIMIT     1일 매수 한도(원)
+ * ACCUM_BASE_DAY        분배금 기산일 (매월 N일)
+ * ACCUM_TRANSFER_DAY    연금저축 자동이체일 (매월 N일)
+ * ACCUM_TRANSFER_AMOUNT 연금저축 월 자동이체액
+ * ACCUM_WARN_DAYS       🟡 주의 기준 (남은 거래일)
+ * ACCUM_ALERT_DAYS      🔴 부족 기준 (남은 거래일)
+ */
+export function accumSettingsFromEnv(): AccumSettings {
+  const accounts = str("ACCUM_ACCOUNTS", "")
+    .split(",").map(s => s.trim()).filter(Boolean)
+  return {
+    accounts,
+    stock_code:      str("ACCUM_STOCK_CODE", ""),
+    daily_limit:     int("ACCUM_DAILY_LIMIT", 50000),
+    base_day:        int("ACCUM_BASE_DAY", 13),
+    transfer_day:    int("ACCUM_TRANSFER_DAY", 25),
+    transfer_amount: int("ACCUM_TRANSFER_AMOUNT", 0),
+    warn_days:       int("ACCUM_WARN_DAYS", 10),
+    alert_days:      int("ACCUM_ALERT_DAYS", 5),
+  }
+}

@@ -407,6 +407,12 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase 서비스 롤 키 | 대시보드 > Settings > API (쇼핑 Storage 서버 사이드 업로드) |
 | `CARD_ENC_KEY` | 카드 민감정보 암호화 키 (32바이트 base64) | `my_card`의 `card_no`·`cvc`·`limit_ym` AES-256-GCM 암/복호화. **분실 시 복호화 불가 — 반드시 백업** |
 | `FRED_API_KEY` | FRED API 키 | Python 수집기(`collector/usa`) 전용 — Next.js 코드에서는 참조하지 않음 |
+| `ACCUM_ACCOUNTS` | 주식모으기 대상 계좌 (쉼표 구분) | `/assets/stock` 적립 탭 |
+| `ACCUM_STOCK_CODE` | 적립 종목코드 | `0094M0` |
+| `ACCUM_DAILY_LIMIT` | 1일 매수 한도(원) | 기본 `50000`. 정수주 매수라 실제 집행액은 이보다 적다 |
+| `ACCUM_BASE_DAY` | 분배금 기산일 (매월 N일) | 기본 `13` — `getMonthlyDividendByAccount` 의 13일 규칙과 같은 값 |
+| `ACCUM_TRANSFER_DAY` / `ACCUM_TRANSFER_AMOUNT` | 연금저축 자동이체일·금액 | 휴일 무관 |
+| `ACCUM_WARN_DAYS` / `ACCUM_ALERT_DAYS` | 예수금 경보 기준 (남은 거래일) | 기본 `10` / `5` |
 | `VERCEL_TOKEN` | Vercel Management API 토큰 (영구) | **로컬 전용 — Vercel 에 등록 금지.** 아래 설명 참고 |
 | `VERCEL_TEAM_ID` | `team_f8tRR4puj9iFs8pIwYvjkThk` | 팀 `skc-s-projects` |
 | `VERCEL_PROJECT_ID` | `prj_k7mmrMEatm7bigteG8tr06vtwMS1` | 프로젝트 `pensions` |

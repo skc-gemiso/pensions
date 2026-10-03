@@ -108,6 +108,9 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `getMonthlyDividendByAccount(stockCode)` | 분배금 지급기준일별 계좌 보유수량·분배금·세금. 각 기준일의 **해당 월 13일까지 누적 순수량** 기준. 배당 팝업의 **지급 이력 테이블 전용** — 요약 카드는 현재 잔고를 쓴다 | 세션 필요 |
 | `addEtfDividend(data)` | `t_etf_dividend` 1건 INSERT. 같은 `(stock_code, ref_date)` 가 이미 있으면 덮어쓰지 않고 예외. INSERT 후 `_syncDividendDeposits` 로 계좌 입금 행 생성 — 배당 팝업의 `[+ 분배금 추가]` 에서 호출 | 세션 필요 |
 | `backfillDividendDeposits(stockCode)` | 등록된 분배금 전체에 대해 계좌 입금 행 재생성. `{ dividends, deposits }` 반환 — `[계좌 입금 내역 재생성]` 버튼 | 세션 필요 |
+| `getAccumBaseDates(limit)` | 분배금 기산일 정리 — 지급기준일별 기산일·보유수량·스냅샷 유무 | 세션 필요 |
+| `previewAccumSnapshot(input)` | 적립 스냅샷 미리보기. **DB 를 바꾸지 않는다** | 세션 필요 |
+| `saveAccumSnapshot(input)` | 적립 스냅샷 저장 — 미리보기와 같은 계산을 다시 돌려 반영 | 세션 필요 |
 | `updateEtfDividend(data)` | `t_etf_dividend` 1건 UPDATE. `orig_ref_date` 로 행을 찾고 `ref_date`(PK 포함) 5개 값과 `updated_at` 을 갱신. 바꾼 `ref_date` 가 다른 행과 겹치면 예외, 대상 행이 없어도 예외. UPDATE 후 옛 키의 입금 행을 지우고 새 키로 다시 생성 — 지급 이력 행의 `[수정]` 에서 호출 | 세션 필요 |
 
 ### 분배금 입력 폼 (`app/assets/stock/DividendForm.tsx`)
@@ -480,3 +483,52 @@ const rowTotal = Σ acctDivIdx.get(`${ref_date}|${account_no}`)?.dist_total   //
 - 포커스 시 빈 쿼리로 즉시 호출 → `default_yn='Y'` 인기 종목 20개 표시
 - 선택 후 칩 표시, × 버튼으로 초기화
 - onBlur 150ms 지연 후 드롭다운 닫기 (클릭 이벤트 처리를 위해)
+
+
+---
+
+## 적립 스냅샷 (`lib/accum-snapshot.ts`)
+
+주식모으기 체결을 매일 넣을 수 없어, `보유수량 · 평균매입가 · 계좌잔액` 으로 구간을 역산한다.
+서버 전용 모듈 — `"use server"` 가 아니라 일반 모듈이라 클라이언트에서 import 하지 않는다.
+
+```typescript
+planSnapshot(db, input, baseDay): SnapshotPlan   // 계산만. DB 변경 없음
+applySnapshot(db, plan, snap_date): void         // 매입행 + 출금행 + 잔액 조정행 생성
+```
+
+### 계산
+
+```typescript
+add_qty  = 입력수량 − 직전수량
+add_cost = Math.round(입력수량 × 입력평균가 − 직전 Σ(qty × s_amt))
+unit     = add_cost / add_qty
+```
+
+직전 상태는 `my_stock` 에서 `s_date <= 스냅샷일` 로 합산한다 (스냅샷 전용 테이블을 두지 않는다).
+
+### 기산일 분할
+
+`lastBaseDayIn(from, to, baseDay)` 가 구간 `(from, to]` 안의 마지막 `YYYYMM{baseDay}` 를 찾는다.
+**달력으로 센다** — 거래일 목록에서 찾으면 기산일이 휴장일이거나 주가가 아직 없는 미래 구간일 때 놓친다.
+
+비례 배분은 `t_stock_amt` 의 실제 거래일 수로 하고, 거래일이 없는 구간만 달력일로 대체한다.
+
+### 막는 경우
+
+| 조건 | 사유 |
+|------|------|
+| `add_qty < 0` | 평균 매입가는 매도해도 안 바뀌어 매도를 역산할 수 없다 |
+| `add_qty > 0 && add_cost <= 0` | 평균 매입가 입력 오류 |
+
+### 자금 구분 안분
+
+구간 입금을 `분배금:` 비고 유무로 나눠 그 비율대로 매입을 2행으로 쪼갠다.
+`잔액 조정%` 비고는 실제 입금이 아니라 보정이므로 **근거에서 제외**한다.
+구간 입금이 0이면 전액 분배금(`fund_type=2`)으로 본다.
+
+### 한계
+
+- 자동이체를 계좌 내역에 넣지 않으면 그 몫이 분배금으로 잡힌다 → 미리보기에 근거 금액을 띄워 드러낸다
+- 비례 배분은 추정이다 (실제로는 주가에 따라 하루 1~4주). **기산일에 스냅샷을 찍으면 오차가 0이 된다**
+- 증권사 평균단가 반올림 오차는 잔액 검증이 흡수한다

@@ -18,6 +18,7 @@ import {
 import { getEtfDividendHistory, type EtfDividendRow } from "@/app/sim/actions"
 import { DividendForm } from "./DividendForm"
 import InvestHistory from "./InvestHistory"
+import AccumPanel from "./AccumPanel"
 
 type StockSearchItem = StockListItem
 
@@ -87,7 +88,7 @@ export default function StockPage() {
   const [form, setForm]                   = useState<FormState>(EMPTY_FORM)
   const [submitting, setSubmitting]       = useState(false)
   const [formError, setFormError]         = useState("")
-  const [activeTab, setActiveTab]         = useState<"portfolio" | "history" | "account" | "invest">("portfolio")
+  const [activeTab, setActiveTab]         = useState<"portfolio" | "history" | "account" | "accum" | "invest">("portfolio")
   const [accountInfo, setAccountInfo]     = useState<AccountInfo[]>([])
   const [acInfoLoading, setAcInfoLoading] = useState(false)
   const [showAcModal, setShowAcModal]     = useState(false)
@@ -407,6 +408,7 @@ export default function StockPage() {
             { key: "portfolio", label: "포트폴리오" },
             { key: "history",   label: "거래 내역" },
             { key: "account",   label: "계좌 내역" },
+            { key: "accum",     label: "적립" },
             { key: "invest",    label: "투자 이력" },
           ] as const).map(({ key, label }) => (
             <button
@@ -915,6 +917,9 @@ export default function StockPage() {
             </div>
           )
         })()}
+
+        {/* ── 적립 탭 ── */}
+        {activeTab === "accum" && <AccumPanel accounts={accounts} />}
 
         {/* ── 투자 이력 탭 ── */}
         {activeTab === "invest" && <InvestHistory />}

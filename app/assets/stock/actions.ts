@@ -3,6 +3,8 @@
 import { getPensionPool } from "@/lib/pension-db"
 import { requireAdmin } from "@/lib/guard"
 import { syncDividendDeposits, syncAllDividendDeposits, divMemo } from "@/lib/dividend-deposits"
+import { accumSettingsFromEnv } from "@/lib/settings"
+import { planSnapshot, applySnapshot, type SnapshotPlan } from "@/lib/accum-snapshot"
 
 export type MarketIndex = {
   name:       string
@@ -725,3 +727,102 @@ function _parseSiseDay(data: unknown): SiseRow[] {
   return result
 }
 
+
+// ── 적립 (주식모으기) ─────────────────────────────────────────────────────────
+
+export type AccumBaseDate = {
+  ref_date:   string            // YYYY-MM-DD 분배금 지급기준일
+  base_date:  string            // YYYY-MM-DD 기산일 (ACCUM_BASE_DAY)
+  pay_date:   string | null     // YYYY-MM-DD 실지급일
+  dist_amt:   number | null     // 주당 분배금
+  passed:     boolean           // 기산일이 지났는가
+  has_snapshot: boolean         // 그 날짜에 적립 매입 행이 있는가 (스냅샷을 찍었는가)
+  qty_at_base: number           // 기산일 기준 누적 수량 (적립 종목)
+}
+
+/**
+ * 분배금 기산일 정리.
+ *
+ * 분배금 대상 수량은 **기산일 하루**만 본다. 그 날 수량만 맞으면 분배금이 정확하다.
+ * 그래서 "언제 스냅샷을 찍어야 하는가" = "기산일이 언제인가" 다.
+ * 지난 기산일에 스냅샷이 없으면 그 달 분배금 수량이 추정으로 남는다 — 그걸 드러낸다.
+ */
+export async function getAccumBaseDates(limit = 12): Promise<AccumBaseDate[]> {
+  await requireAdmin()
+
+  const { accounts, stock_code, base_day } = accumSettingsFromEnv()
+  if (!stock_code || accounts.length === 0) return []
+
+  const db = getPensionPool()
+  const { rows } = await db.query(
+    `WITH refs AS (
+       SELECT DISTINCT ref_date, pay_date, dist_amt
+       FROM t_etf_dividend
+       ORDER BY ref_date DESC
+       LIMIT $1
+     )
+     SELECT
+       TO_CHAR(r.ref_date, 'YYYY-MM-DD') AS ref_date,
+       TO_CHAR(r.pay_date, 'YYYY-MM-DD') AS pay_date,
+       r.dist_amt,
+       TO_CHAR(r.ref_date, 'YYYYMM') || LPAD($2::text, 2, '0') AS base_ymd,
+       (SELECT COALESCE(SUM(ms.qty), 0)::float8
+          FROM my_stock ms
+         WHERE ms.stock_code = $3
+           AND ms.account_no = ANY($4)
+           AND ms.s_date <= TO_CHAR(r.ref_date, 'YYYYMM') || LPAD($2::text, 2, '0')) AS qty_at_base,
+       EXISTS (SELECT 1 FROM my_stock ms
+                WHERE ms.stock_code = $3
+                  AND ms.account_no = ANY($4)
+                  AND ms.s_date = TO_CHAR(r.ref_date, 'YYYYMM') || LPAD($2::text, 2, '0')) AS has_snapshot
+     FROM refs r
+     ORDER BY r.ref_date DESC`,
+    [limit, base_day, stock_code, accounts]
+  )
+
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, "")
+  return rows.map(r => ({
+    ref_date:   r.ref_date,
+    base_date:  `${r.base_ymd.slice(0,4)}-${r.base_ymd.slice(4,6)}-${r.base_ymd.slice(6,8)}`,
+    pay_date:   r.pay_date ?? null,
+    dist_amt:   r.dist_amt != null ? Number(r.dist_amt) : null,
+    passed:     r.base_ymd <= today,
+    has_snapshot: Boolean(r.has_snapshot),
+    qty_at_base: Number(r.qty_at_base),
+  }))
+}
+
+/** 적립 스냅샷 미리보기 — DB 를 바꾸지 않는다 */
+export async function previewAccumSnapshot(input: {
+  account_no: string
+  snap_date: string
+  qty: number
+  avg_price: number
+  balance: number | null
+}): Promise<SnapshotPlan> {
+  await requireAdmin()
+
+  const { stock_code, base_day } = accumSettingsFromEnv()
+  if (!stock_code) throw new Error("ACCUM_STOCK_CODE 가 설정돼 있지 않습니다.")
+
+  return planSnapshot(getPensionPool(), { ...input, stock_code }, base_day)
+}
+
+/** 적립 스냅샷 저장 — 미리보기와 같은 계산을 다시 돌려 그대로 반영한다 */
+export async function saveAccumSnapshot(input: {
+  account_no: string
+  snap_date: string
+  qty: number
+  avg_price: number
+  balance: number | null
+}): Promise<SnapshotPlan> {
+  await requireAdmin()
+
+  const { stock_code, base_day } = accumSettingsFromEnv()
+  if (!stock_code) throw new Error("ACCUM_STOCK_CODE 가 설정돼 있지 않습니다.")
+
+  const db = getPensionPool()
+  const plan = await planSnapshot(db, { ...input, stock_code }, base_day)
+  await applySnapshot(db, plan, input.snap_date)
+  return plan
+}
