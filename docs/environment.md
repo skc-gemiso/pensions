@@ -407,6 +407,9 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase 서비스 롤 키 | 대시보드 > Settings > API (쇼핑 Storage 서버 사이드 업로드) |
 | `CARD_ENC_KEY` | 카드 민감정보 암호화 키 (32바이트 base64) | `my_card`의 `card_no`·`cvc`·`limit_ym` AES-256-GCM 암/복호화. **분실 시 복호화 불가 — 반드시 백업** |
 | `FRED_API_KEY` | FRED API 키 | Python 수집기(`collector/usa`) 전용 — Next.js 코드에서는 참조하지 않음 |
+| `VERCEL_TOKEN` | Vercel Management API 토큰 (영구) | **로컬 전용 — Vercel 에 등록 금지.** 아래 설명 참고 |
+| `VERCEL_TEAM_ID` | `team_f8tRR4puj9iFs8pIwYvjkThk` | 팀 `skc-s-projects` |
+| `VERCEL_PROJECT_ID` | `prj_k7mmrMEatm7bigteG8tr06vtwMS1` | 프로젝트 `pensions` |
 | `PROFILE_BIRTH_DATE` | 생년월일 `YYYY-MM-DD` | 연금 메뉴 공용 개인 정보 |
 | `PROFILE_JOIN_DATE` | 입사일 `YYYY-MM-DD` | 퇴직연금 근속 계산 |
 | `PROFILE_RETIRE_AGE` | 정년 나이 | 기본 `60` |
@@ -495,6 +498,35 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 - Vercel이 자동으로 `Authorization: Bearer {CRON_SECRET}` 헤더를 주입하여 호출
 - 환경 변수 `CRON_SECRET` 을 Vercel 프로젝트 설정에 등록 필요
 - Hobby 플랜: 하루 1회 Cron 가능 / Pro 이상: 무제한
+
+### Vercel Management API 토큰 (`VERCEL_TOKEN`)
+
+환경 변수 등록·재배포·배포 로그 조회 같은 Vercel 작업을 CLI 없이 API 로 하려고 둔다.
+`config/.env` 에만 두고 **Vercel 환경 변수에는 넣지 않는다** — Vercel 계정을 조작하는
+자격 증명이라 배포된 앱 안에 들어가면 앱이 뚫렸을 때 계정 전체가 함께 넘어간다.
+
+```bash
+set -a && . <(grep -E "^VERCEL_(TOKEN|TEAM_ID|PROJECT_ID)=" config/.env) && set +a
+
+# 프로젝트·환경 변수 조회
+curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
+  "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_TEAM_ID"
+
+# 환경 변수 등록 (upsert)
+curl -s -X POST -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" \
+  "https://api.vercel.com/v10/projects/$VERCEL_PROJECT_ID/env?teamId=$VERCEL_TEAM_ID&upsert=true" \
+  -d '{"key":"KEY","value":"VALUE","type":"encrypted","target":["production","preview","development"]}'
+
+# 프로덕션 배포 목록 / 재배포 (환경 변수는 재배포해야 반영된다)
+curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
+  "https://api.vercel.com/v6/deployments?projectId=$VERCEL_PROJECT_ID&teamId=$VERCEL_TEAM_ID&target=production&limit=3"
+curl -s -X POST -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" \
+  "https://api.vercel.com/v13/deployments?teamId=$VERCEL_TEAM_ID&forceNew=1" \
+  -d '{"name":"pensions","target":"production","deploymentId":"dpl_..."}'
+```
+
+> 만료 없는 토큰이라 계정 전체 권한이 계속 열려 있다. 유출이 의심되면
+> [vercel.com/account/tokens](https://vercel.com/account/tokens) 에서 Revoke 하고 새로 만든다.
 
 ### 배포 시 환경 변수 등록 목록
 
