@@ -165,6 +165,15 @@ export async function planSnapshot(
   baseDay: number,
 ): Promise<SnapshotPlan> {
   const errors: string[] = []
+
+  // 스냅샷은 '그날 실제로 이랬다' 는 기록이다. 미래 날짜는 성립하지 않는다.
+  // 막지 않으면 아직 오지 않은 구간을 평일 수로 추정해 그럴듯한 거짓 수치가 나온다.
+  const today = new Date()
+  const todayYmd = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}`
+  if (ymd(input.snap_date) > todayYmd) {
+    errors.push(`기준일이 미래입니다 (${input.snap_date}). 오늘까지만 입력할 수 있습니다.`)
+  }
+
   const prev = await readPrev(db, input.account_no, input.stock_code, input.snap_date)
 
   const add_qty  = input.qty - prev.qty
