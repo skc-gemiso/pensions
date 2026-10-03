@@ -109,7 +109,9 @@ async function syncStock(stockCode, resyncDays = 0) {
     )
   }
 
-  return unique.length || 1
+  // 0건이면 0을 돌려준다. `|| 1` 로 덮으면 새 데이터가 없는 날과
+  // 파서가 깨져 아무것도 못 가져온 날이 로그에서 똑같이 1로 보인다
+  return unique.length
 }
 
 async function main() {

@@ -524,3 +524,24 @@ Vercel 프로젝트 Settings > Environment Variables 에 아래 변수 등록:
 | 새 환경 변수가 적용되지 않음 | `next.config.ts` 가 기동 시 1회만 dotenv 로드 | dev 서버 재시작 |
 | 배포에서만 이미지·리소스가 깨짐 | `vercel.json` CSP는 배포에만 적용 | `img-src` 등 화이트리스트에 호스트 추가 |
 | 수집기 수동 실행이 Vercel에서 동작하지 않음 | Python 프로세스 spawn 불가 (서버리스) | 로컬/상시 구동 환경에서 실행 (`instrumentation.ts` 도 Vercel에서 스케줄 비활성) |
+| **Vercel Cron 이 조용히 아무것도 안 함** | `CRON_SECRET` 미등록. Vercel 은 이 변수가 **있을 때만** `Authorization: Bearer` 헤더를 주입해서, 없으면 cron 이 호출은 되지만 401 로 떨어진다 | Vercel 환경 변수에 `CRON_SECRET` 등록. 진단은 `/api/cron/stock-sync?secret=아무값` 을 열어 `reason` 확인 |
+
+### Vercel Cron 이 도는지 확인하는 법
+
+에러도 로그도 안 남아 멈춘 걸 알아채기 어렵다. 두 가지로 본다.
+
+1. **엔드포인트 직접 호출** — `https{HOST}/api/cron/stock-sync?secret=틀린값`
+   - `{"reason":"CRON_SECRET 환경 변수가 없습니다..."}` → 변수 미등록 (cron 전부 401)
+   - `{"reason":"시크릿이 일치하지 않습니다."}` → 변수는 있음 (cron 은 정상일 것)
+2. **적재 시각 분포** — 스케줄 시각(분까지)에 묶음이 있는지 본다
+
+   ```sql
+   SELECT TO_CHAR(created_at,'YYYY-MM-DD HH24:MI') t_utc, COUNT(*)
+   FROM t_stock_amt GROUP BY 1 ORDER BY 1 DESC;
+   ```
+
+   스케줄 분(`30`)에 걸린 묶음이 없고 시각이 제각각이면 **화면 버튼으로만 모이고 있다는 뜻**이다.
+
+> 선례: 2026-10 에 이 방법으로 확인했더니 `CRON_SECRET` 이 Vercel·`config/.env` 양쪽에 없어
+> 주가 자동 수집이 **한 번도 성공한 적이 없었다**. 적재 시각이 전부 밤 10시~새벽 1시로
+> 흩어져 있던 게 단서였다 (스케줄은 06:35 UTC).
