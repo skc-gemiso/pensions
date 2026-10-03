@@ -12,7 +12,7 @@ const won = (n: number | null | undefined) => n == null ? "-" : `${fmt(n)}원`
 import {
   getAccounts, getHoldings, getTransactions, addTransaction, updateTransaction, deleteTransaction,
   getDailyPrices, fetchAndSaveNaverPrices, searchStockList, getMarketIndices, getDefaultStockList,
-  getAccountInfo, addAccountInfo, getMonthlyDividendByAccount, backfillDividendDeposits,
+  getAccountInfo, addAccountInfo, getMonthlyDividendByAccount, backfillDividendDeposits, getDividendStockCodes,
   type Account, type StockHolding, type StockTransaction, type DailyPrice, type StockListItem, type MarketIndex, type AccountInfo, type MonthlyAccountDiv,
 } from "./actions"
 import { getEtfDividendHistory, type EtfDividendRow } from "@/app/sim/actions"
@@ -49,8 +49,6 @@ const EMPTY_FORM: FormState = {
   s_amt: "",
 }
 
-// 배당 팝업 전용 종목 (KODEX 200타겟위클리커버드콜)
-const DIV_STOCK_CODE = "498400"
 
 const CHART_PERIODS = [
   { label: "1개월", days: 30 },
@@ -75,6 +73,9 @@ export default function StockPage() {
   const [chartDays, setChartDays]         = useState(365)
   const [fetchingNaver, setFetchingNaver] = useState(false)
   const [showDivModal, setShowDivModal]   = useState(false)
+  // 분배금 팝업 대상 종목 — 보유 종목 표에서 고른 종목으로 연다
+  const [divCode, setDivCode]             = useState<string>("")
+  const [divCodes, setDivCodes]           = useState<string[]>([])
   const [divHistory, setDivHistory]       = useState<EtfDividendRow[]>([])
   const [monthlyAcctDiv, setMonthlyAcctDiv] = useState<MonthlyAccountDiv[]>([])
   const [showDivForm, setShowDivForm]     = useState(false)
@@ -131,6 +132,7 @@ export default function StockPage() {
   useEffect(() => {
     loadMarketIndices()
     getAccounts().then(setAccounts)
+    getDividendStockCodes().then(setDivCodes)
     loadHoldings().then((h) => {
       if (h.length > 0) {
         setSelectedCode(h[0].stock_code)
@@ -149,10 +151,11 @@ export default function StockPage() {
   // codeToLoad: daily prices 로드할 종목코드 (state의 selectedCode 대신)
   // silent: true면 완료 alert 생략
   // 분배금 이력 + 계좌별 환산을 함께 다시 읽는다 (둘 다 t_etf_dividend 기준)
-  async function reloadDividend() {
+  async function reloadDividend(code = divCode) {
+    if (!code) return
     const [data, acctDiv] = await Promise.all([
-      getEtfDividendHistory(DIV_STOCK_CODE),
-      getMonthlyDividendByAccount(DIV_STOCK_CODE),
+      getEtfDividendHistory(code),
+      getMonthlyDividendByAccount(code),
     ])
     setDivHistory(data)
     setMonthlyAcctDiv(acctDiv)
@@ -181,7 +184,7 @@ export default function StockPage() {
     if (!confirm("등록된 분배금 전체에 대해 계좌 입금 내역을 다시 만듭니다.\n이 기능으로 만든 기존 행은 지우고 새로 넣습니다. 진행할까요?")) return
     setBackfilling(true)
     try {
-      const { dividends, deposits } = await backfillDividendDeposits(DIV_STOCK_CODE)
+      const { dividends, deposits } = await backfillDividendDeposits(divCode)
       setAccountInfo([])
       alert(`분배금 ${dividends}건 → 계좌 입금 ${deposits}건 생성 완료`)
     } catch (e) {
@@ -510,10 +513,12 @@ export default function StockPage() {
                   </h2>
                 </div>
                 <div className="flex items-center gap-2">
-                  {selectedCode === "498400" && (
+                  {selectedCode && divCodes.includes(selectedCode) && (
                     <button
                       onClick={async () => {
-                        if (divHistory.length === 0) await reloadDividend()
+                        setDivCode(selectedCode)
+                        setDivHistory([]); setMonthlyAcctDiv([])
+                        await reloadDividend(selectedCode)
                         setShowDivModal(true)
                       }}
                       className="text-xs px-3 py-1.5 border border-amber-400 text-amber-700 bg-amber-50 rounded-lg hover:bg-amber-100 whitespace-nowrap font-medium"
@@ -1007,7 +1012,7 @@ export default function StockPage() {
           const fixedRows = fixedDiv ? monthlyAcctDiv.filter(r => r.ref_date === fixedDiv.ref_date) : []
           const isFixed   = fixedDiv != null && fixedRows.length > 0
 
-          const curHoldings  = holdings.filter(h => h.stock_code === DIV_STOCK_CODE && h.net_qty > 0)
+          const curHoldings  = holdings.filter(h => h.stock_code === divCode && h.net_qty > 0)
           const curPrice     = curHoldings.find(h => h.latest_price != null)?.latest_price ?? null
           const curPriceDate = curHoldings.find(h => h.latest_date  != null)?.latest_date  ?? null
           const perShareTax  = latest?.tax_base_amt ?? 0
@@ -1045,9 +1050,11 @@ export default function StockPage() {
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <span className="bg-white/20 text-white text-xs font-bold px-2 py-0.5 rounded">ETF</span>
-                        <span className="text-white/80 text-xs font-mono">498400</span>
+                        <span className="text-white/80 text-xs font-mono">{divCode}</span>
                       </div>
-                      <h2 className="text-white font-bold text-base leading-tight">KODEX 200타겟위클리커버드콜</h2>
+                      <h2 className="text-white font-bold text-base leading-tight">
+                        {holdings.find(h => h.stock_code === divCode)?.stock_name ?? divCode}
+                      </h2>
                       <p className="text-amber-100 text-xs mt-0.5">분배금 지급 이력 · 지급기준일 기준 최신순</p>
                     </div>
                     <button onClick={() => setShowDivModal(false)} className="text-white/70 hover:text-white text-2xl leading-none mt-0.5">×</button>
@@ -1159,7 +1166,7 @@ export default function StockPage() {
                   {showDivForm && (
                     <DividendForm
                       key={divEditRow?.ref_date ?? "new"}
-                      stockCode={DIV_STOCK_CODE}
+                      stockCode={divCode}
                       editRow={divEditRow}
                       onSaved={handleDividendSaved}
                       onCancel={closeDividendForm}

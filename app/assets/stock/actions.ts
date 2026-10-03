@@ -914,3 +914,13 @@ export async function getAccumConfig(): Promise<AccumConfig> {
     missing,
   }
 }
+
+/** 분배금 이력이 있는 종목코드. 팝업을 열 수 있는 종목을 가리는 데 쓴다 */
+export async function getDividendStockCodes(): Promise<string[]> {
+  await requireAdmin()
+
+  const { rows } = await getPensionPool().query(
+    `SELECT DISTINCT stock_code FROM t_etf_dividend ORDER BY stock_code`
+  )
+  return rows.map(r => r.stock_code as string)
+}
