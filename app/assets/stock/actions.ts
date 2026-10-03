@@ -746,15 +746,13 @@ function _parseSiseDay(data: unknown): SiseRow[] {
 // ── 적립 (주식모으기) ─────────────────────────────────────────────────────────
 
 export type AccumBaseDate = {
-  div_code:   string            // 그 분배금을 주는 종목 (적립 종목과 다를 수 있다)
-  div_name:   string | null
-  ref_date:   string            // YYYY-MM-DD 분배금 지급기준일
-  base_date:  string            // YYYY-MM-DD 기산일 (ACCUM_BASE_DAY)
-  pay_date:   string | null     // YYYY-MM-DD 실지급일
-  dist_amt:   number | null     // 주당 분배금
+  base_date:  string            // YYYY-MM-DD 기산일 (매월 ACCUM_BASE_DAY)
   passed:     boolean           // 기산일이 지났는가
-  has_snapshot: boolean         // 그 날짜에 적립 매입 행이 있는가 (스냅샷을 찍었는가)
-  qty_at_base: number           // 기산일 기준 누적 수량 (적립 종목)
+  has_snapshot: boolean         // 그 날짜에 적립 종목 매입 행이 있는가
+  qty_at_base: number           // 기산일 기준 적립 종목 누적 수량
+  ref_date:   string | null     // 그 달 **적립 종목**의 지급기준일 (등록돼 있을 때만)
+  pay_date:   string | null
+  dist_amt:   number | null     // 주당 분배금
 }
 
 /**
@@ -769,55 +767,61 @@ export type AccumBaseDate = {
  * 어느 종목의 기준일인지 헷갈리지 않도록 `div_code` 를 함께 돌려준다.
  * `qty_at_base` 는 언제나 **적립 종목**(ACCUM_STOCK_CODE)의 수량이다.
  */
-export async function getAccumBaseDates(limit = 12): Promise<AccumBaseDate[]> {
+export async function getAccumBaseDates(months = 12): Promise<AccumBaseDate[]> {
   await requireAdmin()
 
   const { accounts, stock_code, base_day } = accumSettingsFromEnv()
   if (!stock_code || accounts.length === 0) return []
 
   const db = getPensionPool()
+  // 기산일은 분배금 기록이 아니라 **매월 ACCUM_BASE_DAY** 로 정해진다.
+  // t_etf_dividend 에서 기준일을 뽑으면 적립 종목에 분배 이력이 없을 때 표가 통째로 비고,
+  // 재원 종목(498400) 기준일이 섞여 들어와 적립 종목 수량과 짝이 안 맞는다.
   const { rows } = await db.query(
-    `WITH refs AS (
-       SELECT stock_code, ref_date, pay_date, dist_amt
-       FROM t_etf_dividend
-       ORDER BY ref_date DESC
-       LIMIT $1
+    `WITH months AS (
+       SELECT TO_CHAR(d, 'YYYYMM') AS ym
+       FROM generate_series(
+              DATE_TRUNC('month', CURRENT_DATE) - ($1::int - 1) * INTERVAL '1 month',
+              DATE_TRUNC('month', CURRENT_DATE),
+              INTERVAL '1 month') d
+     ), base AS (
+       SELECT ym, ym || LPAD($2::text, 2, '0') AS base_ymd FROM months
      )
      SELECT
-       r.stock_code AS div_code,
-       (SELECT COALESCE(sl.stock_short_name, sl.stock_name)
-          FROM t_stock_list sl WHERE sl.stock_code = r.stock_code) AS div_name,
-       TO_CHAR(r.ref_date, 'YYYY-MM-DD') AS ref_date,
-       TO_CHAR(r.pay_date, 'YYYY-MM-DD') AS pay_date,
-       r.dist_amt,
-       TO_CHAR(r.ref_date, 'YYYYMM') || LPAD($2::text, 2, '0') AS base_ymd,
-       (SELECT COALESCE(SUM(ms.qty), 0)::float8
-          FROM my_stock ms
-         WHERE ms.stock_code = $3
-           AND ms.account_no = ANY($4)
-           AND ms.s_date <= TO_CHAR(r.ref_date, 'YYYYMM') || LPAD($2::text, 2, '0')) AS qty_at_base,
+       b.base_ymd,
+       (SELECT COALESCE(SUM(ms.qty), 0)::float8 FROM my_stock ms
+         WHERE ms.stock_code = $3 AND ms.account_no = ANY($4)
+           AND ms.s_date <= b.base_ymd) AS qty_at_base,
        EXISTS (SELECT 1 FROM my_stock ms
-                WHERE ms.stock_code = $3
-                  AND ms.account_no = ANY($4)
-                  AND ms.s_date = TO_CHAR(r.ref_date, 'YYYYMM') || LPAD($2::text, 2, '0')) AS has_snapshot
-     FROM refs r
-     ORDER BY r.ref_date DESC`,
-    [limit, base_day, stock_code, accounts]
+                WHERE ms.stock_code = $3 AND ms.account_no = ANY($4)
+                  AND ms.s_date = b.base_ymd) AS has_snapshot,
+       d.ref_date_txt, d.pay_date_txt, d.dist_amt
+     FROM base b
+     LEFT JOIN LATERAL (
+       SELECT TO_CHAR(x.ref_date, 'YYYY-MM-DD') AS ref_date_txt,
+              TO_CHAR(x.pay_date, 'YYYY-MM-DD') AS pay_date_txt,
+              x.dist_amt
+       FROM t_etf_dividend x
+       WHERE x.stock_code = $3 AND TO_CHAR(x.ref_date, 'YYYYMM') = b.ym
+       LIMIT 1
+     ) d ON TRUE
+     ORDER BY b.base_ymd DESC`,
+    [months, base_day, stock_code, accounts]
   )
 
-  const today = new Date().toISOString().slice(0, 10).replace(/-/g, "")
+  const today = new Date()
+  const todayYmd = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}`
   return rows.map(r => ({
-    div_code:   r.div_code,
-    div_name:   r.div_name ?? null,
-    ref_date:   r.ref_date,
     base_date:  `${r.base_ymd.slice(0,4)}-${r.base_ymd.slice(4,6)}-${r.base_ymd.slice(6,8)}`,
-    pay_date:   r.pay_date ?? null,
-    dist_amt:   r.dist_amt != null ? Number(r.dist_amt) : null,
-    passed:     r.base_ymd <= today,
+    passed:     r.base_ymd <= todayYmd,
     has_snapshot: Boolean(r.has_snapshot),
     qty_at_base: Number(r.qty_at_base),
+    ref_date:   r.ref_date_txt ?? null,
+    pay_date:   r.pay_date_txt ?? null,
+    dist_amt:   r.dist_amt != null ? Number(r.dist_amt) : null,
   }))
 }
+
 
 /**
  * 적립 스냅샷 미리보기 — DB 를 바꾸지 않는다.

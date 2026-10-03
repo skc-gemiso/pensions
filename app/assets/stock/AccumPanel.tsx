@@ -283,31 +283,27 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 sticky top-0">
                 <tr>
-                  {["분배 종목", "지급기준일", "기산일", "실지급일", "주당 분배금", "기산일 보유수량", "스냅샷"].map((h, i) => (
-                    <th key={i} className={`px-3 py-2.5 text-xs font-semibold text-gray-700 whitespace-nowrap ${i < 4 ? "text-left" : i === 6 ? "text-center" : "text-right"}`}>{h}</th>
+                  {["기산일", "보유수량", "스냅샷", "지급기준일", "실지급일", "주당 분배금"].map((h, i) => (
+                    <th key={i} className={`px-3 py-2.5 text-xs font-semibold text-gray-700 whitespace-nowrap ${i === 0 || i === 3 || i === 4 ? "text-left" : i === 2 ? "text-center" : "text-right"}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {bases.map(b => (
-                  <tr key={b.ref_date} className={b.passed ? "hover:bg-gray-50" : "bg-blue-50/40"}>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      <span className="font-mono text-xs text-gray-500">{b.div_code}</span>
-                      <span className="ml-1.5 text-xs text-gray-700">{b.div_name ?? ""}</span>
-                    </td>
-                    <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{b.ref_date}</td>
+                  <tr key={b.base_date} className={b.passed ? "hover:bg-gray-50" : "bg-blue-50/40"}>
                     <td className="px-3 py-2 text-gray-900 font-medium whitespace-nowrap">
                       {b.base_date}
                       {!b.passed && <span className="ml-1.5 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">예정</span>}
                     </td>
-                    <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{b.pay_date ?? "-"}</td>
-                    <td className="px-3 py-2 text-right text-gray-700">{won(b.dist_amt)}</td>
                     <td className="px-3 py-2 text-right text-gray-900">{fmt(b.qty_at_base)}주</td>
                     <td className="px-3 py-2 text-center">
                       {b.has_snapshot
                         ? <span className="text-xs text-green-700 font-medium">있음</span>
-                        : <span className="text-xs text-gray-400">{b.passed ? "없음 (추정)" : "—"}</span>}
+                        : <span className="text-xs text-gray-400">{b.passed ? "없음" : "—"}</span>}
                     </td>
+                    <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{b.ref_date ?? "-"}</td>
+                    <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{b.pay_date ?? "-"}</td>
+                    <td className="px-3 py-2 text-right text-gray-700">{won(b.dist_amt)}</td>
                   </tr>
                 ))}
               </tbody>
