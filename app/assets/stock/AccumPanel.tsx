@@ -10,6 +10,10 @@ import type { SnapshotPlan } from "@/lib/accum-snapshot"
 
 const won = (n: number | null | undefined) => n == null ? "-" : `${fmt(n)}원`
 
+// 금액 입력칸 — type="number" 로는 천단위 구분자를 못 보여줘 text 로 받고 숫자만 걸러 저장한다
+const digits = (v: string) => v.replace(/[^0-9]/g, "")
+const comma  = (v: string) => (v ? Number(v).toLocaleString("ko-KR") : "")
+
 const todayISO = (() => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
@@ -89,7 +93,7 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
 
   return (
     <div className="space-y-5">
-      {/* ── 적립 대상 — 무엇을 적립 중인지 먼저 드러낸다 ── */}
+      {/* 설정이 안 읽혔을 때만 뜬다 — 빈 화면으로 두면 원인을 알 수 없다 */}
       {cfg && (cfg.missing.length > 0 ? (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4">
           <p className="text-sm font-semibold text-red-700">적립 설정이 비어 있습니다</p>
@@ -102,33 +106,12 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
             값을 추가·수정했다면 <b>dev 서버를 재시작</b>하세요. 배포본은 환경 변수 등록 후 <b>재배포</b>가 필요합니다.
           </p>
         </div>
-      ) : (
-        <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 flex items-center gap-x-6 gap-y-2 flex-wrap">
-          <span className="text-sm font-semibold text-gray-800">
-            적립 대상
-            <span className="ml-2 font-mono text-xs text-blue-600">{cfg.stock_code}</span>
-            <span className="ml-1.5 font-normal text-gray-900">{cfg.stock_name ?? "(종목명 없음)"}</span>
-          </span>
-          <span className="text-xs text-gray-500">1일 한도 <b className="text-gray-800">{won(cfg.daily_limit)}</b></span>
-          <span className="text-xs text-gray-500">분배금 기산일 <b className="text-gray-800">매월 {cfg.base_day}일</b></span>
-          {cfg.transfer_amount > 0 && (
-            <span className="text-xs text-gray-500">자동이체 <b className="text-gray-800">매월 {cfg.transfer_day}일 · {won(cfg.transfer_amount)}</b></span>
-          )}
-          <span className="text-xs text-gray-400 ml-auto">
-            대상 계좌 {cfg.accounts.length}개 · 기본값은 <code className="bg-gray-100 px-1 rounded">config/.env</code> 의{" "}
-            <code className="bg-gray-100 px-1 rounded">ACCUM_*</code> (바꾸면 재시작·재배포 필요) — 아래에서 종목만 일시 변경 가능
-          </span>
-        </div>
-      ))}
+      ) : null)}
 
       {/* ── 스냅샷 입력 ── */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100">
           <h2 className="text-sm font-semibold text-gray-800">적립 스냅샷</h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            증권사 화면의 <b>보유 수량 · 평균 매입가 · 계좌 잔액</b>을 넣으면 직전 상태와 비교해
-            구간 매입을 역산합니다. 매일 체결을 넣을 필요가 없습니다.
-          </p>
         </div>
 
         <div className="p-4 space-y-3">
@@ -136,9 +119,6 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1.5">
               적립 종목
-              {cfg?.stock_code && form.stock_code !== cfg.stock_code && (
-                <span className="ml-2 font-normal text-amber-600">기본값({cfg.stock_code})과 다릅니다</span>
-              )}
             </label>
             {form.stock_code ? (
               <div className="flex items-center gap-2 px-3 py-2 border border-blue-300 bg-blue-50 rounded-lg">
@@ -175,8 +155,9 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
             )}
           </div>
 
-          <div className="grid grid-cols-5 gap-3">
-            <div className="col-span-2">
+          {/* 2행 — 계좌·기준일 / 수량·금액 */}
+          <div className="grid grid-cols-3 gap-3">
+            <div>
               <label className="block text-xs font-medium text-gray-700 mb-1.5">계좌</label>
               <select
                 value={form.account_no}
@@ -193,27 +174,32 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
               <input type="date" value={form.snap_date} onChange={(e) => set("snap_date", e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1.5">보유 수량 (주)</label>
               <input type="number" placeholder="20" value={form.qty} onChange={(e) => set("qty", e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
+            {/* 금액은 천단위 구분자를 보여준다 — type=number 로는 안 되므로 text + 숫자만 걸러 저장 */}
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1.5">평균 매입가 (원)</label>
-              <input type="number" placeholder="17350" value={form.avg_price} onChange={(e) => set("avg_price", e.target.value)}
+              <input type="text" inputMode="numeric" placeholder="17,350"
+                value={comma(form.avg_price)}
+                onChange={(e) => set("avg_price", digits(e.target.value))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">계좌 잔액 (원)</label>
+              <input type="text" inputMode="numeric" placeholder="975,371"
+                value={comma(form.balance)}
+                onChange={(e) => set("balance", digits(e.target.value))}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
 
-          <div className="grid grid-cols-5 gap-3 items-end">
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                계좌 잔액 (원) <span className="font-normal text-gray-400">— 넣으면 모르는 입출금을 자동 보정</span>
-              </label>
-              <input type="number" placeholder="비우면 보정 안 함" value={form.balance} onChange={(e) => set("balance", e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div className="col-span-3 flex gap-2">
+          <div className="flex gap-2">
               <button onClick={() => run("preview")} disabled={busy}
                 className="px-4 py-2 border border-blue-400 text-blue-600 text-sm rounded-lg hover:bg-blue-50 disabled:opacity-50">
                 {busy ? "계산 중..." : "미리보기"}
@@ -222,8 +208,7 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
                 className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-40">
                 저장
               </button>
-              {saved && <span className="self-center text-xs text-green-700 font-medium">{saved}</span>}
-            </div>
+            {saved && <span className="self-center text-xs text-green-700 font-medium">{saved}</span>}
           </div>
 
           {error && <p className="text-xs text-red-500">{error}</p>}
@@ -288,10 +273,6 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100">
           <h2 className="text-sm font-semibold text-gray-800">분배금 기산일</h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            분배금 대상 수량은 <b>기산일 하루</b>만 봅니다. 그 날 스냅샷이 있으면 분배금 수량이 정확하고,
-            없으면 구간을 쪼개 추정합니다.
-          </p>
         </div>
         {bases.length === 0 ? (
           <p className="text-center text-gray-500 py-8 text-sm">
