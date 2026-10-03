@@ -39,13 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-collector/usa/utils/__pycache__/*
-collector/etf/__pycache__/*
-collector/usa/collectors/__pycache__/*
-collector/usa/config/__pycache__/*
+# python — 수집기마다 한 줄씩 적다가 빠뜨리기 쉬워 전역 규칙으로 둔다
+__pycache__/
+*.pyc
 collector/usa/logs/*
-collector/usa/repositories/__pycache__/*
-collector/usa/utils/__pycache__/*
 
 .vercel
 .env*

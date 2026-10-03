@@ -1,0 +1,4 @@
+playwright==1.48.0
+psycopg2-binary==2.9.9
+python-dotenv==1.0.1
+xlrd==2.0.1          # 삼성 엑셀이 레거시 BIFF(.xls) 라 필요. 미래에셋 '.xls' 는 실제로 HTML 이라 불필요

@@ -326,12 +326,44 @@ GET https://m.stock.naver.com/api/stock/{종목코드}/price?pageSize=60&page={N
 - `m.stock.naver.com/api/index/{KOSPI|KOSDAQ}/basic` API 호출
 - 코스피·코스닥 현재가·등락·등락률 실시간 조회
 
+### 분배금 공시 수집
+
+`collector/etf-dividend/` — `t_stock_list` ETF 를 운용사 공시에서 수집한다.
+GitHub Actions 로 **매일 18:00 KST** (`--apply --insert-months 2`).
+자세한 내용은 그 폴더의 `README.md` 참고.
+
+**분배금의 정답은 운용사 공시다.** 수동 입력 21건과 공시는 주당분배금이 매월 일치하고
+지급기준일만 3~5일 달랐다. 2026-10 에 `(종목코드, 연월, 주당분배금)` 으로 짝지어
+**20건을 공시 기준일로 옮겼다** (498400 9월: `2026-09-10` → `2026-09-15`, 분배율 1.42 → 1.45).
+
+이때 계좌 입금 행의 비고 키도 바뀌어 옛 키 행 12건을 지우고 다시 만들었다 (합계 동일).
+
+| 운용사 | 원천 | 상태 | 한계 |
+|--------|------|------|------|
+| 삼성 KODEX | 엑셀다운받기 (상장이후, 2,225행) | 동작 | 레거시 BIFF 라 `xlrd` 필요 |
+| KB RISE | 공지 게시글 본문 표 | 동작 | 금액이 "예상분배금"(확정 아님), 보유 `0094M0` 은 최근 공지에 없음 |
+| 미래에셋 TIGER | 엑셀다운로드 (HTML 표) | 부분 | 화면에 걸린 기간만(34행) → 과거 소급 불가, 종목코드 열 없어 종목명 매칭 |
+
+**13일 기산이 이제 맞다** — `getMonthlyDividendByAccount` 의 "해당 월 13일까지" 규칙은
+공시 기준일 15일(월중배당)에 대한 **T-2 결제일**이라 앞뒤가 맞는다.
+이관 전 기준일(10일)에서는 기준일 뒤 수량을 세는 셈이었다.
+단 `13` 은 하드코딩이라 **월말배당 ETF(기준일 30일)에는 맞지 않는다.**
+
 ### 스케줄 자동 실행
 
-- Vercel Cron: 매일 11:30 UTC (한국 시간 20:30 KST)
+- Vercel Cron: 매일 09:30 UTC (한국 시간 18:30 KST)
 - 엔드포인트: `GET /api/cron/stock-sync`
 - `Authorization: Bearer {CRON_SECRET}` 또는 `?secret={CRON_SECRET}` 파라미터로 인증
-- `t_stock_list default_yn='Y'` 전체 종목 자동 수집 (기존: `my_stock` 보유 잔고 종목만)
+- `t_stock_list default_yn='Y'` 전체 종목 자동 수집
+- 주가 수집 뒤 **분배금 → 계좌 입금 행도 매일 다시 맞춘다** (`syncAllDividendDeposits`).
+  분배금은 화면·수집기 양쪽에서 들어오는데 입금 계산은 `lib/dividend-deposits.ts` 한 곳에만 둔다
+- 응답: `{ ok, synced, deposits, at }`
+
+> **Vercel 은 `CRON_SECRET` 환경 변수가 등록돼 있을 때만** `Authorization` 헤더를 주입한다.
+> 누락되면 cron 이 호출은 되지만 401 로 떨어져 수집이 조용히 멈춘다.
+> 그래서 401 응답에 사유(`reason`)를 담고 서버 로그에도 남긴다.
+> `t_stock_amt.created_at` 이 스케줄 시각과 전혀 다른 시각들로 흩어져 있으면
+> cron 이 아니라 화면 버튼으로만 모이고 있다는 뜻이다.
 
 ### 현재가 기준
 
@@ -386,3 +418,6 @@ GET https://m.stock.naver.com/api/stock/{종목코드}/price?pageSize=60&page={N
 | 2026-09 | 네이버 sise_day.naver HTTP 410 폐지 → m.stock.naver.com 모바일 JSON API 로 교체 (HTML 파싱 제거, 1페이지 10건 → 60건) |
 | 2026-09 | 투자 이력 탭 추가 — 쇼핑 참고 자료 구조·액션 재사용, `my_shopping.category` 를 구분값으로 활용 (첨부파일 없음) |
 | 2026-09 | 분배금 추가·수정 시 계좌 입금 내역 자동 생성 (비고를 키로 사용, 실지급일 기준) + `[계좌 입금 내역 재생성]` 소급 버튼 |
+| 2026-10 | 주가 Cron 시각 수정 (15:35 → 18:30 KST, 장 마감 직후였음) + 401 사유 노출 + Cron 이 분배금 입금 행을 매일 재생산 |
+| 2026-10 | ETF 분배금 수집기 추가 (`collector/etf-dividend/`) — 대조 리포트 단계, DB 쓰기 전 |
+| 2026-10 | 분배금 기준을 운용사 공시로 변경 — 기존 20건 지급기준일·분배율·과세표준액 이관, 수집기 일일 스케줄(18:00 KST) 가동 |

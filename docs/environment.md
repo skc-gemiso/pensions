@@ -464,7 +464,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
   "crons": [
     {
       "path": "/api/cron/stock-sync",
-      "schedule": "30 11 * * *"
+      "schedule": "30 9 * * *"
     }
   ]
 }
@@ -491,7 +491,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 ### Cron 실행 주기
 
-- `30 11 * * *` = UTC 11:30 = **KST 20:30** (매일 장 마감 후)
+- `30 9 * * *` = UTC 09:30 = **KST 18:30** (매일 장 마감 15:30 뒤)
 - Vercel이 자동으로 `Authorization: Bearer {CRON_SECRET}` 헤더를 주입하여 호출
 - 환경 변수 `CRON_SECRET` 을 Vercel 프로젝트 설정에 등록 필요
 - Hobby 플랜: 하루 1회 Cron 가능 / Pro 이상: 무제한

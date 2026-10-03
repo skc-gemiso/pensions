@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getPensionPool } from "@/lib/pension-db"
+import { syncAllDividendDeposits } from "@/lib/dividend-deposits"
 
-function isAuthorized(req: NextRequest): boolean {
+/**
+ * 인증 실패 사유를 돌려준다 (통과면 null).
+ *
+ * Vercel 은 `CRON_SECRET` 환경 변수가 **등록돼 있을 때만** Authorization 헤더를 주입한다.
+ * 누락되면 cron 이 호출은 되지만 조용히 401 로 떨어져 수집이 멈춘 걸 알아채기 어렵다.
+ * 그래서 "환경 변수 없음" 과 "시크릿 불일치" 를 구분해 응답에 남긴다.
+ */
+function authFailure(req: NextRequest): string | null {
   const secret = process.env.CRON_SECRET
-  if (!secret) return false
-  return (
+  if (!secret) return "CRON_SECRET 환경 변수가 없습니다. Vercel 환경 변수에 등록하세요."
+
+  const ok =
     req.headers.get("authorization") === `Bearer ${secret}` ||
     req.nextUrl.searchParams.get("secret") === secret
-  )
+  return ok ? null : "시크릿이 일치하지 않습니다."
 }
 
 type SiseRow = { date: string; close: number; e_amt: number; e_rate: number; e_trade: number }
@@ -105,8 +114,10 @@ async function syncStock(db: ReturnType<typeof getPensionPool>, stockCode: strin
 }
 
 export async function GET(req: NextRequest) {
-  if (!isAuthorized(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const authErr = authFailure(req)
+  if (authErr) {
+    console.error(`[stock-sync] 인증 실패: ${authErr}`)
+    return NextResponse.json({ error: "Unauthorized", reason: authErr }, { status: 401 })
   }
 
   const db = getPensionPool()
@@ -129,5 +140,21 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, synced: results, at: new Date().toISOString() })
+  // 분배금 → 계좌 입금 행을 매일 다시 맞춘다.
+  // 분배금은 수집기(Python)나 화면에서 들어오는데 입금 계산은 TypeScript 한 곳에만 둔다.
+  // 비고 키로 지우고 다시 넣는 방식이라 매일 돌려도 중복되지 않는다.
+  const deposits: Record<string, number | string> = {}
+  const { rows: divStocks } = await db.query(
+    `SELECT DISTINCT stock_code FROM t_etf_dividend ORDER BY stock_code`
+  )
+  for (const s of divStocks) {
+    try {
+      const { deposits: n } = await syncAllDividendDeposits(db, s.stock_code)
+      deposits[s.stock_code] = n
+    } catch (e) {
+      deposits[s.stock_code] = `error: ${e instanceof Error ? e.message : "unknown"}`
+    }
+  }
+
+  return NextResponse.json({ ok: true, synced: results, deposits, at: new Date().toISOString() })
 }
