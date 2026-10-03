@@ -50,16 +50,14 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
     })
   }, [loadBases])
 
-  useEffect(() => {
-    if (!form.account_no && accounts.length > 0) setForm(f => ({ ...f, account_no: accounts[0].account_no }))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accounts.length])
+  // 기본 계좌는 effect 로 state 를 채우지 않고 렌더 때 정한다
+  const accountNo = form.account_no || accounts[0]?.account_no || ""
 
   const set = (k: keyof Form, v: string) => { setForm(f => ({ ...f, [k]: v })); setPlan(null); setSaved("") }
 
   function payload() {
     return {
-      account_no: form.account_no,
+      account_no: accountNo,
       snap_date:  form.snap_date,
       qty:        Number(form.qty),
       avg_price:  Number(form.avg_price),
@@ -70,7 +68,7 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
 
   async function run(kind: "preview" | "save") {
     setError(""); setSaved("")
-    if (!form.account_no)                  { setError("계좌를 선택하세요."); return }
+    if (!accountNo)                        { setError("계좌를 선택하세요."); return }
     if (!form.stock_code)                  { setError("적립 종목을 선택하세요."); return }
     if (!form.qty || Number(form.qty) < 0) { setError("보유 수량을 입력하세요."); return }
     if (!form.avg_price)                   { setError("평균 매입가를 입력하세요."); return }
@@ -157,7 +155,7 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1.5">계좌</label>
               <select
-                value={form.account_no}
+                value={accountNo}
                 onChange={(e) => set("account_no", e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -217,50 +215,49 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
               {blocked ? (
                 plan.errors.map((e, i) => <p key={i} className="text-xs text-red-600">{e}</p>)
               ) : (
-                <>
-                  <div className="grid grid-cols-4 gap-3 text-xs">
-                    <div><span className="text-gray-500">직전 보유</span><br/><b className="text-gray-900">{fmt(plan.prev_qty)}주 · {won(plan.prev_cost)}</b></div>
-                    <div><span className="text-gray-500">구간 매입</span><br/><b className="text-blue-700">+{fmt(plan.add_qty)}주 · {won(plan.add_cost)}</b></div>
-                    <div><span className="text-gray-500">구간 단가</span><br/><b className="text-gray-900">{won(Math.round(plan.unit_price))}</b></div>
-                    <div><span className="text-gray-500">기산일 분할</span><br/><b className="text-gray-900">{plan.base_date ?? "없음"}</b></div>
-                  </div>
-
-                  <table className="w-full text-xs mt-1">
-                    <thead className="text-gray-500">
-                      <tr><th className="text-left py-1">생성될 매입</th><th className="text-right">수량</th><th className="text-right">단가</th><th className="text-right">금액</th><th className="text-right">자금</th></tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {plan.buys.map((b, i) => (
-                        <tr key={i}>
-                          <td className="py-1 text-gray-700">
-                            {b.s_date.slice(0,4)}-{b.s_date.slice(4,6)}-{b.s_date.slice(6,8)}
-                            {b.is_base_day && <span className="ml-1.5 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">기산일</span>}
-                          </td>
-                          <td className="text-right text-gray-900">{fmt(b.qty)}주</td>
-                          <td className="text-right text-gray-700">{won(Math.round(b.s_amt))}</td>
-                          <td className="text-right text-gray-700">{won(Math.round(b.qty * b.s_amt))}</td>
-                          <td className="text-right text-gray-600">{b.fund_type === 2 ? "분배금" : "현금"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-
-                  <p className="text-[11px] text-gray-500">
-                    자금 구분 근거 — 구간 입금 분배금 {won(plan.inflow_div)} · 현금 {won(plan.inflow_cash)}
-                    {plan.inflow_div + plan.inflow_cash === 0 && " (입금 기록이 없어 전액 분배금으로 봅니다)"}
-                  </p>
-
-                  {plan.balance_gap != null && (
-                    <p className="text-xs">
-                      <span className="text-gray-500">잔액 검증</span>{" "}
-                      예상 {won(plan.expected_balance)} vs 실제 {won(plan.actual_balance)} →{" "}
-                      <b className={cc(plan.balance_gap)}>
-                        {plan.balance_gap === 0 ? "일치" : `조정 ${plan.balance_gap > 0 ? "+" : ""}${fmt(plan.balance_gap)}원`}
-                      </b>
-                      {plan.balance_gap !== 0 && <span className="text-gray-400"> — 기록에 없는 입출금을 한 줄로 흡수합니다</span>}
-                    </p>
-                  )}
-                </>
+                <table className="w-full text-xs">
+                  <thead className="text-gray-500">
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-1.5">생성될 내역</th>
+                      <th className="text-right">구분</th>
+                      <th className="text-right">수량</th>
+                      <th className="text-right">단가</th>
+                      <th className="text-right">금액</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {plan.buys.map((b, i) => (
+                      <tr key={i}>
+                        <td className="py-1.5 text-gray-700">
+                          {b.s_date.slice(0,4)}-{b.s_date.slice(4,6)}-{b.s_date.slice(6,8)}
+                          {b.is_base_day && <span className="ml-1.5 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">기산일</span>}
+                        </td>
+                        <td className="text-right text-gray-600">{b.fund_type === 2 ? "분배금" : "현금"}</td>
+                        <td className="text-right text-gray-900">{fmt(b.qty)}주</td>
+                        <td className="text-right text-gray-700">{fmt(Math.round(b.s_amt))}</td>
+                        <td className="text-right text-gray-700">{fmt(Math.round(b.qty * b.s_amt))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="border-t-2 border-gray-300">
+                    <tr>
+                      <td className="py-1.5 font-semibold text-gray-700">합계</td>
+                      <td />
+                      <td className="text-right font-semibold text-gray-900">{fmt(plan.add_qty)}주</td>
+                      <td className="text-right font-semibold text-gray-700">{fmt(Math.round(plan.unit_price))}</td>
+                      <td className="text-right font-semibold text-gray-900">{fmt(plan.add_cost)}</td>
+                    </tr>
+                    {plan.balance_gap != null && plan.balance_gap !== 0 && (
+                      <tr>
+                        <td className="py-1.5 text-gray-700">잔액 조정</td>
+                        <td colSpan={3} />
+                        <td className={`text-right font-semibold ${cc(plan.balance_gap)}`}>
+                          {plan.balance_gap > 0 ? "+" : ""}{fmt(plan.balance_gap)}
+                        </td>
+                      </tr>
+                    )}
+                  </tfoot>
+                </table>
               )}
             </div>
           )}
@@ -276,7 +273,7 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
           <p className="text-center text-gray-500 py-8 text-sm">
             {cfg && cfg.missing.length > 0
               ? "적립 설정이 비어 있어 기산일을 계산할 수 없습니다 (위 안내 참고)."
-              : "분배금 이력이 없습니다 — t_etf_dividend 에 등록된 분배금이 있어야 기산일이 나옵니다."}
+              : "분배금 이력이 없습니다."}
           </p>
         ) : (
           <div className="overflow-x-auto max-h-96 overflow-y-auto">
