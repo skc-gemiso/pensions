@@ -51,6 +51,11 @@ export type SnapshotPlan = {
   unit_price: number
   /** 기산일을 가로질러 쪼갠 경우 그 날짜 (YYYY-MM-DD), 아니면 null */
   base_date: string | null
+  /**
+   * 분할 비율의 근거.
+   * `trading` 실제 거래일 수 (정확) / `weekday` 평일 수 (주가 미수집 구간, 공휴일 못 걸러 추정)
+   */
+  split_basis: "trading" | "weekday" | null
   buys: PlannedBuy[]
   /** 자금 구분 안분 근거 — 구간 입금 구성 */
   inflow_cash: number
@@ -71,6 +76,26 @@ const ymd = (d: string) => d.replace(/-/g, "")
  * 달력으로 센다 — 기산일이 휴장일이거나 아직 주가가 안 들어온 미래 구간이어도
  * 분할 판정이 되어야 하기 때문이다. `from` 이 null 이면 to 가 속한 달만 본다.
  */
+/**
+ * `(from, to]` 의 평일(월~금) 수. `from` 이 null 이면 `to` 하루만 센다.
+ *
+ * 주가가 아직 안 들어온 구간에서 거래일 수 대신 쓴다. 공휴일까지는 못 걸러내지만
+ * 달력일로 세는 것보다 훨씬 가깝다 — 주말이 2/7 이라 오차가 크다.
+ */
+function countWeekdays(from: string | null, to: string): number {
+  const mk = (s: string) => new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8))
+  const end = mk(to)
+  const cur = from ? mk(from) : new Date(end)
+  cur.setDate(cur.getDate() + 1)      // from 은 제외, to 는 포함
+  let n = 0
+  while (cur <= end) {
+    const w = cur.getDay()
+    if (w !== 0 && w !== 6) n++
+    cur.setDate(cur.getDate() + 1)
+  }
+  return n
+}
+
 function lastBaseDayIn(from: string | null, to: string, baseDay: number): string | null {
   const dd = String(baseDay).padStart(2, "0")
   let y = Number(to.slice(0, 4))
@@ -181,22 +206,27 @@ export async function planSnapshot(
   const inflowTotal = inflow.div + inflow.cash
 
   const buys: PlannedBuy[] = []
+  let split_basis: "trading" | "weekday" | null = null
   if (add_qty > 0 && errors.length === 0) {
     // 기산일 기준으로 수량을 거래일 수에 비례 배분
     let headQty = add_qty
     let tailQty = 0
     if (baseYmd && baseYmd !== ymd(input.snap_date)) {
-      // 실제 거래일 수로 나눈다. 거래일 데이터가 없는 구간(미래·미수집)만 달력일로 대체한다
+      // 매수는 거래일에만 일어나므로 **거래일 수**로 나눈다.
+      // 주가가 아직 안 들어온 구간은 평일 수로 대신한다 — 달력일로 세면 주말·공휴일을
+      // 거래일과 똑같이 세어 휴일이 몰린 구간이 과대평가된다.
       let headDays: number, allDays: number
       if (tradeDays.length > 0) {
+        split_basis = "trading"
         headDays = tradeDays.filter(d => d <= baseYmd).length
         allDays  = tradeDays.length
       } else {
-        const toDate = (s: string) => new Date(+s.slice(0,4), +s.slice(4,6) - 1, +s.slice(6,8)).getTime()
-        const start  = from ? toDate(from) : toDate(baseYmd) - 86400e3
-        headDays = Math.max(1, Math.round((toDate(baseYmd) - start) / 86400e3))
-        allDays  = Math.max(headDays, Math.round((toDate(ymd(input.snap_date)) - start) / 86400e3))
+        split_basis = "weekday"
+        headDays = countWeekdays(from, baseYmd)
+        allDays  = countWeekdays(from, ymd(input.snap_date))
       }
+      headDays = Math.max(1, headDays)
+      allDays  = Math.max(headDays, allDays)
       headQty = Math.round(add_qty * headDays / allDays)
       tailQty = add_qty - headQty
     }
@@ -242,6 +272,7 @@ export async function planSnapshot(
     add_cost,
     unit_price,
     base_date,
+    split_basis,
     buys,
     inflow_cash: Math.round(inflow.cash),
     inflow_div:  Math.round(inflow.div),

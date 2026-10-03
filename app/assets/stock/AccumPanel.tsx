@@ -231,6 +231,9 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
                         <td className="py-1.5 text-gray-700">
                           {b.s_date.slice(0,4)}-{b.s_date.slice(4,6)}-{b.s_date.slice(6,8)}
                           {b.is_base_day && <span className="ml-1.5 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">기산일</span>}
+                          {plan.split_basis === "weekday" && plan.buys.length > 1 && i === 0 && (
+                            <span className="ml-1.5 text-[10px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-medium">추정</span>
+                          )}
                         </td>
                         <td className="text-right text-gray-600">{b.fund_type === 2 ? "분배금" : "현금"}</td>
                         <td className="text-right text-gray-900">{fmt(b.qty)}주</td>
