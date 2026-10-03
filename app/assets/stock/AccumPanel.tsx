@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react"
 import { fmt, cc } from "@/lib/fmt"
 import {
-  previewAccumSnapshot, saveAccumSnapshot, getAccumBaseDates, getAccumConfig,
-  type AccumBaseDate, type AccumConfig, type Account,
+  previewAccumSnapshot, saveAccumSnapshot, getAccumBaseDates, getAccumConfig, searchStockList,
+  type AccumBaseDate, type AccumConfig, type Account, type StockListItem,
 } from "./actions"
 import type { SnapshotPlan } from "@/lib/accum-snapshot"
 
@@ -15,7 +15,8 @@ const todayISO = (() => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 })()
 
-type Form = { account_no: string; snap_date: string; qty: string; avg_price: string; balance: string }
+type Form = { account_no: string; snap_date: string; qty: string; avg_price: string; balance: string
+  stock_code: string; stock_name: string }
 
 /**
  * 적립 — 주식모으기 관리.
@@ -24,7 +25,10 @@ type Form = { account_no: string; snap_date: string; qty: string; avg_price: str
  * 평균 매입가가 총 매입원가를 품고 있어 구간 매입이 정확히 역산된다.
  */
 export default function AccumPanel({ accounts }: { accounts: Account[] }) {
-  const [form, setForm]       = useState<Form>({ account_no: "", snap_date: todayISO, qty: "", avg_price: "", balance: "" })
+  const [form, setForm]       = useState<Form>({ account_no: "", snap_date: todayISO, qty: "", avg_price: "", balance: "", stock_code: "", stock_name: "" })
+  const [stockQ, setStockQ]   = useState("")
+  const [stockHits, setHits]  = useState<StockListItem[]>([])
+  const [showDrop, setDrop]   = useState(false)
   const [plan, setPlan]       = useState<SnapshotPlan | null>(null)
   const [busy, setBusy]       = useState(false)
   const [error, setError]     = useState("")
@@ -33,7 +37,14 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
   const [cfg, setCfg]         = useState<AccumConfig | null>(null)
 
   const loadBases = useCallback(async () => { setBases(await getAccumBaseDates(12)) }, [])
-  useEffect(() => { loadBases(); getAccumConfig().then(setCfg) }, [loadBases])
+  useEffect(() => {
+    loadBases()
+    getAccumConfig().then(c => {
+      setCfg(c)
+      // 기본 종목을 폼에 채운다 — 화면에서 다른 종목으로 바꿀 수 있다
+      if (c.stock_code) setForm(f => f.stock_code ? f : { ...f, stock_code: c.stock_code, stock_name: c.stock_name ?? "" })
+    })
+  }, [loadBases])
 
   useEffect(() => {
     if (!form.account_no && accounts.length > 0) setForm(f => ({ ...f, account_no: accounts[0].account_no }))
@@ -49,12 +60,14 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
       qty:        Number(form.qty),
       avg_price:  Number(form.avg_price),
       balance:    form.balance.trim() === "" ? null : Number(form.balance),
+      stock_code: form.stock_code,
     }
   }
 
   async function run(kind: "preview" | "save") {
     setError(""); setSaved("")
     if (!form.account_no)                  { setError("계좌를 선택하세요."); return }
+    if (!form.stock_code)                  { setError("적립 종목을 선택하세요."); return }
     if (!form.qty || Number(form.qty) < 0) { setError("보유 수량을 입력하세요."); return }
     if (!form.avg_price)                   { setError("평균 매입가를 입력하세요."); return }
     setBusy(true)
@@ -101,7 +114,10 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
           {cfg.transfer_amount > 0 && (
             <span className="text-xs text-gray-500">자동이체 <b className="text-gray-800">매월 {cfg.transfer_day}일 · {won(cfg.transfer_amount)}</b></span>
           )}
-          <span className="text-xs text-gray-400 ml-auto">대상 계좌 {cfg.accounts.length}개</span>
+          <span className="text-xs text-gray-400 ml-auto">
+            대상 계좌 {cfg.accounts.length}개 · 기본값은 <code className="bg-gray-100 px-1 rounded">config/.env</code> 의{" "}
+            <code className="bg-gray-100 px-1 rounded">ACCUM_*</code> (바꾸면 재시작·재배포 필요) — 아래에서 종목만 일시 변경 가능
+          </span>
         </div>
       ))}
 
@@ -116,6 +132,49 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
         </div>
 
         <div className="p-4 space-y-3">
+          {/* 적립 종목 — 기본값은 ACCUM_STOCK_CODE, 여기서 바꿀 수 있다 */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1.5">
+              적립 종목
+              {cfg?.stock_code && form.stock_code !== cfg.stock_code && (
+                <span className="ml-2 font-normal text-amber-600">기본값({cfg.stock_code})과 다릅니다</span>
+              )}
+            </label>
+            {form.stock_code ? (
+              <div className="flex items-center gap-2 px-3 py-2 border border-blue-300 bg-blue-50 rounded-lg">
+                <span className="font-mono text-xs text-blue-700 font-semibold">{form.stock_code}</span>
+                <span className="text-sm text-gray-800 flex-1">{form.stock_name}</span>
+                <button type="button"
+                  onClick={() => { setForm(f => ({ ...f, stock_code: "", stock_name: "" })); setPlan(null); setStockQ(""); setHits([]) }}
+                  className="text-gray-500 hover:text-red-500 text-lg leading-none">×</button>
+              </div>
+            ) : (
+              <div className="relative">
+                <input type="text" value={stockQ} placeholder="종목명 또는 코드 검색..."
+                  onChange={async (e) => {
+                    setStockQ(e.target.value)
+                    setHits(await searchStockList(e.target.value)); setDrop(true)
+                  }}
+                  onFocus={async () => { if (stockHits.length === 0) setHits(await searchStockList("")); setDrop(true) }}
+                  onBlur={() => setTimeout(() => setDrop(false), 150)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                {showDrop && stockHits.length > 0 && (
+                  <div className="absolute top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto w-full">
+                    {stockHits.map(it => (
+                      <button key={it.code} type="button"
+                        onMouseDown={() => { setForm(f => ({ ...f, stock_code: it.code, stock_name: it.name })); setPlan(null); setDrop(false) }}
+                        className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-gray-50">
+                        <span className="font-mono text-xs text-blue-600 font-semibold w-16 shrink-0">{it.code}</span>
+                        <span className="text-sm text-gray-900 flex-1 truncate">{it.name}</span>
+                        <span className="text-xs text-gray-500 shrink-0">{it.market}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-5 gap-3">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-gray-700 mb-1.5">계좌</label>

@@ -819,20 +819,27 @@ export async function getAccumBaseDates(limit = 12): Promise<AccumBaseDate[]> {
   }))
 }
 
-/** 적립 스냅샷 미리보기 — DB 를 바꾸지 않는다 */
+/**
+ * 적립 스냅샷 미리보기 — DB 를 바꾸지 않는다.
+ *
+ * `stock_code` 를 주면 그 종목으로, 안 주면 `ACCUM_STOCK_CODE` 기본값으로 계산한다.
+ * 적립 대상을 바꾸거나 계좌마다 다른 종목을 모을 때를 위해 화면에서 고를 수 있게 열어뒀다.
+ */
 export async function previewAccumSnapshot(input: {
   account_no: string
   snap_date: string
   qty: number
   avg_price: number
   balance: number | null
+  stock_code?: string
 }): Promise<SnapshotPlan> {
   await requireAdmin()
 
-  const { stock_code, base_day } = accumSettingsFromEnv()
-  if (!stock_code) throw new Error("ACCUM_STOCK_CODE 가 설정돼 있지 않습니다.")
+  const env = accumSettingsFromEnv()
+  const stock_code = input.stock_code?.trim() || env.stock_code
+  if (!stock_code) throw new Error("적립 종목을 고르세요 (기본값은 ACCUM_STOCK_CODE).")
 
-  return planSnapshot(getPensionPool(), { ...input, stock_code }, base_day)
+  return planSnapshot(getPensionPool(), { ...input, stock_code }, env.base_day)
 }
 
 /** 적립 스냅샷 저장 — 미리보기와 같은 계산을 다시 돌려 그대로 반영한다 */
@@ -842,14 +849,16 @@ export async function saveAccumSnapshot(input: {
   qty: number
   avg_price: number
   balance: number | null
+  stock_code?: string
 }): Promise<SnapshotPlan> {
   await requireAdmin()
 
-  const { stock_code, base_day } = accumSettingsFromEnv()
-  if (!stock_code) throw new Error("ACCUM_STOCK_CODE 가 설정돼 있지 않습니다.")
+  const env = accumSettingsFromEnv()
+  const stock_code = input.stock_code?.trim() || env.stock_code
+  if (!stock_code) throw new Error("적립 종목을 고르세요 (기본값은 ACCUM_STOCK_CODE).")
 
   const db = getPensionPool()
-  const plan = await planSnapshot(db, { ...input, stock_code }, base_day)
+  const plan = await planSnapshot(db, { ...input, stock_code }, env.base_day)
   await applySnapshot(db, plan, input.snap_date)
   return plan
 }

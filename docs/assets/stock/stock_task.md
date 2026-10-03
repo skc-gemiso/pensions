@@ -119,9 +119,10 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `getMonthlyDividendByAccount(stockCode)` | 분배금 지급기준일별 계좌 보유수량·분배금·세금. 각 기준일의 **해당 월 13일까지 누적 순수량** 기준. 배당 팝업의 **지급 이력 테이블 전용** — 요약 카드는 현재 잔고를 쓴다 | 세션 필요 |
 | `addEtfDividend(data)` | `t_etf_dividend` 1건 INSERT. 같은 `(stock_code, ref_date)` 가 이미 있으면 덮어쓰지 않고 예외. INSERT 후 `_syncDividendDeposits` 로 계좌 입금 행 생성 — 배당 팝업의 `[+ 분배금 추가]` 에서 호출 | 세션 필요 |
 | `backfillDividendDeposits(stockCode)` | 등록된 분배금 전체에 대해 계좌 입금 행 재생성. `{ dividends, deposits }` 반환 — `[계좌 입금 내역 재생성]` 버튼 | 세션 필요 |
-| `getAccumBaseDates(limit)` | 분배금 기산일 정리 — 지급기준일별 기산일·보유수량·스냅샷 유무 | 세션 필요 |
-| `previewAccumSnapshot(input)` | 적립 스냅샷 미리보기. **DB 를 바꾸지 않는다** | 세션 필요 |
-| `saveAccumSnapshot(input)` | 적립 스냅샷 저장 — 미리보기와 같은 계산을 다시 돌려 반영 | 세션 필요 |
+| `getAccumBaseDates(limit)` | 분배금 기산일 정리 — 지급기준일별 기산일·보유수량·스냅샷 유무. 기준일은 `t_etf_dividend` 전체 종목(`div_code` 로 구분), 수량은 적립 종목 | 세션 필요 |
+| `getAccumConfig()` | 적립 설정 조회. 안 읽힌 환경 변수를 `missing` 으로 돌려줘 화면에 드러낸다 | 세션 필요 |
+| `previewAccumSnapshot(input)` | 적립 스냅샷 미리보기. **DB 를 바꾸지 않는다**. `input.stock_code` 를 주면 그 종목, 없으면 `ACCUM_STOCK_CODE` | 세션 필요 |
+| `saveAccumSnapshot(input)` | 적립 스냅샷 저장 — 미리보기와 같은 계산을 다시 돌려 반영. 종목 지정 방식은 preview 와 동일 | 세션 필요 |
 | `updateEtfDividend(data)` | `t_etf_dividend` 1건 UPDATE. `orig_ref_date` 로 행을 찾고 `ref_date`(PK 포함) 5개 값과 `updated_at` 을 갱신. 바꾼 `ref_date` 가 다른 행과 겹치면 예외, 대상 행이 없어도 예외. UPDATE 후 옛 키의 입금 행을 지우고 새 키로 다시 생성 — 지급 이력 행의 `[수정]` 에서 호출 | 세션 필요 |
 
 ### 분배금 입력 폼 (`app/assets/stock/DividendForm.tsx`)
