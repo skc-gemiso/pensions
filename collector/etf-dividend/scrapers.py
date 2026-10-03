@@ -263,6 +263,14 @@ def scrape_samsung(browser, log=print, tab: str = "상장이후") -> list[dict]:
 # 공지 목록 항목은 href 가 없는 role=button div 라 클릭해서 들어가야 한다.
 # 분배금이 '예상' 으로 공시되고 변경 공지가 따로 나므로 확정치가 아니다.
 
+# 공지 본문의 분배금 표. innerText 를 쪼개면 글마다 렌더링이 달라 놓친다 → DOM 으로 읽는다
+_KB_TABLE = """() => {
+  const t = document.querySelector('table');
+  if (!t) return [];
+  return [...t.querySelectorAll('tr')].map(tr =>
+    [...tr.querySelectorAll('td,th')].map(c => c.innerText.replace(/\s+/g, ' ').trim()));
+}"""
+
 _KB_TITLES = """() => {
   return [...document.querySelectorAll('[role=button]')]
     .map((el, i) => ({ i: i, text: (el.innerText || '').replace(/\\s+/g, ' ').trim() }))
@@ -291,14 +299,16 @@ def scrape_kb(browser, max_notices: int = 12, log=print) -> list[dict]:
             log(f"     · {t['text'][:46]} → 기준일 {ref} 지급일 {pay} ({pg.url})")
 
             if ref:
-                # 본문 표: 종목명 \t 종목코드 \t 분배금 \t 과세분배금 \t 분배율
-                for line in body.split("\n"):
-                    cells = [c.strip() for c in line.split("\t") if c.strip()]
-                    if len(cells) < 5:
+                # 본문의 진짜 <table> 을 DOM 으로 읽는다.
+                # 텍스트를 줄 단위로 쪼개 탭으로 나누면 공지마다 렌더링이 달라 놓친다 —
+                # 어떤 글은 한 줄에 탭으로 구분되고(837), 어떤 글은 셀마다 줄이 바뀐다(835·833·829).
+                # 그 탓에 보유 종목 0094M0 이 공지에 있는데도 한 건도 안 잡혔다.
+                rows = pg.evaluate(_KB_TABLE)
+                n = 0
+                for cells in rows:
+                    if len(cells) < 5 or not re.fullmatch(r"[0-9A-Z]{6}", cells[1]):
                         continue
-                    code = re.fullmatch(r"[0-9A-Z]{6}", cells[1])
-                    if not code:
-                        continue
+                    n += 1
                     out.append({
                         "stock_code":   cells[1],
                         "stock_name":   cells[0],
@@ -309,6 +319,7 @@ def scrape_kb(browser, max_notices: int = 12, log=print) -> list[dict]:
                         "tax_base_amt": _num(cells[3]),
                         "dist_rate":    _num(cells[4]),
                     })
+                log(f"       종목 {n}건")
             pg.go_back(wait_until="networkidle", timeout=60000)
             pg.wait_for_timeout(2000)
     finally:
