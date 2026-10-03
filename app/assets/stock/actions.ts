@@ -99,12 +99,27 @@ export type AccountInfo = {
   memo: string | null
 }
 
-export async function getAccounts(): Promise<Account[]> {
+// `my_account.account_type` — 1=은행, 2=증권
+// "use server" 파일은 async 함수만 export 할 수 있어 상수는 모듈 내부에 둔다
+const ACCOUNT_TYPE_STOCK = "2"
+
+/**
+ * 계좌 목록.
+ *
+ * 이 화면이 다루는 매입/매도·적립·예수금은 전부 증권계좌 일이라 **기본은 증권계좌만**이다.
+ * 은행계좌(급여·병원비 등)가 섞이면 매입 계좌 선택에서 잘못 고르기 쉽다.
+ * `includeBank` 를 주면 전체를 돌려준다.
+ */
+export async function getAccounts(includeBank = false): Promise<Account[]> {
   await requireAdmin()
 
   const db = getPensionPool()
   const { rows } = await db.query(
-    `SELECT account_no, account_nm FROM my_account ORDER BY account_no`
+    `SELECT account_no, account_nm
+     FROM my_account
+     WHERE ($1::boolean OR account_type = $2)
+     ORDER BY account_type, sort, account_no`,
+    [includeBank, ACCOUNT_TYPE_STOCK]
   )
   return rows.map((r) => ({ account_no: r.account_no, account_nm: r.account_nm }))
 }

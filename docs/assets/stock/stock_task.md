@@ -58,6 +58,17 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 - 최신 종가: `ORDER BY e_date DESC LIMIT 1`
 - 전일 종가: `ORDER BY e_date DESC LIMIT 1 OFFSET 1`
 
+### `my_account` — 계좌 마스터
+
+| 컬럼 | 설명 |
+|------|------|
+| `account_no` | 계좌번호 (PK) |
+| `account_nm` | 계좌명 |
+| `account_type` | **`1`=은행, `2`=증권** |
+| `sort` | 표시 순서 (타입 안에서) |
+
+주식 투자 화면은 증권계좌(`2`)만 쓴다. 은행계좌는 `getAccounts(true)` 로만 나온다.
+
 ### `t_stock_list` — 종목 검색 마스터
 
 | 컬럼 | 설명 |
@@ -102,7 +113,7 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `getDailyPrices(stockCode)` | 일별 주가 조회 (`t_stock_amt`) | 세션 필요 |
 | `fetchAndSaveNaverPrices(stockCode, stockType)` | 네이버 `sise_day.naver` 수집 → `t_stock_amt` 저장, 저장 건수 반환 | 세션 필요 |
 | `getDefaultStockList()` | `t_stock_list`에서 `default_yn='Y'` 전체 목록 반환 | 없음 |
-| `getAccounts()` | 계좌 목록 (`my_account`) — 계좌번호·계좌명 | 세션 필요 |
+| `getAccounts(includeBank?)` | 계좌 목록 (`my_account`). **기본은 증권계좌만** (`account_type='2'`) — 매입/매도·적립·예수금이 전부 증권계좌 일이라 은행계좌가 섞이면 잘못 고르기 쉽다. 정렬은 `account_type, sort, account_no` | 세션 필요 |
 | `getAccountInfo()` | 계좌 입출금 내역 (`my_account_info` + `my_account` JOIN) | 세션 필요 |
 | `addAccountInfo(data)` | 계좌 입출금 내역 INSERT (`account_no`, `trade_date`, `in_out`, `amt`, `memo`) | 세션 필요 |
 | `getMonthlyDividendByAccount(stockCode)` | 분배금 지급기준일별 계좌 보유수량·분배금·세금. 각 기준일의 **해당 월 13일까지 누적 순수량** 기준. 배당 팝업의 **지급 이력 테이블 전용** — 요약 카드는 현재 잔고를 쓴다 | 세션 필요 |
