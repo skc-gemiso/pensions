@@ -34,7 +34,25 @@ export async function getMarketIndices(): Promise<{ kospi: MarketIndex | null; k
   return { kospi, kosdaq }
 }
 
-async function ensureStockTables(db: ReturnType<typeof getPensionPool>) {
+/**
+ * 스키마 보장 — **프로세스당 한 번만** 돌린다.
+ *
+ * DDL 9개라 Supabase 왕복(약 135ms)이 겹쳐 1회 2초가 걸린다. 예전에는 getHoldings·
+ * getTransactions·getDailyPrices 가 저마다 호출해 화면 진입에만 6초를 썼다.
+ * 런타임에 스키마가 바뀔 일은 없으니 결과를 들고 있다가 재사용한다
+ * (서버리스는 콜드 스타트마다 한 번 돈다).
+ */
+let schemaReady: Promise<void> | null = null
+
+function ensureStockTables(db: ReturnType<typeof getPensionPool>): Promise<void> {
+  schemaReady ??= _ensureStockTables(db).catch((e) => {
+    schemaReady = null          // 실패하면 다음 호출에서 다시 시도한다
+    throw e
+  })
+  return schemaReady
+}
+
+async function _ensureStockTables(db: ReturnType<typeof getPensionPool>) {
   await db.query(`
     CREATE TABLE IF NOT EXISTS my_stock (
       stock_code VARCHAR(20)  NOT NULL,
@@ -192,7 +210,6 @@ export async function getHoldings(accountNo?: string): Promise<StockHolding[]> {
   await requireAdmin()
 
   const db = getPensionPool()
-  await ensureStockTables(db)
 
   const { rows } = await db.query(`
     SELECT
@@ -254,7 +271,6 @@ export async function getTransactions(stockCode?: string, accountNo?: string): P
   await requireAdmin()
 
   const db = getPensionPool()
-  await ensureStockTables(db)
 
   const { rows } = await db.query(
     `SELECT id, account_no, stock_code, s_date, cnt, stock_type, fund_type, qty, s_amt, created_at
@@ -424,7 +440,6 @@ export async function getDailyPrices(stockCode: string): Promise<DailyPrice[]> {
   await requireAdmin()
 
   const db = getPensionPool()
-  await ensureStockTables(db)
 
   const { rows } = await db.query(
     `SELECT TO_CHAR(e_date, 'YYYY-MM-DD') AS s_date,

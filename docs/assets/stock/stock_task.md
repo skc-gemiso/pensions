@@ -99,6 +99,30 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 
 ---
 
+## 스키마 보장은 프로세스당 1회
+
+`ensureStockTables()` 는 DDL 9개라 Supabase 왕복(약 135ms)이 겹쳐 **1회 2초**가 걸린다.
+예전에는 `getHoldings`·`getTransactions`·`getDailyPrices` 가 저마다 호출해
+**화면 진입에만 6초**를 썼다. 정작 데이터 조회는 다섯 개를 병렬로 돌려도 138ms 다.
+
+| | 처리 |
+|---|------|
+| 읽기 (`getHoldings`·`getTransactions`·`getDailyPrices`) | **호출하지 않는다** — 조회에 DDL 이 필요 없다 |
+| 쓰기 (`addTransaction`·`updateTransaction`·`fetchAndSaveNaverPrices`) | 호출하되 모듈 수준 Promise 로 **1회만** 실행 |
+
+```typescript
+let schemaReady: Promise<void> | null = null
+function ensureStockTables(db) {
+  schemaReady ??= _ensureStockTables(db).catch(e => { schemaReady = null; throw e })
+  return schemaReady
+}
+```
+
+실패하면 캐시를 비워 다음 호출에서 다시 시도한다. 서버리스는 콜드 스타트마다 한 번 돈다.
+
+> 느리다고 느껴지면 쿼리 자체가 아니라 **왕복 횟수**를 먼저 센다.
+> 이 DB 는 인덱스가 걸려 있어 실행 시간이 0.05ms 수준이고, 체감 지연은 거의 전부 왕복이다.
+
 ## 서버 액션 (`app/assets/stock/actions.ts`)
 
 | 함수 | 설명 | 인증 |
