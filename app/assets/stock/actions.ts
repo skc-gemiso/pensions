@@ -746,6 +746,8 @@ function _parseSiseDay(data: unknown): SiseRow[] {
 // ── 적립 (주식모으기) ─────────────────────────────────────────────────────────
 
 export type AccumBaseDate = {
+  div_code:   string            // 그 분배금을 주는 종목 (적립 종목과 다를 수 있다)
+  div_name:   string | null
   ref_date:   string            // YYYY-MM-DD 분배금 지급기준일
   base_date:  string            // YYYY-MM-DD 기산일 (ACCUM_BASE_DAY)
   pay_date:   string | null     // YYYY-MM-DD 실지급일
@@ -761,6 +763,11 @@ export type AccumBaseDate = {
  * 분배금 대상 수량은 **기산일 하루**만 본다. 그 날 수량만 맞으면 분배금이 정확하다.
  * 그래서 "언제 스냅샷을 찍어야 하는가" = "기산일이 언제인가" 다.
  * 지난 기산일에 스냅샷이 없으면 그 달 분배금 수량이 추정으로 남는다 — 그걸 드러낸다.
+ *
+ * 기준일은 `t_etf_dividend` 에 등록된 **모든 종목**에서 가져온다.
+ * 적립 재원이 다른 종목(498400)의 분배금이라 그 입금 시점도 알아야 하기 때문이다.
+ * 어느 종목의 기준일인지 헷갈리지 않도록 `div_code` 를 함께 돌려준다.
+ * `qty_at_base` 는 언제나 **적립 종목**(ACCUM_STOCK_CODE)의 수량이다.
  */
 export async function getAccumBaseDates(limit = 12): Promise<AccumBaseDate[]> {
   await requireAdmin()
@@ -771,12 +778,15 @@ export async function getAccumBaseDates(limit = 12): Promise<AccumBaseDate[]> {
   const db = getPensionPool()
   const { rows } = await db.query(
     `WITH refs AS (
-       SELECT DISTINCT ref_date, pay_date, dist_amt
+       SELECT stock_code, ref_date, pay_date, dist_amt
        FROM t_etf_dividend
        ORDER BY ref_date DESC
        LIMIT $1
      )
      SELECT
+       r.stock_code AS div_code,
+       (SELECT COALESCE(sl.stock_short_name, sl.stock_name)
+          FROM t_stock_list sl WHERE sl.stock_code = r.stock_code) AS div_name,
        TO_CHAR(r.ref_date, 'YYYY-MM-DD') AS ref_date,
        TO_CHAR(r.pay_date, 'YYYY-MM-DD') AS pay_date,
        r.dist_amt,
@@ -797,6 +807,8 @@ export async function getAccumBaseDates(limit = 12): Promise<AccumBaseDate[]> {
 
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, "")
   return rows.map(r => ({
+    div_code:   r.div_code,
+    div_name:   r.div_name ?? null,
     ref_date:   r.ref_date,
     base_date:  `${r.base_ymd.slice(0,4)}-${r.base_ymd.slice(4,6)}-${r.base_ymd.slice(6,8)}`,
     pay_date:   r.pay_date ?? null,
@@ -840,4 +852,52 @@ export async function saveAccumSnapshot(input: {
   const plan = await planSnapshot(db, { ...input, stock_code }, base_day)
   await applySnapshot(db, plan, input.snap_date)
   return plan
+}
+
+export type AccumConfig = {
+  stock_code: string
+  stock_name: string | null
+  accounts: string[]
+  daily_limit: number
+  base_day: number
+  transfer_day: number
+  transfer_amount: number
+  /** 설정이 비어 있는 이유 — 화면에 그대로 띄운다 */
+  missing: string[]
+}
+
+/**
+ * 적립 설정 조회.
+ *
+ * 환경 변수는 서버 기동 시 1회만 읽히므로(`next.config.ts` 의 dotenv),
+ * 값을 추가하고 재시작하지 않으면 조용히 빈 값이 된다.
+ * 그 상태를 화면에 드러내려고 `missing` 을 함께 돌려준다.
+ */
+export async function getAccumConfig(): Promise<AccumConfig> {
+  await requireAdmin()
+
+  const s = accumSettingsFromEnv()
+  const missing: string[] = []
+  if (!s.stock_code)        missing.push("ACCUM_STOCK_CODE")
+  if (s.accounts.length === 0) missing.push("ACCUM_ACCOUNTS")
+
+  let stock_name: string | null = null
+  if (s.stock_code) {
+    const { rows } = await getPensionPool().query(
+      `SELECT COALESCE(stock_short_name, stock_name) AS nm FROM t_stock_list WHERE stock_code = $1`,
+      [s.stock_code]
+    )
+    stock_name = rows[0]?.nm ?? null
+  }
+
+  return {
+    stock_code: s.stock_code,
+    stock_name,
+    accounts: s.accounts,
+    daily_limit: s.daily_limit,
+    base_day: s.base_day,
+    transfer_day: s.transfer_day,
+    transfer_amount: s.transfer_amount,
+    missing,
+  }
 }

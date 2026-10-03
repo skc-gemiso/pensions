@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react"
 import { fmt, cc } from "@/lib/fmt"
 import {
-  previewAccumSnapshot, saveAccumSnapshot, getAccumBaseDates,
-  type AccumBaseDate, type Account,
+  previewAccumSnapshot, saveAccumSnapshot, getAccumBaseDates, getAccumConfig,
+  type AccumBaseDate, type AccumConfig, type Account,
 } from "./actions"
 import type { SnapshotPlan } from "@/lib/accum-snapshot"
 
@@ -30,9 +30,10 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
   const [error, setError]     = useState("")
   const [saved, setSaved]     = useState("")
   const [bases, setBases]     = useState<AccumBaseDate[]>([])
+  const [cfg, setCfg]         = useState<AccumConfig | null>(null)
 
   const loadBases = useCallback(async () => { setBases(await getAccumBaseDates(12)) }, [])
-  useEffect(() => { loadBases() }, [loadBases])
+  useEffect(() => { loadBases(); getAccumConfig().then(setCfg) }, [loadBases])
 
   useEffect(() => {
     if (!form.account_no && accounts.length > 0) setForm(f => ({ ...f, account_no: accounts[0].account_no }))
@@ -75,6 +76,35 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
 
   return (
     <div className="space-y-5">
+      {/* ── 적립 대상 — 무엇을 적립 중인지 먼저 드러낸다 ── */}
+      {cfg && (cfg.missing.length > 0 ? (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+          <p className="text-sm font-semibold text-red-700">적립 설정이 비어 있습니다</p>
+          <p className="text-xs text-red-600 mt-1">
+            읽히지 않은 환경 변수: <b>{cfg.missing.join(", ")}</b>
+          </p>
+          <p className="text-xs text-gray-600 mt-2">
+            <code className="bg-white px-1 rounded">config/.env</code> 에 값이 있어도
+            <b> 서버 기동 시 한 번만 읽습니다</b> (<code className="bg-white px-1 rounded">next.config.ts</code> 의 dotenv).
+            값을 추가·수정했다면 <b>dev 서버를 재시작</b>하세요. 배포본은 환경 변수 등록 후 <b>재배포</b>가 필요합니다.
+          </p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 flex items-center gap-x-6 gap-y-2 flex-wrap">
+          <span className="text-sm font-semibold text-gray-800">
+            적립 대상
+            <span className="ml-2 font-mono text-xs text-blue-600">{cfg.stock_code}</span>
+            <span className="ml-1.5 font-normal text-gray-900">{cfg.stock_name ?? "(종목명 없음)"}</span>
+          </span>
+          <span className="text-xs text-gray-500">1일 한도 <b className="text-gray-800">{won(cfg.daily_limit)}</b></span>
+          <span className="text-xs text-gray-500">분배금 기산일 <b className="text-gray-800">매월 {cfg.base_day}일</b></span>
+          {cfg.transfer_amount > 0 && (
+            <span className="text-xs text-gray-500">자동이체 <b className="text-gray-800">매월 {cfg.transfer_day}일 · {won(cfg.transfer_amount)}</b></span>
+          )}
+          <span className="text-xs text-gray-400 ml-auto">대상 계좌 {cfg.accounts.length}개</span>
+        </div>
+      ))}
+
       {/* ── 스냅샷 입력 ── */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100">
@@ -205,20 +235,28 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
           </p>
         </div>
         {bases.length === 0 ? (
-          <p className="text-center text-gray-500 py-8 text-sm">분배금 이력이 없습니다.</p>
+          <p className="text-center text-gray-500 py-8 text-sm">
+            {cfg && cfg.missing.length > 0
+              ? "적립 설정이 비어 있어 기산일을 계산할 수 없습니다 (위 안내 참고)."
+              : "분배금 이력이 없습니다 — t_etf_dividend 에 등록된 분배금이 있어야 기산일이 나옵니다."}
+          </p>
         ) : (
           <div className="overflow-x-auto max-h-96 overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 sticky top-0">
                 <tr>
-                  {["지급기준일", "기산일", "실지급일", "주당 분배금", "기산일 보유수량", "스냅샷"].map((h, i) => (
-                    <th key={i} className={`px-3 py-2.5 text-xs font-semibold text-gray-700 whitespace-nowrap ${i < 3 ? "text-left" : i === 5 ? "text-center" : "text-right"}`}>{h}</th>
+                  {["분배 종목", "지급기준일", "기산일", "실지급일", "주당 분배금", "기산일 보유수량", "스냅샷"].map((h, i) => (
+                    <th key={i} className={`px-3 py-2.5 text-xs font-semibold text-gray-700 whitespace-nowrap ${i < 4 ? "text-left" : i === 6 ? "text-center" : "text-right"}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {bases.map(b => (
                   <tr key={b.ref_date} className={b.passed ? "hover:bg-gray-50" : "bg-blue-50/40"}>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <span className="font-mono text-xs text-gray-500">{b.div_code}</span>
+                      <span className="ml-1.5 text-xs text-gray-700">{b.div_name ?? ""}</span>
+                    </td>
                     <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{b.ref_date}</td>
                     <td className="px-3 py-2 text-gray-900 font-medium whitespace-nowrap">
                       {b.base_date}
