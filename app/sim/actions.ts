@@ -5,7 +5,19 @@ import { requireUser } from "@/lib/guard"
 import { getPensionPool } from "../../lib/pension-db"
 import { headers } from "next/headers"
 
-async function ensureTable(db: ReturnType<typeof getPensionPool>) {
+/**
+ * 스키마 보장 — **프로세스당 한 번만** 돌린다.
+ *
+ * DDL 5개라 왕복이 겹쳐 1회 1.6초가 걸린다. 화면 진입 때마다 내면 그만큼 느려진다.
+ * 런타임에 스키마가 바뀔 일이 없어 결과를 들고 재사용한다 (실패 시 캐시를 비워 재시도).
+ */
+let tableReady: Promise<void> | null = null
+function ensureTable(db: ReturnType<typeof getPensionPool>): Promise<void> {
+  tableReady ??= _ensureTable(db).catch((e) => { tableReady = null; throw e })
+  return tableReady
+}
+
+async function _ensureTable(db: ReturnType<typeof getPensionPool>) {
   await db.query(`
     CREATE TABLE IF NOT EXISTS pension_sim_savings_fund (
       id        SERIAL PRIMARY KEY,
@@ -34,7 +46,13 @@ async function getClientIp(): Promise<string> {
 const IP_PAGE_LIMIT = 10
 const IP_PAGE_WINDOW = "1 hour"
 
-async function ensureIpUsageTable(db: ReturnType<typeof getPensionPool>) {
+let ipTableReady: Promise<void> | null = null
+function ensureIpUsageTable(db: ReturnType<typeof getPensionPool>): Promise<void> {
+  ipTableReady ??= _ensureIpUsageTable(db).catch((e) => { ipTableReady = null; throw e })
+  return ipTableReady
+}
+
+async function _ensureIpUsageTable(db: ReturnType<typeof getPensionPool>) {
   await db.query(`
     CREATE TABLE IF NOT EXISTS sim_ip_usage (
       id         SERIAL PRIMARY KEY,

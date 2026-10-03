@@ -32,7 +32,17 @@ const SEED_SNAPSHOTS = [
   { date: "2023.05.25", totalPremium: 116_053_080, monthlyNet: 1_106_830, monthlyGross: null },
 ]
 
-async function ensureSnapshotTable() {
+/**
+ * 스키마 보장 + 최초 시딩 — **프로세스당 한 번만** 돌린다.
+ * 화면 진입마다 CREATE TABLE·COUNT 를 내면 왕복만큼 느려진다 (실측 270ms).
+ */
+let snapshotReady: Promise<void> | null = null
+function ensureSnapshotTable(): Promise<void> {
+  snapshotReady ??= _ensureSnapshotTable().catch((e) => { snapshotReady = null; throw e })
+  return snapshotReady
+}
+
+async function _ensureSnapshotTable() {
   const pool = getPensionPool()
   await pool.query(`
     CREATE TABLE IF NOT EXISTS np_snapshots (

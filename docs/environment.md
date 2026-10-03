@@ -564,6 +564,40 @@ Vercel 프로젝트 Settings > Environment Variables 에 아래 변수 등록:
 | 수집기 수동 실행이 Vercel에서 동작하지 않음 | Python 프로세스 spawn 불가 (서버리스) | 로컬/상시 구동 환경에서 실행 (`instrumentation.ts` 도 Vercel에서 스케줄 비활성) |
 | **Vercel Cron 이 조용히 아무것도 안 함** | `CRON_SECRET` 미등록. Vercel 은 이 변수가 **있을 때만** `Authorization: Bearer` 헤더를 주입해서, 없으면 cron 이 호출은 되지만 401 로 떨어진다 | Vercel 환경 변수에 `CRON_SECRET` 등록. 진단은 `/api/cron/stock-sync?secret=아무값` 을 열어 `reason` 확인 |
 
+### 런타임 DDL 은 프로세스당 1회만
+
+`CREATE TABLE IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` 를 서버 액션마다 돌리면
+아무것도 안 바꾸는데도 **왕복 비용이 그대로 든다.** Supabase 왕복이 약 135ms 라
+DDL 몇 개만 묶여도 초 단위가 된다.
+
+| 함수 | 쿼리 | 1회 비용 |
+|------|------|---------|
+| `ensureStockTables` (주식) | 9 | **2,055ms** |
+| `ensureTable` (`/sim`) | 5 | **1,607ms** |
+| `ensureSnapshotTable` (`/pension/nat`) | 2 | 270ms |
+| 단순 `SELECT 1` | 1 | 132ms |
+
+`CREATE TABLE IF NOT EXISTS` 는 no-op 이어도 단순 조회보다 비싸다 (락을 잡는다).
+
+**규칙**
+- **조회 액션에서는 부르지 않는다** — 읽기에 DDL 이 필요 없다. 테이블은 쓰기 경로가 만든다
+- 쓰기 액션에서는 모듈 수준 Promise 로 한 번만 돌린다
+
+```typescript
+let ready: Promise<void> | null = null
+function ensureX(db) {
+  ready ??= _ensureX(db).catch(e => { ready = null; throw e })   // 실패하면 재시도
+  return ready
+}
+```
+
+> 선례: 주식 투자 화면이 `getHoldings`·`getTransactions`·`getDailyPrices` 에서 저마다
+> 호출해 진입에만 **6.2초**를 썼다. 조회 쿼리 자체는 다섯 개 병렬로 138ms 였다.
+> `lib/auth-db.ts` 는 처음부터 이 패턴을 쓰고 있었다.
+
+**느리다고 느껴지면 쿼리가 아니라 왕복 횟수를 먼저 센다.** 전 메뉴 주요 조회를 재보니
+45만행 테이블(`etf_holdings`) 까지 포함해 전부 132~145ms 로 균일했다 — 전부 왕복 1회 값이다.
+
 ### Vercel Cron 이 도는지 확인하는 법
 
 에러도 로그도 안 남아 멈춘 걸 알아채기 어렵다. 두 가지로 본다.
