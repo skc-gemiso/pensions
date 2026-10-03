@@ -115,11 +115,10 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
         </div>
 
         <div className="p-4 space-y-3">
-          {/* 적립 종목 — 기본값은 ACCUM_STOCK_CODE, 여기서 바꿀 수 있다 */}
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1.5">
-              적립 종목
-            </label>
+          {/* 1행 — 적립 종목(2칸) · 계좌 · 기준일 */}
+          <div className="grid grid-cols-4 gap-3">
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">적립 종목</label>
             {form.stock_code ? (
               <div className="flex items-center gap-2 px-3 py-2 border border-blue-300 bg-blue-50 rounded-lg">
                 <span className="font-mono text-xs text-blue-700 font-semibold">{form.stock_code}</span>
@@ -139,7 +138,7 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
                   onBlur={() => setTimeout(() => setDrop(false), 150)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 {showDrop && stockHits.length > 0 && (
-                  <div className="absolute top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto w-full">
+                  <div className="absolute top-full left-0 mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto w-full min-w-[26rem]">
                     {stockHits.map(it => (
                       <button key={it.code} type="button"
                         onMouseDown={() => { setForm(f => ({ ...f, stock_code: it.code, stock_name: it.name })); setPlan(null); setDrop(false) }}
@@ -155,8 +154,6 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
             )}
           </div>
 
-          {/* 2행 — 계좌·기준일 / 수량·금액 */}
-          <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1.5">계좌</label>
               <select
@@ -176,6 +173,7 @@ export default function AccumPanel({ accounts }: { accounts: Account[] }) {
             </div>
           </div>
 
+          {/* 2행 — 보유수량 · 평균 매입가 · 계좌 잔액 */}
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1.5">보유 수량 (주)</label>
