@@ -58,6 +58,16 @@ const CHART_PERIODS = [
   { label: "전체",  days: 9999 },
 ]
 
+// 종목명 앞 브랜드로 운용사 분배금 공시 페이지를 고른다 (collector/etf-dividend 의 BRAND_TO_HOUSE 와 같은 기준).
+// 운용사 페이지는 종목코드로 바로 가는 주소가 없어 전 종목 목록이 열린다
+function dividendDisclosureLink(stockName: string): { label: string; url: string } {
+  const brand = stockName.trim().split(/\s+/)[0]?.toUpperCase()
+  if (brand === "KODEX") return { label: "삼성 분배금 공시", url: "https://www.samsungfund.com/etf/product/distribution.do" }
+  if (brand === "TIGER") return { label: "미래에셋 분배금 공시", url: "https://investments.miraeasset.com/tigeretf/ko/distribution/overall/list.do" }
+  if (brand === "RISE" || brand === "KBSTAR") return { label: "KB 분배금 공지", url: "https://kbam.co.kr/support/notice" }
+  return { label: "분배금 검색", url: `https://search.naver.com/search.naver?query=${encodeURIComponent(`${stockName} 분배금`)}` }
+}
+
 function fmtDate(s: string) {
   // YYYYMMDD → YYYY-MM-DD
   return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`
@@ -1041,6 +1051,8 @@ export default function StockPage() {
           const totalDiv  = curRows.reduce((s, r) => s + r.div, 0)
           const totalTax  = curRows.reduce((s, r) => s + r.tax, 0)
           const totalUnit = isFixed ? (fixedDiv!.dist_amt) : curPrice
+          const divName   = holdings.find(h => h.stock_code === divCode)?.stock_name ?? divCode
+          const divLink   = dividendDisclosureLink(divName)
           return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[1224px] max-h-[90vh] flex flex-col overflow-hidden">
@@ -1051,9 +1063,17 @@ export default function StockPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <span className="bg-white/20 text-white text-xs font-bold px-2 py-0.5 rounded">ETF</span>
                         <span className="text-white/80 text-xs font-mono">{divCode}</span>
+                        <a
+                          href={divLink.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-white text-xs underline underline-offset-2 hover:text-amber-100 ml-1"
+                        >
+                          {divLink.label} ↗
+                        </a>
                       </div>
                       <h2 className="text-white font-bold text-base leading-tight">
-                        {holdings.find(h => h.stock_code === divCode)?.stock_name ?? divCode}
+                        {divName}
                       </h2>
                       <p className="text-amber-100 text-xs mt-0.5">분배금 지급 이력 · 지급기준일 기준 최신순</p>
                     </div>
