@@ -1421,10 +1421,16 @@ function CopyMonthModal({ yearMonth, onClose, onCopied }: {
     const msg = `${fmtYM(yearMonth)} 데이터가 삭제되고 ${fmtYM(selected)} 데이터로 변경됩니다.\n계속하시겠습니까?`
     if (!confirm(msg)) return
     setSaving(true)
-    await copyFromMonth(yearMonth, selected)
-    setSaving(false)
-    onCopied()
-    onClose()
+    try {
+      await copyFromMonth(yearMonth, selected)
+      onCopied()
+      onClose()
+    } catch (e) {
+      // 실패를 삼키면 "눌러도 아무 일이 없다" 로만 보인다
+      alert(`복사 실패: ${e instanceof Error ? e.message : "알 수 없는 오류"}`)
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -1736,8 +1742,12 @@ export default function CostPage() {
 
   async function handleCopyPrev() {
     if (!confirm("이전 달 데이터를 복사하시겠습니까?")) return
-    await copyFromPrevMonth(yearMonth)
-    load()
+    try {
+      await copyFromPrevMonth(yearMonth)
+      load()
+    } catch (e) {
+      alert(`복사 실패: ${e instanceof Error ? e.message : "알 수 없는 오류"}`)
+    }
   }
 
   // 집계 (cost_task.md 집계 로직) — isCardUsage 는 모듈 상단 공용 정의를 쓴다 (행 표시와 같은 기준)

@@ -45,6 +45,19 @@ my_cost_info (
 );
 ```
 
+**`(yyyymm, item_id)` 유니크 인덱스가 반드시 있어야 한다.**
+
+```sql
+CREATE UNIQUE INDEX my_cost_info_yyyymm_item_uk ON my_cost_info (yyyymm, item_id);
+```
+
+복사 기능이 `ON CONFLICT (yyyymm, item_id)` 를 쓰는데, 이 인덱스가 없으면
+`there is no unique or exclusion constraint matching the ON CONFLICT specification`
+으로 **쿼리 자체가 실패**한다. 한 달에 같은 항목이 두 번 들어가지 않게 막는 실제 규칙이기도 하다.
+
+> 선례: 2026-10 에 이 인덱스가 빠져 있어 「이전 달 복사」가 동작하지 않았다.
+> 화면에 `try/catch` 가 없어 오류도 안 떠서 "눌러도 아무 일이 없다" 로만 보였다.
+
 카드 결제금액도 이 테이블에 그대로 적재한다 — 카드용 별도 원장은 만들지 않는다.
 
 ### `my_card` — 카드 상세 마스터
