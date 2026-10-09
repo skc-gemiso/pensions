@@ -70,6 +70,8 @@ _CLICK_BY_TEXT = """(label) => {
   return true;
 }"""
 
+_HAS_TEXT = """(label) => [...document.querySelectorAll('a,button')].some(x => (x.innerText || '').trim() === label)"""
+
 
 # ── 미래에셋 TIGER ───────────────────────────────────────────────────────────
 # 구조화된 표 하나에 전 종목이 들어 있다. 연·월 select 로 범위를 줄이고
@@ -122,10 +124,12 @@ def scrape_mirae(browser, name_to_code: dict[str, str], log=print) -> list[dict]
     try:
         pg.goto(MIRAE_URL, wait_until="networkidle", timeout=60000)
         pg.wait_for_timeout(2500)
+        # 버튼이 없는데 expect_download 를 걸면 블록을 나올 때 오지 않을 다운로드를 기다리다 죽는다
+        if not pg.evaluate(_HAS_TEXT, "엑셀다운로드"):
+            raise RuntimeError(f"엑셀다운로드 버튼을 찾지 못했습니다 "
+                               f"(title={pg.title()!r}, url={pg.url})")
         with pg.expect_download(timeout=90000) as dl:
-            if not pg.evaluate(_CLICK_BY_TEXT, "엑셀다운로드"):
-                log("  [미래에셋] 엑셀다운로드 버튼을 찾지 못했습니다")
-                return out
+            pg.evaluate(_CLICK_BY_TEXT, "엑셀다운로드")
         path = f"{tempfile.gettempdir()}/mirae_dist.xls"
         dl.value.save_as(path)
 
@@ -268,7 +272,7 @@ _KB_TABLE = """() => {
   const t = document.querySelector('table');
   if (!t) return [];
   return [...t.querySelectorAll('tr')].map(tr =>
-    [...tr.querySelectorAll('td,th')].map(c => c.innerText.replace(/\s+/g, ' ').trim()));
+    [...tr.querySelectorAll('td,th')].map(c => c.innerText.replace(/\\s+/g, ' ').trim()));
 }"""
 
 _KB_TITLES = """() => {

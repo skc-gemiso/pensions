@@ -71,17 +71,27 @@ def main():
     houses = {t["house"] for t in targets if t["house"]}
     print("\n■ 공시 수집")
     scraped: list[dict] = []
+    # 미래에셋 엑셀에는 종목코드 열이 없어 종목명으로 맞춘다
+    name_to_code = {t["stock_name"]: t["stock_code"] for t in targets if t["house"] == "mirae"}
+    jobs = [
+        ("mirae",   lambda b: scrapers.scrape_mirae(b, name_to_code)),
+        ("samsung", lambda b: scrapers.scrape_samsung(b, tab=args.samsung_tab)),
+        ("kb",      lambda b: scrapers.scrape_kb(b)),
+    ]
+    # 한 운용사가 실패해도 나머지는 수집·반영한다. 실패한 운용사 종목은 공시가 비어
+    # 'keep' 으로 분류될 뿐 DB 행이 지워지지 않는다
+    failed: list[str] = []
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=not args.show_browser)
         try:
-            if "mirae" in houses:
-                # 미래에셋 엑셀에는 종목코드 열이 없어 종목명으로 맞춘다
-                name_to_code = {t["stock_name"]: t["stock_code"] for t in targets if t["house"] == "mirae"}
-                scraped += scrapers.scrape_mirae(browser, name_to_code)
-            if "samsung" in houses:
-                scraped += scrapers.scrape_samsung(browser, tab=args.samsung_tab)
-            if "kb" in houses:
-                scraped += scrapers.scrape_kb(browser)
+            for house, run in jobs:
+                if house not in houses:
+                    continue
+                try:
+                    scraped += run(browser)
+                except Exception as e:
+                    failed.append(house)
+                    print(f"  [{db.HOUSE_LABEL[house]}] 수집 실패 — {type(e).__name__}: {e}")
         finally:
             browser.close()
 
@@ -179,6 +189,10 @@ def main():
         print("  (지금 바로 맞추려면 분배금 팝업의 [계좌 입금 내역 재생성] 을 누르세요)")
     else:
         print("\n  ※ DB 에 쓰지 않았습니다. 반영하려면 --apply 를 붙이세요.")
+
+    # GitHub Actions 주석으로 남긴다. 해외 IP 차단 등으로 매일 실패할 수 있어 exit 0 으로 둔다
+    for house in failed:
+        print(f"::warning::ETF 분배금 {db.HOUSE_LABEL[house]} 공시 수집 실패 — 해당 종목은 이번 실행에서 반영되지 않았습니다")
 
 
 if __name__ == "__main__":
