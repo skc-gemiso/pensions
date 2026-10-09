@@ -95,6 +95,11 @@ def main():
         finally:
             browser.close()
 
+    # 전부 실패하면 반영할 것이 없다. 녹색으로 끝나 실패가 묻히지 않게 여기서 실패로 끝낸다
+    if failed and len(failed) == len(houses):
+        print("::error::ETF 분배금 공시 수집이 모든 운용사에서 실패했습니다 — DB 에 반영하지 않았습니다")
+        sys.exit(1)
+
     # 우리 종목만 남긴다 (운용사 페이지는 전 종목을 다 준다)
     mine = {}
     for r in scraped:
