@@ -18,12 +18,6 @@ export type Shopping = {
   original_price: number | null
   purchase_price: number | null
   purchase_place: string | null
-  /**
-   * 참고 자료 글의 **분류 라벨**. 자유 입력이다 (매매일지·종목분석 …).
-   * `category` 와 다르다 — `category` 는 어느 메뉴 글인지 가르는 값이고
-   * 이건 그 메뉴 **안에서** 글을 묶는 label 이다.
-   */
-  ref_label: string | null
   content: string | null
   created_at: string
   updated_at: string
@@ -201,7 +195,7 @@ export async function getRefList(group: RefGroup = "ref"): Promise<Shopping[]> {
        id, item_type, category, NULL AS purchase_date, product_nm,
        NULL::int AS card_item_id, NULL AS card_item_nm,
        original_price, NULL::int AS purchase_price, NULL AS purchase_place,
-       ref_label, content, created_at::text, updated_at::text
+       content, created_at::text, updated_at::text
      FROM my_shopping
      WHERE item_type = 'ref' AND category = $1
      ORDER BY created_at DESC
@@ -234,17 +228,15 @@ export async function addRef(data: {
   product_nm: string
   purchase_place?: string | null
   original_price?: number | null
-  ref_label?: string | null
   content?: string | null
 }): Promise<number> {
   await requireAdmin()
 
   const pool = getPensionPool()
   const { rows } = await pool.query<{ id: number }>(
-    `INSERT INTO my_shopping (item_type, category, product_nm, purchase_place, original_price, ref_label, content)
-     VALUES ('ref', $1, $2, $3, $4, $5, $6) RETURNING id`,
-    [data.group ?? "ref", data.product_nm, data.purchase_place ?? null, data.original_price ?? null,
-     data.ref_label?.trim() || null, data.content ?? null]
+    `INSERT INTO my_shopping (item_type, category, product_nm, purchase_place, original_price, content)
+     VALUES ('ref', $1, $2, $3, $4, $5) RETURNING id`,
+    [data.group ?? "ref", data.product_nm, data.purchase_place ?? null, data.original_price ?? null, data.content ?? null]
   )
   return rows[0].id
 }
@@ -255,7 +247,6 @@ export async function updateRef(
     product_nm: string
     purchase_place: string | null
     original_price: number | null
-    ref_label: string | null
     content: string | null
   }>
 ): Promise<void> {
@@ -268,7 +259,6 @@ export async function updateRef(
   if (data.product_nm !== undefined)     set("product_nm",     data.product_nm)
   if (data.purchase_place !== undefined) set("purchase_place", data.purchase_place)
   if (data.original_price !== undefined) set("original_price", data.original_price)
-  if (data.ref_label !== undefined)      set("ref_label",      data.ref_label?.trim() || null)
   if (data.content !== undefined)        set("content",        data.content)
   if (pairs.length === 0) return
   pairs.push(`updated_at = NOW()`)

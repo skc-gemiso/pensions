@@ -29,17 +29,12 @@ CREATE TABLE my_shopping (
 | `item_type` | 항상 `'ref'` |
 | `category` | **구분** — 어느 메뉴의 글인지 (아래) |
 | `product_nm` | 제목 |
-| `ref_label` | **구분** — 그 메뉴 *안에서* 글을 묶는 자유 입력 라벨 (VARCHAR(50), NULL 허용) |
 | `content` | 내용 (RichEditor HTML) |
 | `created_at` | 등록일 |
 | `purchase_place` · `original_price` | 쇼핑 참고 자료만 씀 (구매처·제품가격) |
 | 나머지 | `NULL` |
 
-> `category` 와 `ref_label` 을 헷갈리지 말 것.
-> `category` 는 **어느 메뉴 글인지** 가르는 라우팅 값이고,
-> `ref_label` 은 **그 메뉴 안에서** 글을 묶는 사용자 라벨이다.
-
-#### `category` = 메뉴 구분 (`app/shopping/ref-groups.ts`)
+#### `category` = 구분 (`app/shopping/ref-groups.ts`)
 
 `item_type='ref'` 행을 여러 메뉴가 나눠 쓴다. 어느 메뉴 것인지는 `category` 가 가른다.
 **화면에서 고르는 값이 아니라 호출하는 메뉴가 정한다.**
