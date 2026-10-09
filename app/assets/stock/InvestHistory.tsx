@@ -34,23 +34,27 @@ export default function InvestHistory() {
   const [saving, setSaving]         = useState(false)
   const [filter, setFilter]         = useState<"" | HistoryCategory>("")
 
-  const shown    = useMemo(() => filter ? list.filter(r => r.category === filter) : list, [list, filter])
-  const selected = useMemo(() => list.find(r => r.id === selectedId) ?? null, [list, selectedId])
+  const shown = useMemo(() => filter ? list.filter(r => r.category === filter) : list, [list, filter])
 
-  // keepId: 재조회 후 선택할 id. undefined 면 기존 선택 유지(없으면 첫 항목)
+  // 본문은 **걸러진 목록**에서 고른다 — 구분을 바꾸면 본문도 따라 바뀌어야 한다
+  const selected = useMemo(() => shown.find(r => r.id === selectedId) ?? null, [shown, selectedId])
+
+  // 보던 항목이 그대로 보이면 유지하고, 아니면 첫 항목으로 떨어진다
+  const pick = (rows: History[], want?: number | null) =>
+    rows.some(r => r.id === want) ? want! : (rows[0]?.id ?? null)
+
+  // keepId: 재조회 후 선택할 id. undefined 면 기존 선택 유지
   const load = useCallback(async (keepId?: number) => {
     setLoading(true)
     try {
       const rows = await getHistoryList()
       setList(rows)
-      setSelectedId(prev => {
-        const want = keepId ?? prev
-        return rows.some(r => r.id === want) ? want! : (rows[0]?.id ?? null)
-      })
+      const inView = filter ? rows.filter(r => r.category === filter) : rows
+      setSelectedId(prev => pick(inView, keepId ?? prev))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [filter])
 
   useEffect(() => { load() }, [load])
 
@@ -121,14 +125,20 @@ export default function InvestHistory() {
           <>
             <select
               value={filter}
-              onChange={(e) => setFilter(e.target.value as "" | HistoryCategory)}
+              onChange={(e) => {
+                const next = e.target.value as "" | HistoryCategory
+                setFilter(next)
+                // 본문도 같이 바꾼다 — 보던 글이 그 구분에 없으면 첫 글로 넘어간다
+                setSelectedId(pick(next ? list.filter(r => r.category === next) : list, selectedId))
+                setMode("view")
+              }}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">구분 전체</option>
               {HISTORY_CATEGORY_KEYS.map(k => <option key={k} value={k}>{HISTORY_CATEGORIES[k]}</option>)}
             </select>
             <select
-              value={shown.some(r => r.id === selectedId) ? String(selectedId) : ""}
+              value={selected ? String(selected.id) : ""}
               onChange={(e) => { setSelectedId(e.target.value ? Number(e.target.value) : null); setMode("view") }}
               disabled={loading || shown.length === 0}
               className="flex-1 min-w-48 max-w-xl px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:text-gray-400"
