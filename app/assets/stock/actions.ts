@@ -4,6 +4,7 @@ import { getPensionPool } from "@/lib/pension-db"
 import { requireAdmin } from "@/lib/guard"
 import { syncDividendDeposits, syncAllDividendDeposits, divMemo } from "@/lib/dividend-deposits"
 import { accumSettingsFromEnv } from "@/lib/settings"
+import { isHistoryCategory } from "./history-categories"
 import { planSnapshot, applySnapshot, type SnapshotPlan } from "@/lib/accum-snapshot"
 
 export type MarketIndex = {
@@ -938,4 +939,85 @@ export async function getDividendStockCodes(): Promise<string[]> {
     `SELECT DISTINCT stock_code FROM t_etf_dividend ORDER BY stock_code`
   )
   return rows.map(r => r.stock_code as string)
+}
+
+// ── 투자 이력 (my_history) ───────────────────────────────────────────────────
+//
+// 쇼핑 참고 자료(`my_shopping`)에서 분리된 전용 테이블이다.
+// 컬럼명을 그대로 쓴다 — category / t_date / title / contents.
+
+export type History = {
+  id: number
+  category: string          // stock=주식, pension=연금
+  t_date: string | null     // YYYY-MM-DD 등록일자
+  title: string
+  contents: string | null
+  created_at: string
+  updated_at: string
+}
+
+export async function getHistoryList(limit = 100): Promise<History[]> {
+  await requireAdmin()
+
+  const { rows } = await getPensionPool().query(
+    `SELECT id, category, TO_CHAR(t_date, 'YYYY-MM-DD') AS t_date, title, contents,
+            created_at::text, updated_at::text
+     FROM my_history
+     ORDER BY t_date DESC NULLS LAST, id DESC
+     LIMIT $1`,
+    [limit]
+  )
+  return rows.map(r => ({
+    id: r.id,
+    category: r.category,
+    t_date: r.t_date ?? null,
+    title: r.title,
+    contents: r.contents ?? null,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }))
+}
+
+export async function addHistory(data: {
+  category: string
+  t_date: string            // YYYY-MM-DD
+  title: string
+  contents?: string | null
+}): Promise<number> {
+  await requireAdmin()
+
+  if (!isHistoryCategory(data.category)) throw new Error(`알 수 없는 구분입니다: ${data.category}`)
+  if (!data.title.trim())                throw new Error("제목을 입력하세요.")
+
+  const { rows } = await getPensionPool().query(
+    `INSERT INTO my_history (category, t_date, title, contents)
+     VALUES ($1, $2::date, $3, $4) RETURNING id`,
+    [data.category, data.t_date || null, data.title.trim(), data.contents ?? null]
+  )
+  return rows[0].id
+}
+
+export async function updateHistory(id: number, data: {
+  category: string
+  t_date: string
+  title: string
+  contents?: string | null
+}): Promise<void> {
+  await requireAdmin()
+
+  if (!isHistoryCategory(data.category)) throw new Error(`알 수 없는 구분입니다: ${data.category}`)
+  if (!data.title.trim())                throw new Error("제목을 입력하세요.")
+
+  const { rowCount } = await getPensionPool().query(
+    `UPDATE my_history
+        SET category = $2, t_date = $3::date, title = $4, contents = $5, updated_at = NOW()
+      WHERE id = $1`,
+    [id, data.category, data.t_date || null, data.title.trim(), data.contents ?? null]
+  )
+  if (!rowCount) throw new Error(`수정할 이력이 없습니다 (id=${id}).`)
+}
+
+export async function deleteHistory(id: number): Promise<void> {
+  await requireAdmin()
+  await getPensionPool().query(`DELETE FROM my_history WHERE id = $1`, [id])
 }

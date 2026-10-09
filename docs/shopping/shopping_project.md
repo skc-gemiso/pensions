@@ -55,9 +55,8 @@
 | 링크 | URL 필드, 클릭 시 새 탭 열기 |
 | 이미지 붙여넣기 / 첨부파일 | 구매 목록과 동일 (ref_type = 'ref') |
 
-**이 화면 말고도 참고 자료 저장소를 쓰는 곳이 있다.** `my_shopping` 의 `item_type='ref'` 행을
-여러 메뉴가 `category` 로 나눠 쓴다 — 이 화면은 `ref`, 주식 투자 「투자 이력」 탭은 `stock`.
-`getRefList(group)` 이 걸러 주므로 다른 메뉴 글이 이 목록에 섞이지 않는다.
+`my_shopping` 의 `item_type='ref'` 행은 `category` 로 메뉴를 가른다. 2026-10 에
+주식 투자 「투자 이력」이 전용 테이블 `my_history` 로 분리돼 지금은 이 화면(`ref`)만 쓴다.
 구분값 목록은 `app/shopping/ref-groups.ts` 에 있다.
 
 ---

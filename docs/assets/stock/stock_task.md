@@ -80,6 +80,29 @@ CREATE TABLE IF NOT EXISTS t_stock_amt (
 | `listed_shares` | 상장주식수 (정렬 기준) |
 | `default_yn` | 빈 검색 시 인기 종목 여부 (`'Y'`) |
 
+### `my_history` — 투자 이력
+
+```sql
+CREATE TABLE my_history (
+  id         SERIAL PRIMARY KEY,
+  category   TEXT        NOT NULL,   -- stock=주식, pension=연금
+  t_date     DATE,                   -- 등록일자 (화면에서 고른다)
+  title      TEXT        NOT NULL,
+  contents   TEXT,                   -- RichEditor HTML
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+2026-10 에 `my_shopping`(`item_type='ref'`, `category='stock'`) 에서 분리했다.
+`my_shopping` 은 쇼핑 참고 자료(`category='ref'`)만 남았고 `app/shopping/ref-groups.ts`
+의 `stock` 구분도 뺐다.
+
+- 정렬은 `t_date DESC NULLS LAST, id DESC`
+- 구분값은 `app/assets/stock/history-categories.ts` 의 `HISTORY_CATEGORIES`.
+  서버 액션이 `isHistoryCategory()` 로 검증한다
+- 기존 4건의 `t_date` 는 `created_at` 을 KST 날짜로 환산해 채웠다
+
 ### `t_etf_dividend` — ETF 분배금 지급 이력
 
 배당 수익률 팝업의 데이터 원천. 월 1건씩 쌓인다.
@@ -144,6 +167,10 @@ function ensureStockTables(db) {
 | `addEtfDividend(data)` | `t_etf_dividend` 1건 INSERT. 같은 `(stock_code, ref_date)` 가 이미 있으면 덮어쓰지 않고 예외. INSERT 후 `_syncDividendDeposits` 로 계좌 입금 행 생성 — 배당 팝업의 `[+ 분배금 추가]` 에서 호출 | 세션 필요 |
 | `backfillDividendDeposits(stockCode)` | 등록된 분배금 전체에 대해 계좌 입금 행 재생성. `{ dividends, deposits }` 반환 — `[계좌 입금 내역 재생성]` 버튼 | 세션 필요 |
 | `getAccumBaseDates(limit)` | 분배금 기산일 정리 — 지급기준일별 기산일·보유수량·스냅샷 유무. 기준일은 `t_etf_dividend` 전체 종목(`div_code` 로 구분), 수량은 적립 종목 | 세션 필요 |
+| `getHistoryList(limit?)` | 투자 이력 목록 (`my_history`), `t_date` 내림차순 | 세션 필요 |
+| `addHistory(data)` | 투자 이력 INSERT. `category` 를 `isHistoryCategory()` 로 검증 | 세션 필요 |
+| `updateHistory(id, data)` | 투자 이력 UPDATE. 대상이 없으면 예외 | 세션 필요 |
+| `deleteHistory(id)` | 투자 이력 DELETE | 세션 필요 |
 | `getDividendStockCodes()` | 분배금 이력이 있는 종목코드 목록. 분배금 팝업 버튼 노출 조건 | 세션 필요 |
 | `getAccumConfig()` | 적립 설정 조회. 안 읽힌 환경 변수를 `missing` 으로 돌려줘 화면에 드러낸다 | 세션 필요 |
 | `previewAccumSnapshot(input)` | 적립 스냅샷 미리보기. **DB 를 바꾸지 않는다**. `input.stock_code` 를 주면 그 종목, 없으면 `ACCUM_STOCK_CODE` | 세션 필요 |
