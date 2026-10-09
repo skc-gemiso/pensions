@@ -72,6 +72,8 @@ my_card (
     card_nm        VARCHAR,              -- 카드명 — 화면 표시의 기준(source of truth)
     card_type      VARCHAR DEFAULT '1',  -- 1=신용, 2=체크
     pay_ymd        VARCHAR,              -- 결제일. 체크카드는 즉시결제라 빈 값이 정상
+    start_ymd      VARCHAR,              -- 정산 시작일. **체크카드도 쓴다** (카드사 집계 주기)
+    end_ymd        VARCHAR,              -- 정산 종료일
     start_ymd      VARCHAR,              -- 정산 시작일 (신용카드만)
     end_ymd        VARCHAR,              -- 정산 종료일 (신용카드만)
     limit_ym       VARCHAR,              -- ★ 유효기간 — 암호화 저장

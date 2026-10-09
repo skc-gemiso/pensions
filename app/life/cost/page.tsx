@@ -683,9 +683,10 @@ function CardDetailModal({ cardId, onClose, onUpdated }: {
       card_nm:   form.card_nm,
       card_type: form.card_type || null,
       // 체크카드는 즉시결제 → 결제일·정산기간을 비운다
+      // 체크카드는 즉시결제라 결제일이 없다. 정산기간은 체크카드에도 있다 (카드사 집계 주기)
       pay_ymd:   isCheckCard ? null : (form.pay_ymd || null),
-      start_ymd: isCheckCard ? null : (form.start_ymd || null),
-      end_ymd:   isCheckCard ? null : (form.end_ymd || null),
+      start_ymd: form.start_ymd || null,
+      end_ymd:   form.end_ymd || null,
       memo:      form.memo || null,
       ...(newCardNo ? { card_no: newCardNo } : {}),
       ...(newLimitYm ? { limit_ym: newLimitYm } : {}),
@@ -728,29 +729,26 @@ function CardDetailModal({ cardId, onClose, onUpdated }: {
                 </div>
               </div>
 
-              {isCheckCard ? (
-                <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                  체크카드는 즉시결제라 결제일·정산기간을 사용하지 않습니다.
-                </p>
-              ) : (
-                <div className="grid grid-cols-3 gap-4">
+              {/* 결제일은 체크카드에 없다 (즉시결제). 정산기간은 체크카드에도 있다 */}
+              <div className="grid grid-cols-3 gap-4">
+                {!isCheckCard && (
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">결제일</label>
                     <input type="number" min={1} max={31} placeholder="-" className={`${inputCls} text-right`}
                       value={form.pay_ymd} onChange={e => set("pay_ymd", e.target.value)} />
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">정산 시작일</label>
-                    <input type="number" min={1} max={31} placeholder="-" className={`${inputCls} text-right`}
-                      value={form.start_ymd} onChange={e => set("start_ymd", e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">정산 종료일</label>
-                    <input type="number" min={1} max={31} placeholder="-" className={`${inputCls} text-right`}
-                      value={form.end_ymd} onChange={e => set("end_ymd", e.target.value)} />
-                  </div>
+                )}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">정산 시작일</label>
+                  <input type="number" min={1} max={31} placeholder="-" className={`${inputCls} text-right`}
+                    value={form.start_ymd} onChange={e => set("start_ymd", e.target.value)} />
                 </div>
-              )}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">정산 종료일</label>
+                  <input type="number" min={1} max={31} placeholder="-" className={`${inputCls} text-right`}
+                    value={form.end_ymd} onChange={e => set("end_ymd", e.target.value)} />
+                </div>
+              </div>
 
               {/* 민감정보 — 암호화 저장, 조회는 [보기] 클릭 시 서버에서 복호화 */}
               <div className="border-t border-gray-100 pt-4 space-y-3">
@@ -824,9 +822,10 @@ function AddCardModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
         card_nm: form.card_nm,
         card_no: form.card_no,
         card_type: form.card_type || null,
+        // 체크카드는 즉시결제라 결제일이 없다. 정산기간은 체크카드에도 있다 (카드사 집계 주기)
         pay_ymd: isCheckCard ? null : (form.pay_ymd || null),
-        start_ymd: isCheckCard ? null : (form.start_ymd || null),
-        end_ymd: isCheckCard ? null : (form.end_ymd || null),
+        start_ymd: form.start_ymd || null,
+        end_ymd: form.end_ymd || null,
         limit_ym: form.limit_ym || null,
         cvc: form.cvc || null,
         memo: form.memo || null,
@@ -868,26 +867,23 @@ function AddCardModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
               <p className="text-xs text-gray-400 mt-1">암호화해 저장되며 목록에는 뒤 4자리만 표시됩니다.</p>
             </div>
 
-            {isCheckCard ? (
-              <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                체크카드는 즉시결제라 결제일·정산기간을 사용하지 않습니다.
-              </p>
-            ) : (
-              <div className="grid grid-cols-3 gap-4">
+            {/* 결제일은 체크카드에 없다 (즉시결제). 정산기간은 체크카드에도 있다 */}
+            <div className="grid grid-cols-3 gap-4">
+              {!isCheckCard && (
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">결제일</label>
                   <input type="number" min={1} max={31} placeholder="-" className={`${inputCls} text-right`} value={form.pay_ymd} onChange={e => set("pay_ymd", e.target.value)} />
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">정산 시작일</label>
-                  <input type="number" min={1} max={31} placeholder="-" className={`${inputCls} text-right`} value={form.start_ymd} onChange={e => set("start_ymd", e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">정산 종료일</label>
-                  <input type="number" min={1} max={31} placeholder="-" className={`${inputCls} text-right`} value={form.end_ymd} onChange={e => set("end_ymd", e.target.value)} />
-                </div>
+              )}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">정산 시작일</label>
+                <input type="number" min={1} max={31} placeholder="-" className={`${inputCls} text-right`} value={form.start_ymd} onChange={e => set("start_ymd", e.target.value)} />
               </div>
-            )}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">정산 종료일</label>
+                <input type="number" min={1} max={31} placeholder="-" className={`${inputCls} text-right`} value={form.end_ymd} onChange={e => set("end_ymd", e.target.value)} />
+              </div>
+            </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
