@@ -8,15 +8,17 @@ import { REF_GROUPS } from "@/app/shopping/ref-groups"
 // 이 화면이 다루는 구분. my_shopping(item_type='ref') 을 메뉴끼리 나눠 쓰고 category 로 가른다
 const GROUP = "stock" as const
 
-type FormData = { product_nm: string; content: string }
+type FormData = { product_nm: string; ref_label: string; content: string }
 
-const emptyForm = (): FormData => ({ product_nm: "", content: "" })
+const emptyForm = (): FormData => ({ product_nm: "", ref_label: "", content: "" })
 
 /**
  * 투자 이력 — 구분·제목·등록일·내용만 다룬다 (첨부파일 없음).
  *
  * 목록을 좌측 패널 대신 **상단 콤보박스**로 올려 본문이 화면 전체 너비를 쓴다.
- * 구분은 화면에서 고르지 않는다. 이 화면에서 쓴 글은 항상 `stock` 이다.
+ *
+ * 구분(`ref_label`)은 이 탭 **안에서** 글을 묶는 자유 입력 라벨이다.
+ * 어느 메뉴 글인지 가르는 `category`(= `GROUP`) 와 다르다 — 그건 항상 `stock` 으로 고정이다.
  */
 export default function InvestHistory() {
   const [list, setList]             = useState<Shopping[]>([])
@@ -25,6 +27,17 @@ export default function InvestHistory() {
   const [mode, setMode]             = useState<"view" | "edit" | "add">("view")
   const [form, setForm]             = useState<FormData>(emptyForm())
   const [saving, setSaving]         = useState(false)
+  const [labelFilter, setLabelFilter] = useState("")
+
+  // 이미 쓴 구분들 — 입력 자동완성과 필터에 함께 쓴다
+  const labels = useMemo(
+    () => [...new Set(list.map(r => r.ref_label).filter((v): v is string => !!v))].sort(),
+    [list]
+  )
+  const shown = useMemo(
+    () => labelFilter ? list.filter(r => r.ref_label === labelFilter) : list,
+    [list, labelFilter]
+  )
 
   // 목록에서 끌어온다 — 저장 후 재조회해도 선택이 유지된다
   const selected = useMemo(() => list.find(r => r.id === selectedId) ?? null, [list, selectedId])
@@ -49,13 +62,18 @@ export default function InvestHistory() {
 
   // 폼은 입력 모드로 들어갈 때만 채운다 — 선택이 바뀔 때 맞춰줄 필요가 없다
   function startAdd() {
-    setForm(emptyForm())
+    // 새 글은 지금 걸어둔 구분으로 시작한다 — 같은 분류를 연달아 쓸 때 편하다
+    setForm({ ...emptyForm(), ref_label: labelFilter })
     setMode("add")
   }
 
   function startEdit() {
     if (!selected) return
-    setForm({ product_nm: selected.product_nm, content: selected.content ?? "" })
+    setForm({
+      product_nm: selected.product_nm,
+      ref_label:  selected.ref_label ?? "",
+      content:    selected.content ?? "",
+    })
     setMode("edit")
   }
 
@@ -63,7 +81,11 @@ export default function InvestHistory() {
     if (!form.product_nm.trim()) { alert("제목을 입력하세요."); return }
     setSaving(true)
     try {
-      const data = { product_nm: form.product_nm, content: form.content || null }
+      const data = {
+        product_nm: form.product_nm,
+        ref_label:  form.ref_label.trim() || null,
+        content:    form.content || null,
+      }
       if (mode === "add") {
         const newId = await addRef({ group: GROUP, ...data })
         setMode("view")
@@ -97,22 +119,34 @@ export default function InvestHistory() {
         {mode === "add" ? (
           <span className="flex-1 min-w-48 text-sm text-blue-600 font-medium">새 항목 작성 중</span>
         ) : (
-          <select
-            value={selectedId ?? ""}
-            onChange={(e) => { setSelectedId(e.target.value ? Number(e.target.value) : null); setMode("view") }}
-            disabled={loading || list.length === 0}
-            className="flex-1 min-w-48 max-w-xl px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:text-gray-400"
-          >
-            {list.length === 0 && <option value="">{loading ? "로딩 중..." : "항목이 없습니다"}</option>}
-            {list.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.created_at?.slice(0, 10)} · {r.product_nm}
-              </option>
-            ))}
-          </select>
+          <>
+            {labels.length > 0 && (
+              <select
+                value={labelFilter}
+                onChange={(e) => setLabelFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">구분 전체</option>
+                {labels.map(l => <option key={l} value={l}>{l}</option>)}
+              </select>
+            )}
+            <select
+              value={shown.some(r => r.id === selectedId) ? String(selectedId) : ""}
+              onChange={(e) => { setSelectedId(e.target.value ? Number(e.target.value) : null); setMode("view") }}
+              disabled={loading || shown.length === 0}
+              className="flex-1 min-w-48 max-w-xl px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:text-gray-400"
+            >
+              {shown.length === 0 && <option value="">{loading ? "로딩 중..." : "항목이 없습니다"}</option>}
+              {shown.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.created_at?.slice(0, 10)}{r.ref_label ? ` · ${r.ref_label}` : ""} · {r.product_nm}
+                </option>
+              ))}
+            </select>
+          </>
         )}
 
-        <span className="text-xs text-gray-400 whitespace-nowrap">{list.length}건</span>
+        <span className="text-xs text-gray-400 whitespace-nowrap">{shown.length}건</span>
 
         <div className="flex gap-2 ml-auto">
           {!isFormMode && (
@@ -157,7 +191,19 @@ export default function InvestHistory() {
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">구분</label>
-                <p className="px-3 py-2 text-sm text-gray-800 bg-gray-50 border border-gray-200 rounded-lg">{REF_GROUPS[GROUP]}</p>
+                {/* 이미 쓴 구분을 datalist 로 띄워 같은 이름을 다시 치지 않게 한다 */}
+                <input
+                  type="text"
+                  list="invest-labels"
+                  value={form.ref_label}
+                  onChange={(e) => set("ref_label", e.target.value)}
+                  placeholder="매매일지"
+                  maxLength={50}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:border-blue-500 placeholder:text-gray-400"
+                />
+                <datalist id="invest-labels">
+                  {labels.map(l => <option key={l} value={l} />)}
+                </datalist>
               </div>
             </div>
             <div>
@@ -170,7 +216,7 @@ export default function InvestHistory() {
             <div className="flex items-center justify-between gap-3 flex-wrap border-b border-gray-100 pb-3">
               <h3 className="font-semibold text-gray-800 text-base">{selected.product_nm}</h3>
               <span className="text-xs text-gray-500 flex items-center gap-3 whitespace-nowrap">
-                <span>구분 <span className="text-gray-800">{REF_GROUPS[GROUP]}</span></span>
+                <span>구분 <span className="text-gray-800">{selected.ref_label ?? "-"}</span></span>
                 <span>등록일 <span className="text-gray-800">{selected.created_at?.slice(0, 10)}</span></span>
               </span>
             </div>
