@@ -410,6 +410,9 @@ ON CONFLICT DO NOTHING;
 | `selectedCode` | `string \| null` | 차트 표시 대상 종목코드 |
 | `marketIndices` | `{ kospi, kosdaq }` | 코스피·코스닥 지수 |
 | `dailyPrices` | `DailyPrice[]` | 선택 종목 일별 주가 |
+| `compareCode` | `string \| null` | 주가 비교 대상 종목코드. `selectedCode` 가 바뀌면 `null` 로 초기화 |
+| `comparePrices` | `DailyPrice[]` | 비교 종목 일별 주가 (`getDailyPrices` 재사용). 차트·테이블에는 선택 종목 날짜 기준으로 붙인다 |
+| `chartMode` | `"price" \| "return"` | 비교 차트 표시 방식. `price` = 실제 주가(비교 종목 오른쪽 Y축), `return` = 기간 첫날 대비 수익률(%) |
 | `chartDays` | `number` | 차트 기간 필터 (30/90/180/365/9999) |
 | `transactions` | `StockTransaction[]` | 전체 거래 내역 |
 | `activeTab` | `"portfolio" \| "history"` | 현재 탭 |

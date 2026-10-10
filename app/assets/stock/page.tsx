@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import AppLayout from "@/components/AppLayout"
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine,
+  ResponsiveContainer, ReferenceLine, Legend,
 } from "recharts"
 import { fmt, cc } from "@/lib/fmt"
 
@@ -81,6 +81,10 @@ export default function StockPage() {
   const [dailyPrices, setDailyPrices]     = useState<DailyPrice[]>([])
   const [chartLoading, setChartLoading]   = useState(false)
   const [chartDays, setChartDays]         = useState(365)
+  // 주가 비교 — 선택 종목 차트에 겹쳐 그릴 종목. 선택 종목이 바뀌면 해제한다
+  const [compareCode, setCompareCode]     = useState<string | null>(null)
+  const [comparePrices, setComparePrices] = useState<DailyPrice[]>([])
+  const [chartMode, setChartMode]         = useState<"price" | "return">("price")
   const [fetchingNaver, setFetchingNaver] = useState(false)
   const [showDivModal, setShowDivModal]   = useState(false)
   // 분배금 팝업 대상 종목 — 보유 종목 표에서 고른 종목으로 연다
@@ -112,6 +116,7 @@ export default function StockPage() {
   const [showStockDrop, setShowStockDrop] = useState(false)
   const blurTimer   = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const compareReq  = useRef<string | null>(null)
 
   const loadHoldings = useCallback(async () => {
     const h = await getHoldings()
@@ -216,6 +221,7 @@ export default function StockPage() {
       await loadHoldings()
       const code = codeToLoad !== undefined ? codeToLoad : selectedCode
       if (code) await loadDailyPrices(code)
+      if (compareCode) setComparePrices(await getDailyPrices(compareCode))
       await loadMarketIndices()
       if (!silent) alert(`${defaultStocks.length}개 종목 최신화 완료 (${total}건 저장)`)
     } catch (e) {
@@ -330,6 +336,48 @@ export default function StockPage() {
   const chartAvg = chartData.length > 0
     ? chartData.reduce((s, r) => s + r.amt, 0) / chartData.length
     : null
+
+  // 주가 비교 — 날짜는 선택 종목 기준, 비교 종목은 같은 날짜 주가를 붙인다 (없으면 null → 선이 끊긴다)
+  const comparing   = compareCode != null
+  const compareIdx  = new Map(comparePrices.map(p => [p.s_date, p]))
+  const mainBase    = chartData[0]?.amt ?? null
+  const compareBase = chartData.map(r => compareIdx.get(r.date)?.amt).find(v => v != null) ?? null
+  const toReturn    = (v: number | null | undefined, base: number | null) =>
+    v != null && base ? Math.round((v / base - 1) * 10000) / 100 : null
+  const compareChartData = chartData.map(r => {
+    const cmp = compareIdx.get(r.date)
+    return {
+      ...r,
+      cmp_amt:    cmp?.amt ?? null,
+      cmp_rate:   cmp?.e_rate ?? null,
+      main_ret:   toReturn(r.amt, mainBase),
+      cmp_ret:    toReturn(cmp?.amt, compareBase),
+    }
+  })
+  const showReturn  = comparing && chartMode === "return"
+  const stockNameOf = (code: string | null) => holdings.find(h => h.stock_code === code)?.stock_name ?? code ?? ""
+
+  function clearCompare() {
+    compareReq.current = null
+    setCompareCode(null)
+    setComparePrices([])
+    setChartMode("price")
+  }
+
+  function pickChartStock(code: string | null) {
+    setSelectedCode(code)
+    clearCompare()
+  }
+
+  async function toggleCompare(code: string) {
+    if (compareCode === code) { clearCompare(); return }
+    setCompareCode(code)
+    setComparePrices([])
+    compareReq.current = code
+    const prices = await getDailyPrices(code)
+    // 응답 전에 다른 종목으로 바꿨으면 늦게 온 결과는 버린다
+    if (compareReq.current === code) setComparePrices(prices)
+  }
 
   // t_stock_amt 최신 저장가 기반 포트폴리오 계산
   const portfolioRows = holdings.map((h) => {
@@ -562,6 +610,7 @@ export default function StockPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr>
+                        <th className="px-3 py-2.5" />
                         {["종목코드", "종목명", "구분", "잔고", "평균매입가", "현재가", "매입금액", "평가금액", "평가손익", "수익률"].map((h) => (
                           <th
                             key={h}
@@ -588,7 +637,7 @@ export default function StockPage() {
                         <tbody key={accNo}>
                           {/* 계좌 헤더 행 */}
                           <tr className="bg-gray-100 border-t-2 border-gray-300">
-                            <td colSpan={10} className="px-3 py-2">
+                            <td colSpan={11} className="px-3 py-2">
                               <div className="flex items-center justify-between">
                                 <span className="text-xs font-bold text-gray-700">
                                   {accNo}
@@ -619,7 +668,7 @@ export default function StockPage() {
                           {rows.map((r) => (
                             <tr
                               key={`${accNo}-${r.stock_code}`}
-                              onClick={() => setSelectedCode(selectedCode === r.stock_code ? null : r.stock_code)}
+                              onClick={() => pickChartStock(selectedCode === r.stock_code ? null : r.stock_code)}
                               onMouseEnter={(e) => {
                                 const rect = e.currentTarget.getBoundingClientRect()
                                 setTooltip({
@@ -631,9 +680,24 @@ export default function StockPage() {
                               }}
                               onMouseLeave={() => setTooltip(null)}
                               className={`cursor-pointer transition-colors border-t border-gray-100 ${
-                                selectedCode === r.stock_code ? "bg-blue-50" : "hover:bg-gray-50"
+                                selectedCode === r.stock_code ? "bg-blue-50"
+                                  : compareCode === r.stock_code ? "bg-orange-50" : "hover:bg-gray-50"
                               }`}
                             >
+                              <td className="px-3 py-2 whitespace-nowrap">
+                                {selectedCode && selectedCode !== r.stock_code && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); toggleCompare(r.stock_code) }}
+                                    className={`text-xs px-2 py-0.5 rounded border whitespace-nowrap ${
+                                      compareCode === r.stock_code
+                                        ? "border-orange-500 bg-orange-500 text-white hover:bg-orange-600"
+                                        : "border-orange-300 text-orange-600 bg-white hover:bg-orange-50"
+                                    }`}
+                                  >
+                                    {compareCode === r.stock_code ? "비교 해제" : "주가 비교"}
+                                  </button>
+                                )}
+                              </td>
                               <td className="px-3 py-2 font-mono text-xs text-gray-700">{r.stock_code}</td>
                               <td className="px-3 py-2 text-gray-900 font-medium whitespace-nowrap">
                                 {r.stock_name ?? r.stock_code}
@@ -678,11 +742,12 @@ export default function StockPage() {
             {selectedCode && (
               <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-4">
                 <h2 className="text-sm font-semibold text-gray-800">
-                  {holdings.find(h => h.stock_code === selectedCode)?.stock_name ?? selectedCode} 일별 주가
+                  {stockNameOf(selectedCode)}
+                  {comparing && <span className="text-orange-600"> vs {stockNameOf(compareCode)}</span>} 일별 주가
                 </h2>
 
-                {/* 기간 선택 */}
-                <div className="flex gap-1">
+                {/* 기간 선택 + 비교 표시 방식 */}
+                <div className="flex items-center gap-1 flex-wrap">
                   {CHART_PERIODS.map((p) => (
                     <button
                       key={p.label}
@@ -696,9 +761,24 @@ export default function StockPage() {
                       {p.label}
                     </button>
                   ))}
+                  {comparing && (
+                    <div className="ml-3 inline-flex rounded-lg border border-gray-300 overflow-hidden">
+                      {([["price", "주가"], ["return", "수익률"]] as const).map(([mode, label]) => (
+                        <button
+                          key={mode}
+                          onClick={() => setChartMode(mode)}
+                          className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                            chartMode === mode ? "bg-orange-500 text-white" : "bg-white text-gray-700 hover:bg-gray-50"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {chartLoading && <p className="text-center text-gray-400 py-8 text-sm">로딩 중...</p>}
+                {chartLoading &&<p className="text-center text-gray-400 py-8 text-sm">로딩 중...</p>}
 
                 {!chartLoading && chartData.length === 0 && (
                   <p className="text-center text-gray-500 py-8 text-sm">
@@ -709,7 +789,7 @@ export default function StockPage() {
                 {!chartLoading && chartData.length > 0 && (
                   <>
                     <ResponsiveContainer width="100%" height={240}>
-                      <LineChart data={chartData} margin={{ top: 5, right: 14, left: 0, bottom: 5 }}>
+                      <LineChart data={compareChartData} margin={{ top: 5, right: 14, left: 0, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                         <XAxis
                           dataKey="date"
@@ -718,27 +798,67 @@ export default function StockPage() {
                           interval="preserveStartEnd"
                         />
                         <YAxis
+                          yAxisId="left"
                           tick={{ fontSize: 10, fill: "#374151" }}
-                          tickFormatter={(v) => Number(v).toLocaleString()}
+                          tickFormatter={(v) => showReturn ? `${fmt(Number(v), 1)}%` : fmt(Number(v))}
                           domain={["auto", "auto"]}
                           width={72}
                         />
+                        {/* 주가 모드 비교 — 가격대가 달라 비교 종목은 오른쪽 축 */}
+                        {comparing && !showReturn && (
+                          <YAxis
+                            yAxisId="right"
+                            orientation="right"
+                            tick={{ fontSize: 10, fill: "#ea580c" }}
+                            tickFormatter={(v) => fmt(Number(v))}
+                            domain={["auto", "auto"]}
+                            width={72}
+                          />
+                        )}
                         <Tooltip
-                          formatter={(v: unknown) => [`${fmt(Number(v))} 원`, "종가"]}
+                          formatter={(v: unknown, name: unknown) => [
+                            v == null ? "-" : showReturn
+                              ? `${Number(v) > 0 ? "+" : ""}${fmt(Number(v), 1)}%`
+                              : `${fmt(Number(v))} 원`,
+                            String(name),
+                          ]}
                           labelFormatter={(l) => String(l)}
                           contentStyle={{ fontSize: 12, padding: "5px 10px", border: "1px solid #e5e7eb", borderRadius: 6 }}
                           labelStyle={{ fontSize: 11, fontWeight: 600, color: "#374151", marginBottom: 2 }}
                           itemStyle={{ fontSize: 12, padding: "1px 0" }}
                         />
-                        {chartAvg != null && (
+                        {comparing && <Legend wrapperStyle={{ fontSize: 11 }} />}
+                        {showReturn ? (
+                          <ReferenceLine yAxisId="left" y={0} stroke="#9ca3af" strokeDasharray="4 2" />
+                        ) : chartAvg != null && (
                           <ReferenceLine
+                            yAxisId="left"
                             y={chartAvg}
                             stroke="#9ca3af"
                             strokeDasharray="4 2"
                             label={{ value: `평균 ${fmt(chartAvg)}`, position: "insideTopRight", fontSize: 9, fill: "#9ca3af" }}
                           />
                         )}
-                        <Line type="monotone" dataKey="amt" stroke="#2563eb" dot={false} strokeWidth={2} name="종가" />
+                        <Line
+                          yAxisId="left"
+                          type="monotone"
+                          dataKey={showReturn ? "main_ret" : "amt"}
+                          stroke="#2563eb"
+                          dot={false}
+                          strokeWidth={2}
+                          name={comparing ? stockNameOf(selectedCode) : "종가"}
+                        />
+                        {comparing && (
+                          <Line
+                            yAxisId={showReturn ? "left" : "right"}
+                            type="monotone"
+                            dataKey={showReturn ? "cmp_ret" : "cmp_amt"}
+                            stroke="#ea580c"
+                            dot={false}
+                            strokeWidth={2}
+                            name={stockNameOf(compareCode)}
+                          />
+                        )}
                       </LineChart>
                     </ResponsiveContainer>
 
@@ -748,10 +868,14 @@ export default function StockPage() {
                         <table className="w-full text-sm">
                           <thead className="bg-gray-50 sticky top-0">
                             <tr>
-                              {["날짜", "종가", "전일 대비", "등락률", "거래량"].map((h) => (
+                              {["날짜", "종가", "전일 대비", "등락률", "거래량",
+                                ...(comparing ? [`${stockNameOf(compareCode)} 종가`, `${stockNameOf(compareCode)} 등락률`] : []),
+                              ].map((h, i) => (
                                 <th
-                                  key={h}
-                                  className={`px-3 py-2 text-xs font-semibold text-gray-700 ${h === "날짜" ? "text-left" : "text-right"}`}
+                                  key={i}
+                                  className={`px-3 py-2 text-xs font-semibold whitespace-nowrap ${i === 0 ? "text-left" : "text-right"} ${
+                                    i >= 5 ? "text-orange-700 bg-orange-50" : "text-gray-700"
+                                  }`}
                                 >
                                   {h}
                                 </th>
@@ -759,7 +883,7 @@ export default function StockPage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
-                            {[...chartData].reverse().map((row, i, arr) => {
+                            {[...compareChartData].reverse().map((row, i, arr) => {
                               // 저장된 값 우선, 없으면 연속행 계산
                               const change     = row.c_amt   ?? (arr[i + 1] ? row.amt - arr[i + 1].amt : null)
                               const changeRate = row.e_rate  ?? ((change != null && arr[i + 1]) ? (change / arr[i + 1].amt) * 100 : null)
@@ -777,6 +901,16 @@ export default function StockPage() {
                                   <td className="px-3 py-1.5 text-right text-gray-600">
                                     {volume != null ? fmt(volume) : "-"}
                                   </td>
+                                  {comparing && (
+                                    <>
+                                      <td className="px-3 py-1.5 text-right font-medium text-gray-900 bg-orange-50/40">
+                                        {row.cmp_amt != null ? `${fmt(row.cmp_amt)}원` : "-"}
+                                      </td>
+                                      <td className={`px-3 py-1.5 text-right font-medium bg-orange-50/40 ${cc(row.cmp_rate)}`}>
+                                        {row.cmp_rate != null ? `${row.cmp_rate > 0 ? "+" : ""}${fmt(row.cmp_rate, 2)}%` : "-"}
+                                      </td>
+                                    </>
+                                  )}
                                 </tr>
                               )
                             })}
